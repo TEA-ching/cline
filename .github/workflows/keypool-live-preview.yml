@@ -217,6 +217,21 @@ jobs:
             return acc
           }
 
+          function findReadmeFiles(dir, acc = []) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (entry.isDirectory()) {
+                if (!ignoredDirs.has(entry.name)) {
+                  findReadmeFiles(path.join(dir, entry.name), acc)
+                }
+                continue
+              }
+              if (entry.isFile() && entry.name === 'README.md') {
+                acc.push(path.join(dir, entry.name))
+              }
+            }
+            return acc
+          }
+
           const keysToRewrite = [
             'dependencies',
             'devDependencies',
@@ -227,6 +242,7 @@ jobs:
           const packageJsonFiles = findPackageJsonFiles(root)
           let touched = 0
 
+          // Update package.json files
           for (const pkgPath of packageJsonFiles) {
             const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
 
@@ -262,6 +278,25 @@ jobs:
 
             fs.writeFileSync(pkgPath, `${JSON.stringify(pkg, null, '\t')}\n`)
             touched++
+          }
+
+          // Update README.md files
+          const readmeFiles = findReadmeFiles(root)
+          for (const readmePath of readmeFiles) {
+            let content = fs.readFileSync(readmePath, 'utf8')
+            const originalContent = content
+
+            // Replace @cline/ package names in README files
+            content = content.replace(/@cline\/agents/g, '@sctg/cline-agents')
+            content = content.replace(/@cline\/core/g, '@sctg/cline-core')
+            content = content.replace(/@cline\/llms/g, '@sctg/cline-llms')
+            content = content.replace(/@cline\/shared/g, '@sctg/cline-shared')
+            content = content.replace(/@cline\/sdk/g, '@sctg/cline-sdk')
+
+            if (content !== originalContent) {
+              fs.writeFileSync(readmePath, content)
+              console.log(`Updated package references in ${readmePath}`)
+            }
           }
 
           console.log(`Rewrote ${touched} package.json file(s): @cline/* -> @sctg/cline-*`)
