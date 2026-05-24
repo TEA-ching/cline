@@ -226,6 +226,88 @@ git diff origin/main | cline  "Review these changes for issues"
 cline --json "List all TODO comments" | jq -r 'select(.type == "agent_event" and .event.text) | .event.text'
 ```
 
+---
+
+## Fork: KeypoolLive — Shared Encrypted API Key Pool
+
+> This repository is a fork of [cline/cline](https://github.com/cline/cline) that adds the **KeypoolLive** provider: a shared, encrypted vault of API keys distributed over HTTP. Multiple users or machines can draw from the same pool; keys rotate automatically on rate-limit or auth errors.
+
+### How It Works
+
+1. A JSON vault file (`ai.json`) declares providers, models, and API keys with owner labels.
+2. The vault is encrypted with AES-256-CBC (OpenSSL `pbkdf2` format) and served from any HTTPS URL (Cloudflare R2, S3, GitHub raw, …).
+3. Cline fetches and decrypts the vault at runtime using a shared secret stored in the VS Code extension settings. The vault is cached for 5 minutes.
+4. Keys are assigned per session and rotate automatically on HTTP 401/403/429. A manual rotate button is available in the chat toolbar.
+
+### Vault Format
+
+```json
+{
+  "version": 1,
+  "providers": {
+    "gemini": {
+      "protocol": "gemini",
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta",
+      "keys": [
+        { "key": "AIza...", "owner": "alice", "type": "paid" },
+        { "key": "AIza...", "owner": "bob",   "type": "free" }
+      ],
+      "models": [
+        { "id": "gemini-2.5-flash-preview-05-20", "name": "Gemini 2.5 Flash" }
+      ]
+    },
+    "openai": {
+      "protocol": "openai",
+      "keys": [{ "key": "sk-...", "owner": "carol", "type": "paid" }],
+      "models": [{ "id": "gpt-4o" }]
+    }
+  }
+}
+```
+
+Supported protocols: `anthropic`, `openai`, `gemini`.  
+Key tiers (informational): `free`, `paid`, `premium`, `unlimited`, `expired`.
+
+### Encrypting the Vault
+
+```bash
+openssl enc -aes-256-cbc -a -pbkdf2 -iter 100000 -salt \
+  -in ai.json -out ai.json.enc \
+  -pass pass:"YOUR_SECRET"
+```
+
+Upload `ai.json.enc` to any public HTTPS endpoint.
+
+### VS Code Extension Settings
+
+In the Cline settings panel, select **KeypoolLive** as the API provider and fill in:
+
+| Setting | Description |
+|---------|-------------|
+| **Vault URL** | HTTPS URL of the encrypted `.enc` file |
+| **Vault secret** | Decryption password (stored locally, never sent to the vault) |
+| **Model** | `providerName/modelId` — e.g. `gemini/gemini-2.5-flash-preview-05-20` |
+| **Use Cloudflare AI Gateway** *(optional)* | Route requests through a Cloudflare AI Gateway for logging/caching |
+| **Gateway ID** *(optional)* | Your Cloudflare account ID + gateway slug |
+
+### Key Rotation
+
+- **Automatic:** on HTTP 401, 403, or 429 the extension picks the next available key and retries once, then shows a VS Code toast with the new owner and key hint.
+- **Manual:** click the **⟳** (sync) button in the chat toolbar. The icon changes to a spinner while in-flight, then to ✓ on success or ✗ on failure for 2 seconds.
+
+### Building the Fork
+
+```bash
+npm install
+npm run compile        # TypeScript + esbuild
+npx @vscode/vsce package --allow-package-secrets sendgrid --out cline.vsix
+code --install-extension cline.vsix
+```
+
+> **Note on `better-sqlite3`:** Key usage statistics are persisted to a local SQLite database. The native `better-sqlite3` module must be present in the extension's `node_modules` directory. If it is missing, a warning is logged and the extension continues to work without persistence.
+
+---
+
 ## Contributing
 
 Start with the [Contributing Guide](CONTRIBUTING.md). Join our [Discord](https://discord.gg/cline) and head to the `#contributors` channel to connect with other contributors. Check our [careers page](https://cline.bot/join-us) for full-time roles.
