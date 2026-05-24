@@ -221,6 +221,11 @@ jobs:
           console.log('Renamed SDK packages/dependencies to @sctg/cline-*')
           NODE
 
+      - name: Refresh Bun workspace lockfile after package renaming
+        run: bun install
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Pack all SDK packages
         run: |
           mkdir -p "$RUNNER_TEMP/sdk-packs"
