@@ -62,6 +62,8 @@ export enum BUILT_IN_PROVIDER {
 	SAPAICORE = "sapaicore",
 	// Aggregators
 	OPENROUTER = "openrouter",
+	// Key Pool
+	KEYPOOLLIVE = "keypoollive",
 }
 
 /**

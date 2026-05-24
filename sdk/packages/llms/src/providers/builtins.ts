@@ -40,7 +40,8 @@ export type ProviderFamily =
 	| "claude-code"
 	| "openai-codex"
 	| "opencode"
-	| "dify";
+	| "dify"
+	| "keypoollive";
 
 export interface BuiltinSpec {
 	id: string;
@@ -246,6 +247,8 @@ function inferClient(spec: BuiltinSpec): ProviderClient {
 		case "opencode":
 		case "dify":
 			return "ai-sdk-community";
+		case "keypoollive":
+			return "custom";
 		default:
 			return "openai-compatible";
 	}
@@ -799,6 +802,16 @@ export const BUILTIN_SPECS: BuiltinSpec[] = [
 		family: "dify",
 		defaultModelId: "default",
 		apiKeyEnv: ["DIFY_API_KEY"],
+		modelsFactory: () => ({}),
+	},
+	{
+		id: "keypoollive",
+		name: "KeypoolLive",
+		description:
+			"Key-pool gateway with automatic key rotation. Use modelId 'providerName/modelId' and apiKey 'auto'.",
+		family: "keypoollive",
+		defaultModelId: "mistral/devstral-latest",
+		apiKeyEnv: ["KEYPOOL_LIVE_SECRET"],
 		modelsFactory: () => ({}),
 	},
 	...OPENAI_COMPATIBLE_SPECS,
