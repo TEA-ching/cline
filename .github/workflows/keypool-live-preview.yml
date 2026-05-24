@@ -10,6 +10,10 @@ concurrency:
   group: preview-release-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  id-token: write  # Required for OIDC
+
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   # 1. Compute shared metadata (version + datetime) once, shared across all jobs.
@@ -277,8 +281,8 @@ jobs:
         run: mkdir -p "$RUNNER_TEMP/sdk-npm-packs"
 
       - name: Publish @sctg/cline-shared
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+        # env:
+        #   NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
         run: |
           if [ -z "${NODE_AUTH_TOKEN}" ]; then
             echo "Missing NPMJS_TOKEN secret"
@@ -289,32 +293,32 @@ jobs:
           npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
 
       - name: Publish @sctg/cline-llms
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+        # env:
+        #   NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
         run: |
           cd packages/llms
           TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
           npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
 
       - name: Publish @sctg/cline-agents
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+        # env:
+        #   NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
         run: |
           cd packages/agents
           TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
           npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
 
       - name: Publish @sctg/cline-core
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+        # env:
+        #   NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
         run: |
           cd packages/core
           TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
           npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
 
       - name: Publish @sctg/cline-sdk
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+        # env:
+        #   NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
         run: |
           cd packages/sdk
           TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
