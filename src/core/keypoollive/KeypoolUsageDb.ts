@@ -1,7 +1,11 @@
 // KeypoolLive — KeypoolUsageDb: SQLite persistence for per-key usage + errors
 // © 2026 Ronan LE MEILLAT — MIT License
 
-import Database from "better-sqlite3"
+// Type-only import: erased at compile time, generates no require() call.
+// The actual module is loaded lazily at runtime so the extension can
+// still activate even if better-sqlite3 is unavailable (e.g. wrong
+// Electron ABI or missing node_modules in a packaged VSIX).
+import type Database from "better-sqlite3"
 import { mkdirSync } from "fs"
 import path from "path"
 import { HostProvider } from "@/hosts/host-provider"
@@ -59,6 +63,16 @@ function periodFormat(period: UsagePeriod): string {
 	}
 }
 
+/** Returns the better-sqlite3 constructor, or null if the native module cannot be loaded. */
+function tryLoadBetterSqlite3(): typeof Database | null {
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		return require("better-sqlite3")
+	} catch {
+		return null
+	}
+}
+
 function periodCutoffMs(period: UsagePeriod): number {
 	const now = Date.now()
 	switch (period) {
@@ -80,18 +94,34 @@ function getUsageDbPath(): string {
 
 export class KeypoolUsageDb {
 	private static db: Database.Database | null = null
+	/** Set to true once we've confirmed the module is unavailable, to avoid repeated require() attempts. */
+	private static dbUnavailable = false
 
-	private static getDb(): Database.Database {
+	/**
+	 * Returns the open SQLite database, or null if better-sqlite3 is unavailable.
+	 * Logs a one-time warning on first unavailability.
+	 */
+	private static getDb(): Database.Database | null {
+		if (KeypoolUsageDb.dbUnavailable) return null
 		if (!KeypoolUsageDb.db) {
+			const BetterSqlite3 = tryLoadBetterSqlite3()
+			if (!BetterSqlite3) {
+				KeypoolUsageDb.dbUnavailable = true
+				Logger.warn(
+					"[KeypoolUsageDb] better-sqlite3 native module unavailable — key usage stats will not be persisted.",
+					"Install the module and rebuild the extension to enable persistence.",
+				)
+				return null
+			}
 			const dbPath = getUsageDbPath()
 			const dbDir = path.dirname(dbPath)
 			try {
 				mkdirSync(dbDir, { recursive: true })
 			} catch (e) {
 				Logger.error("[KeypoolUsageDb] Failed to create DB directory:", e)
-				throw e
+				return null
 			}
-			KeypoolUsageDb.db = new Database(dbPath)
+			KeypoolUsageDb.db = new BetterSqlite3(dbPath)
 			KeypoolUsageDb.initSchema(KeypoolUsageDb.db)
 		}
 		return KeypoolUsageDb.db
@@ -129,6 +159,7 @@ export class KeypoolUsageDb {
 	static recordUsage(entry: KeyUsageEntry): void {
 		try {
 			const db = KeypoolUsageDb.getDb()
+			if (!db) return
 			const stmt = db.prepare(`
 				INSERT INTO key_usage (ts, provider, model_id, key_owner, key_hint, prompt_tokens, completion_tokens)
 				VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -150,6 +181,7 @@ export class KeypoolUsageDb {
 	static recordError(entry: KeyErrorEntry): void {
 		try {
 			const db = KeypoolUsageDb.getDb()
+			if (!db) return
 			const stmt = db.prepare(`
 				INSERT INTO key_errors (ts, provider, model_id, key_owner, key_hint, error_code)
 				VALUES (?, ?, ?, ?, ?, ?)
@@ -163,6 +195,7 @@ export class KeypoolUsageDb {
 	static getUsageStats(period: UsagePeriod): KeyUsageStat[] {
 		try {
 			const db = KeypoolUsageDb.getDb()
+			if (!db) return []
 			const fmt = periodFormat(period)
 			const cutoff = periodCutoffMs(period)
 			const stmt = db.prepare(`
@@ -189,6 +222,7 @@ export class KeypoolUsageDb {
 	static getErrorStats(): KeyErrorStat[] {
 		try {
 			const db = KeypoolUsageDb.getDb()
+			if (!db) return []
 			const stmt = db.prepare(`
 				SELECT
 					e.provider,

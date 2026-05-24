@@ -258,6 +258,10 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 		const [showDimensionError, setShowDimensionError] = useState(false)
 		const dimensionErrorTimerRef = useRef<NodeJS.Timeout | null>(null)
 
+		// KeypoolLive rotate button visual state
+		const [kplRotateStatus, setKplRotateStatus] = useState<"idle" | "rotating" | "ok" | "error">("idle")
+		const kplRotateTimerRef = useRef<NodeJS.Timeout | null>(null)
+
 		const [fileSearchResults, setFileSearchResults] = useState<SearchResult[]>([])
 		const [searchLoading, setSearchLoading] = useState(false)
 		const [, metaKeyChar] = useMetaKeyDetection(platform)
@@ -1095,12 +1099,23 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			const { selectedProvider, selectedModelId } = normalizeApiConfiguration(apiConfiguration, mode)
 			if (selectedProvider !== "keypoollive") return
 			const [providerName, modelId] = (selectedModelId ?? "").split("/", 2)
+			if (kplRotateTimerRef.current) {
+				clearTimeout(kplRotateTimerRef.current)
+				kplRotateTimerRef.current = null
+			}
+			setKplRotateStatus("rotating")
 			try {
-				await ModelsServiceClient.keypoolRotateKey(
+				const response = await ModelsServiceClient.keypoolRotateKey(
 					KeypoolRotateKeyRequest.create({ providerName: providerName ?? "", modelId: modelId ?? "" }),
 				)
+				setKplRotateStatus(response.success ? "ok" : "error")
 			} catch {
-				// Silently ignore — rotation best-effort
+				setKplRotateStatus("error")
+			} finally {
+				kplRotateTimerRef.current = setTimeout(() => {
+					setKplRotateStatus("idle")
+					kplRotateTimerRef.current = null
+				}, 2000)
 			}
 		}, [apiConfiguration, mode])
 
@@ -1655,14 +1670,32 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 								<>
 									<KeypoolModelSelector currentModelId={currentModelId ?? ""} onSelect={handleKplModelSelect} />
 									<Tooltip>
-										{<TooltipContent>Rotate KeypoolLive key</TooltipContent>}
+										<TooltipContent>
+											{kplRotateStatus === "ok"
+												? "Key rotated!"
+												: kplRotateStatus === "error"
+													? "Rotation failed"
+													: "Rotate KeypoolLive key"}
+										</TooltipContent>
 										<TooltipTrigger>
 											<VSCodeButton
 												appearance="icon"
 												aria-label="Rotate KeypoolLive key"
 												className="p-0 m-0 flex items-center"
+												disabled={kplRotateStatus === "rotating"}
 												onClick={handleKplRotate}>
-												<i className="codicon codicon-sync" style={{ fontSize: "12.5px" }} />
+												<i
+													className={`codicon ${
+														kplRotateStatus === "rotating"
+															? "codicon-loading"
+															: kplRotateStatus === "ok"
+																? "codicon-pass"
+																: kplRotateStatus === "error"
+																	? "codicon-error"
+																	: "codicon-sync"
+													}`}
+													style={{ fontSize: "12.5px" }}
+												/>
 											</VSCodeButton>
 										</TooltipTrigger>
 									</Tooltip>

@@ -50,7 +50,9 @@ export class Logger {
 	static #output(level: string, message: string, error: Error | undefined, args: any[]) {
 		try {
 			let fullMessage = message
-			if (Logger.isVerbose && args.length > 0) {
+			// Always serialize args for error/warn; only in verbose mode for lower levels.
+			const isErrorLike = level === "ERROR" || level === "WARN"
+			if ((Logger.isVerbose || isErrorLike) && args.length > 0) {
 				fullMessage += ` ${args
 					.map((arg) => {
 						if (arg instanceof Error) return `${arg.message}${arg.stack ? `\n${arg.stack}` : ""}`

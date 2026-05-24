@@ -32,6 +32,23 @@ function toCfGatewaySlug(protocol: AiProtocol, fallback: string): string {
 
 const KEYPOOLLIVE_SESSION_ID = "kpl-global"
 
+/** Returns first 6 chars + "..." + last 6 chars of an API key for safe logging. */
+function formatKeyHint(apiKey: string): string {
+	if (apiKey.length <= 12) return apiKey
+	return `${apiKey.slice(0, 6)}...${apiKey.slice(-6)}`
+}
+
+/** Shows a VSCode information toast if running inside the extension host (no-op in standalone). */
+function tryShowVscodeInfo(message: string): void {
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		const vsc = require("vscode") as typeof import("vscode")
+		vsc.window.showInformationMessage(message)
+	} catch {
+		// Not in VSCode context (standalone mode), ignore
+	}
+}
+
 /** Errors that warrant key rotation */
 function isKeyError(e: any): boolean {
 	const code = e?.status ?? e?.statusCode ?? e?.error?.status ?? 0
@@ -145,6 +162,9 @@ export class KeypoolLiveHandler implements ApiHandler {
 		}
 
 		this.resolvedConfig = config
+		Logger.log(
+			`[KeypoolLive] Using key owner=${config.keyOwner}, key=${formatKeyHint(config.apiKey)}, model=${config.model.id}`,
+		)
 
 		let lastError: any
 		for (let attempt = 0; attempt < 2; attempt++) {
@@ -193,6 +213,9 @@ export class KeypoolLiveHandler implements ApiHandler {
 						"key_failure",
 					)
 					if (rotated) {
+						const hint = formatKeyHint(rotated.apiKey)
+						Logger.log(`[KeypoolLive] Key rotated → owner=${rotated.keyOwner}, key=${hint}`)
+						tryShowVscodeInfo(`[KeypoolLive] Key rotated — owner: ${rotated.keyOwner} | key: ${hint}`)
 						config = rotated
 						this.resolvedConfig = rotated
 						continue
