@@ -178,30 +178,52 @@ jobs:
           const path = require('node:path')
 
           const root = process.cwd()
-          const pkgRoot = path.join(root, 'packages')
+          const ignoredDirs = new Set([
+            'node_modules',
+            '.git',
+            'dist',
+            '.turbo',
+            '.next',
+          ])
 
-          const nameMap = {
-            '@cline/shared': '@sctg/cline-shared',
-            '@cline/llms': '@sctg/cline-llms',
-            '@cline/agents': '@sctg/cline-agents',
-            '@cline/core': '@sctg/cline-core',
-            '@cline/sdk': '@sctg/cline-sdk',
+          function mapClineName(name) {
+            if (typeof name !== 'string') return name
+            if (!name.startsWith('@cline/')) return name
+            return `@sctg/cline-${name.slice('@cline/'.length)}`
+          }
+
+          function findPackageJsonFiles(dir, acc = []) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (entry.isDirectory()) {
+                if (!ignoredDirs.has(entry.name)) {
+                  findPackageJsonFiles(path.join(dir, entry.name), acc)
+                }
+                continue
+              }
+              if (entry.isFile() && entry.name === 'package.json') {
+                acc.push(path.join(dir, entry.name))
+              }
+            }
+            return acc
           }
 
           const keysToRewrite = [
-            'name',
             'dependencies',
             'devDependencies',
             'peerDependencies',
             'optionalDependencies',
           ]
 
-          for (const dir of ['shared', 'llms', 'agents', 'core', 'sdk']) {
-            const pkgPath = path.join(pkgRoot, dir, 'package.json')
+          const packageJsonFiles = findPackageJsonFiles(root)
+          let touched = 0
+
+          for (const pkgPath of packageJsonFiles) {
             const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
 
-            if (nameMap[pkg.name]) {
-              pkg.name = nameMap[pkg.name]
+            const oldName = pkg.name
+            const mappedName = mapClineName(oldName)
+            if (mappedName !== oldName) {
+              pkg.name = mappedName
             }
 
             for (const key of keysToRewrite) {
@@ -210,15 +232,16 @@ jobs:
               }
               const rewritten = {}
               for (const [depName, depVersion] of Object.entries(pkg[key])) {
-                rewritten[nameMap[depName] || depName] = depVersion
+                rewritten[mapClineName(depName)] = depVersion
               }
               pkg[key] = rewritten
             }
 
             fs.writeFileSync(pkgPath, `${JSON.stringify(pkg, null, '\t')}\n`)
+            touched++
           }
 
-          console.log('Renamed SDK packages/dependencies to @sctg/cline-*')
+          console.log(`Rewrote ${touched} package.json file(s): @cline/* -> @sctg/cline-*`)
           NODE
 
       - name: Refresh Bun workspace lockfile after package renaming
