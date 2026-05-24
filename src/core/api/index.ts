@@ -20,6 +20,7 @@ import { GroqHandler } from "./providers/groq"
 import { HicapHandler } from "./providers/hicap"
 import { HuaweiCloudMaaSHandler } from "./providers/huawei-cloud-maas"
 import { HuggingFaceHandler } from "./providers/huggingface"
+import { KeypoolLiveHandler } from "./providers/keypoollive"
 import { LiteLlmHandler } from "./providers/litellm"
 import { LmStudioHandler } from "./providers/lmstudio"
 import { MinimaxHandler } from "./providers/minimax"
@@ -461,6 +462,18 @@ function createHandlerForProvider(
 				onRetryAttempt: options.onRetryAttempt,
 				wandbApiKey: options.wandbApiKey,
 				apiModelId: mode === "plan" ? options.planModeApiModelId : options.actModeApiModelId,
+			})
+		case "keypoollive":
+			return new KeypoolLiveHandler({
+				onRetryAttempt: options.onRetryAttempt,
+				keypoolliveVaultUrl: options.keypoolliveVaultUrl,
+				keypoolliveSecret: options.keypoolliveSecret,
+				keypoolliveGatewaySecret: options.keypoolliveGatewaySecret,
+				keypoolliveUseGateway: options.keypoolliveUseGateway,
+				keypoolliveGatewayId: options.keypoolliveGatewayId,
+				keypoolliveGatewayCacheSkip: options.keypoolliveGatewayCacheSkip,
+				apiModelId: mode === "plan" ? options.planModeApiModelId : options.actModeApiModelId,
+				ulid: options.ulid,
 			})
 		default:
 			return new AnthropicHandler({

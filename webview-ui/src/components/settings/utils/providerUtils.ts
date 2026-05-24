@@ -122,6 +122,8 @@ export function getModelsForProvider(
 			return nebiusModels
 		case "wandb":
 			return wandbModels
+		case "keypoollive":
+			return undefined
 		case "sambanova":
 			return sambanovaModels
 		case "cerebras":
@@ -503,6 +505,12 @@ export function normalizeApiConfiguration(
 					nousResearchModelId && nousResearchModelId in nousResearchModels
 						? nousResearchModels[nousResearchModelId as keyof typeof nousResearchModels]
 						: nousResearchModels[nousResearchDefaultModelId],
+			}
+		case "keypoollive":
+			return {
+				selectedProvider: provider,
+				selectedModelId: modelId || "",
+				selectedModelInfo: { contextWindow: 128000, supportsImages: false, supportsPromptCache: false },
 			}
 		default:
 			return getProviderData(anthropicModels, anthropicDefaultModelId)

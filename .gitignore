@@ -70,3 +70,4 @@ tests/**/cache
 *.db-wal
 .cline/**/managed.json
 .cline/**/bundle.json
+ai.json

@@ -238,6 +238,12 @@ const API_HANDLER_SETTINGS_FIELDS = {
 	// Deprecated model settings
 	hicapModelId: { default: undefined as string | undefined },
 	lmStudioModelId: { default: undefined as string | undefined },
+
+	// KeypoolLive configuration
+	keypoolliveVaultUrl: { default: undefined as string | undefined },
+	keypoolliveUseGateway: { default: false as boolean },
+	keypoolliveGatewayId: { default: undefined as string | undefined },
+	keypoolliveGatewayCacheSkip: { default: false as boolean },
 } satisfies FieldDefinitions
 
 const USER_SETTINGS_FIELDS = {
@@ -350,6 +356,8 @@ const SECRETS_KEYS = [
 	"mcpOAuthSecrets",
 	"openai-codex-oauth-credentials", // JSON blob containing OAuth tokens for OpenAI Codex (ChatGPT subscription)
 	"wandbApiKey",
+	"keypoolliveSecret",
+	"keypoolliveGatewaySecret",
 ] as const
 
 // WARNING, these are not ALL of the local state keys in practice. For example, FileContextTracker

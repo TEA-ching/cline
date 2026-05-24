@@ -328,6 +328,8 @@ function convertApiProviderToProto(provider: string | undefined): ProtoApiProvid
 			return ProtoApiProvider.NOUSRESEARCH
 		case "openai-codex":
 			return ProtoApiProvider.OPENAI_CODEX
+		case "keypoollive":
+			return ProtoApiProvider.KEYPOOLLIVE
 		default:
 			return ProtoApiProvider.ANTHROPIC
 	}
@@ -420,6 +422,8 @@ export function convertProtoToApiProvider(provider: ProtoApiProvider): ApiProvid
 			return "nousResearch"
 		case ProtoApiProvider.OPENAI_CODEX:
 			return "openai-codex"
+		case ProtoApiProvider.KEYPOOLLIVE:
+			return "keypoollive"
 		default:
 			return "anthropic"
 	}
@@ -483,6 +487,12 @@ export function convertApiConfigurationToProto(config: ApiConfiguration): ProtoA
 		huggingFaceApiKey: config.huggingFaceApiKey,
 		nebiusApiKey: config.nebiusApiKey,
 		wandbApiKey: config.wandbApiKey,
+		keypoolliveVaultUrl: config.keypoolliveVaultUrl,
+		keypoolliveSecret: config.keypoolliveSecret,
+		keypoolliveGatewaySecret: config.keypoolliveGatewaySecret,
+		keypoolliveUseGateway: config.keypoolliveUseGateway,
+		keypoolliveGatewayId: config.keypoolliveGatewayId,
+		keypoolliveGatewayCacheSkip: config.keypoolliveGatewayCacheSkip,
 		asksageApiUrl: config.asksageApiUrl,
 		asksageApiKey: config.asksageApiKey,
 		xaiApiKey: config.xaiApiKey,
@@ -663,6 +673,12 @@ export function convertProtoToApiConfiguration(protoConfig: ProtoApiConfiguratio
 		huggingFaceApiKey: protoConfig.huggingFaceApiKey,
 		nebiusApiKey: protoConfig.nebiusApiKey,
 		wandbApiKey: protoConfig.wandbApiKey,
+		keypoolliveVaultUrl: protoConfig.keypoolliveVaultUrl,
+		keypoolliveSecret: protoConfig.keypoolliveSecret,
+		keypoolliveGatewaySecret: protoConfig.keypoolliveGatewaySecret,
+		keypoolliveUseGateway: protoConfig.keypoolliveUseGateway,
+		keypoolliveGatewayId: protoConfig.keypoolliveGatewayId,
+		keypoolliveGatewayCacheSkip: protoConfig.keypoolliveGatewayCacheSkip,
 		asksageApiUrl: protoConfig.asksageApiUrl,
 		asksageApiKey: protoConfig.asksageApiKey,
 		xaiApiKey: protoConfig.xaiApiKey,

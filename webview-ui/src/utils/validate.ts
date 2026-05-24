@@ -177,6 +177,9 @@ export function validateApiConfiguration(currentMode: Mode, apiConfiguration?: A
 					return "You must provide a valid API key or choose a different provider."
 				}
 				break
+			case "keypoollive":
+				// Vault URL and secret are optional at config time; errors surface at runtime
+				break
 		}
 	}
 	return undefined

@@ -29,6 +29,7 @@ import { GroqProvider } from "./providers/GroqProvider"
 import { HicapProvider } from "./providers/HicapProvider"
 import { HuaweiCloudMaasProvider } from "./providers/HuaweiCloudMaasProvider"
 import { HuggingFaceProvider } from "./providers/HuggingFaceProvider"
+import { KeypoolLiveProvider } from "./providers/KeypoolLiveProvider"
 import { LiteLlmProvider } from "./providers/LiteLlmProvider"
 import { LMStudioProvider } from "./providers/LMStudioProvider"
 import { MinimaxProvider } from "./providers/MiniMaxProvider"
@@ -520,6 +521,10 @@ const ApiOptions = ({
 
 			{apiConfiguration && selectedProvider === "aihubmix" && (
 				<AIhubmixProvider currentMode={currentMode} isPopup={isPopup} showModelOptions={showModelOptions} />
+			)}
+
+			{apiConfiguration && selectedProvider === "keypoollive" && (
+				<KeypoolLiveProvider currentMode={currentMode} isPopup={isPopup} />
 			)}
 
 			{apiErrorMessage && (

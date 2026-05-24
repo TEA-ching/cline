@@ -1,6 +1,7 @@
 import { mentionRegex, mentionRegexGlobal } from "@shared/context-mentions"
 import { StringRequest } from "@shared/proto/cline/common"
 import { FileSearchRequest, FileSearchType, RelativePathsRequest } from "@shared/proto/cline/file"
+import { KeypoolRotateKeyRequest, UpdateApiConfigurationRequestNew } from "@shared/proto/cline/models"
 import { PlanActMode, TogglePlanActModeRequest } from "@shared/proto/cline/state"
 import { type SlashCommand } from "@shared/slashCommands"
 import { Mode } from "@shared/storage/types"
@@ -19,7 +20,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import { usePlatform } from "@/context/PlatformContext"
 import { cn } from "@/lib/utils"
-import { FileServiceClient, StateServiceClient } from "@/services/grpc-client"
+import { FileServiceClient, ModelsServiceClient, StateServiceClient } from "@/services/grpc-client"
 import {
 	ContextMenuOptionType,
 	getContextMenuOptionIndex,
@@ -42,6 +43,8 @@ import {
 	validateSlashCommand,
 } from "@/utils/slash-commands"
 import ClineRulesToggleModal from "../cline-rules/ClineRulesToggleModal"
+import KeypoolLiveDashboard from "./KeypoolLiveDashboard"
+import KeypoolModelSelector from "./KeypoolModelSelector"
 import ServersToggleModal from "./ServersToggleModal"
 
 const { MAX_IMAGES_AND_FILES_PER_MESSAGE } = CHAT_CONSTANTS
@@ -1086,7 +1089,47 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			navigateToSettingsModelPicker({ targetSection: "api-config" })
 		}
 
+		// KeypoolLive: rotate the active key
+		const handleKplRotate = useCallback(async () => {
+			if (!apiConfiguration) return
+			const { selectedProvider, selectedModelId } = normalizeApiConfiguration(apiConfiguration, mode)
+			if (selectedProvider !== "keypoollive") return
+			const [providerName, modelId] = (selectedModelId ?? "").split("/", 2)
+			try {
+				await ModelsServiceClient.keypoolRotateKey(
+					KeypoolRotateKeyRequest.create({ providerName: providerName ?? "", modelId: modelId ?? "" }),
+				)
+			} catch {
+				// Silently ignore — rotation best-effort
+			}
+		}, [apiConfiguration, mode])
+
+		// KeypoolLive: change the active vault model
+		const handleKplModelSelect = useCallback(
+			async (combinedId: string) => {
+				if (!apiConfiguration) return
+				const fieldName = mode === "plan" ? "planModeApiModelId" : "actModeApiModelId"
+				const optionsUpdate =
+					fieldName === "planModeApiModelId" ? { planModeApiModelId: combinedId } : { actModeApiModelId: combinedId }
+				const req = UpdateApiConfigurationRequestNew.create({
+					updates: { options: optionsUpdate },
+					updateMask: [`options.${fieldName}`],
+				})
+				try {
+					await ModelsServiceClient.updateApiConfiguration(req)
+				} catch {
+					// Silently ignore
+				}
+			},
+			[apiConfiguration, mode],
+		)
+
 		// Get model display name
+		const { selectedProvider: currentProvider, selectedModelId: currentModelId } = useMemo(
+			() => normalizeApiConfiguration(apiConfiguration, mode),
+			[apiConfiguration, mode],
+		)
+
 		const modelDisplayName = useMemo(() => {
 			const { selectedProvider, selectedModelId } = normalizeApiConfiguration(apiConfiguration, mode)
 			const {
@@ -1607,6 +1650,25 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 									</ModelDisplayButton>
 								</ModelButtonWrapper>
 							</ModelContainer>
+
+							{currentProvider === "keypoollive" && (
+								<>
+									<KeypoolModelSelector currentModelId={currentModelId ?? ""} onSelect={handleKplModelSelect} />
+									<Tooltip>
+										{<TooltipContent>Rotate KeypoolLive key</TooltipContent>}
+										<TooltipTrigger>
+											<VSCodeButton
+												appearance="icon"
+												aria-label="Rotate KeypoolLive key"
+												className="p-0 m-0 flex items-center"
+												onClick={handleKplRotate}>
+												<i className="codicon codicon-sync" style={{ fontSize: "12.5px" }} />
+											</VSCodeButton>
+										</TooltipTrigger>
+									</Tooltip>
+									<KeypoolLiveDashboard />
+								</>
+							)}
 						</ButtonGroup>
 					</div>
 					{/* Tooltip for Plan/Act toggle remains outside the conditional rendering */}

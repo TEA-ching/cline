@@ -116,9 +116,13 @@ export class GeminiHandler implements ApiHandler {
 				}
 
 				try {
+					// The @google/genai SDK constructs URLs as: baseUrl + "/" + apiVersion + "/" + path
+					// So strip the "/v1beta" suffix from the endpoint URL to avoid doubling it.
+					const cleanBaseUrl = options.geminiBaseUrl ? options.geminiBaseUrl.replace(/\/v1beta\/?$/, "") : undefined
 					this.client = new GoogleGenAI({
 						apiKey: options.geminiApiKey,
 						httpOptions: {
+							...(cleanBaseUrl ? { baseUrl: cleanBaseUrl } : {}),
 							headers: externalHeaders,
 						},
 					})
@@ -170,8 +174,6 @@ export class GeminiHandler implements ApiHandler {
 		// Set up base generation config
 		const maxOutputTokens = getGeminiMaxOutputTokens(modelId, info.maxTokens)
 		const requestConfig: GenerateContentConfig = {
-			// Add base URL if configured
-			httpOptions: this.options.geminiBaseUrl ? { baseUrl: this.options.geminiBaseUrl } : undefined,
 			systemInstruction: systemPrompt,
 			// Set temperature (default to 0)
 			// Gemini 3 recommends 1.0
