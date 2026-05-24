@@ -196,6 +196,12 @@ jobs:
             return `@sctg/cline-${name.slice('@cline/'.length)}`
           }
 
+          const githubRepository = process.env.GITHUB_REPOSITORY
+          const githubServerUrl = process.env.GITHUB_SERVER_URL || 'https://github.com'
+          const repositoryUrl = githubRepository
+            ? `${githubServerUrl}/${githubRepository}`
+            : null
+
           function findPackageJsonFiles(dir, acc = []) {
             for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
               if (entry.isDirectory()) {
@@ -241,11 +247,27 @@ jobs:
               pkg[key] = rewritten
             }
 
+            if (repositoryUrl) {
+              if (typeof pkg.repository === 'string') {
+                pkg.repository = repositoryUrl
+              } else if (pkg.repository && typeof pkg.repository === 'object') {
+                pkg.repository.url = repositoryUrl
+              } else {
+                pkg.repository = {
+                  type: 'git',
+                  url: repositoryUrl,
+                }
+              }
+            }
+
             fs.writeFileSync(pkgPath, `${JSON.stringify(pkg, null, '\t')}\n`)
             touched++
           }
 
           console.log(`Rewrote ${touched} package.json file(s): @cline/* -> @sctg/cline-*`)
+          if (repositoryUrl) {
+            console.log(`Set repository.url to ${repositoryUrl} for trusted publishing provenance`)
+          }
           NODE
 
       - name: Refresh Bun workspace lockfile after package renaming
