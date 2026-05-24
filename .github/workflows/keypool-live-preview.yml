@@ -152,6 +152,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "24.x"
+          registry-url: "https://registry.npmjs.org"
 
       - name: Install SDK dependencies
         run: bun install
@@ -163,12 +164,62 @@ jobs:
 
       - name: Version SDK packages (preview semver)
         run: |
-          # Strip everything except digits from datetime_safe to get a semver-safe identifier.
-          # 2026-05-24T01-55-05Z → 20260524015505  (only [0-9] — avoids uppercase T/Z rejections)
+          # Build a semver prerelease suffix in the form: -beta.YYYYMMDDHHMMSS
+          # 2026-05-24T01-55-05Z -> 20260524015505
           SEMVER_TAG=$(echo "${{ needs.setup.outputs.datetime_safe }}" | tr -cd '0-9')
-          SDK_VERSION="${{ needs.setup.outputs.version }}-preview.${SEMVER_TAG}"
+          SDK_VERSION="${{ needs.setup.outputs.version }}-beta.${SEMVER_TAG}"
           echo "SDK preview version: $SDK_VERSION"
           bun scripts/version.ts "$SDK_VERSION"
+
+      - name: Rename SDK package scope for SCTG publish
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+
+          const root = process.cwd()
+          const pkgRoot = path.join(root, 'packages')
+
+          const nameMap = {
+            '@cline/shared': '@sctg/cline-shared',
+            '@cline/llms': '@sctg/cline-llms',
+            '@cline/agents': '@sctg/cline-agents',
+            '@cline/core': '@sctg/cline-core',
+            '@cline/sdk': '@sctg/cline-sdk',
+          }
+
+          const keysToRewrite = [
+            'name',
+            'dependencies',
+            'devDependencies',
+            'peerDependencies',
+            'optionalDependencies',
+          ]
+
+          for (const dir of ['shared', 'llms', 'agents', 'core', 'sdk']) {
+            const pkgPath = path.join(pkgRoot, dir, 'package.json')
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
+
+            if (nameMap[pkg.name]) {
+              pkg.name = nameMap[pkg.name]
+            }
+
+            for (const key of keysToRewrite) {
+              if (!pkg[key] || typeof pkg[key] !== 'object') {
+                continue
+              }
+              const rewritten = {}
+              for (const [depName, depVersion] of Object.entries(pkg[key])) {
+                rewritten[nameMap[depName] || depName] = depVersion
+              }
+              pkg[key] = rewritten
+            }
+
+            fs.writeFileSync(pkgPath, `${JSON.stringify(pkg, null, '\t')}\n`)
+          }
+
+          console.log('Renamed SDK packages/dependencies to @sctg/cline-*')
+          NODE
 
       - name: Pack all SDK packages
         run: |
@@ -193,6 +244,53 @@ jobs:
           name: sdk-bundle
           path: "${{ github.workspace }}/clinepool-*-preview-*.tar.gz"
           if-no-files-found: error
+
+      - name: Prepare npm publish tarball directory
+        run: mkdir -p "$RUNNER_TEMP/sdk-npm-packs"
+
+      - name: Publish @sctg/cline-shared
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "Missing NPMJS_TOKEN secret"
+            exit 1
+          fi
+          cd packages/shared
+          TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
+
+      - name: Publish @sctg/cline-llms
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+        run: |
+          cd packages/llms
+          TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
+
+      - name: Publish @sctg/cline-agents
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+        run: |
+          cd packages/agents
+          TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
+
+      - name: Publish @sctg/cline-core
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+        run: |
+          cd packages/core
+          TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
+
+      - name: Publish @sctg/cline-sdk
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+        run: |
+          cd packages/sdk
+          TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
 
   # ─────────────────────────────────────────────────────────────────────────────
   # 4. Gather artifacts, generate release notes, and publish a GitHub pre-release.
