@@ -97,6 +97,89 @@ new Agent({
 });
 ```
 
+## KeypoolLive — Automatic Key Rotation
+
+`keypoollive` is a built-in provider that loads API keys from an AES-256-CBC
+encrypted vault and rotates them automatically on 401 / 403 / 429 errors, with
+no extra code in your agent.
+
+### Vault format
+
+Create a `ai.json` file with your keys grouped by provider, then encrypt it
+with `openssl`:
+
+```bash
+openssl enc -aes-256-cbc -a -pbkdf2 -iter 100000 -salt \
+  -in ai.json -out vault/ai.json.enc \
+  -pass pass:"$KEYPOOL_LIVE_SECRET"
+```
+
+```json
+{
+  "version": 1,
+  "providers": {
+    "mistral": {
+      "protocol": "openai",
+      "endpoint": "https://api.mistral.ai/v1",
+      "keys": [
+        { "key": "sk-key1", "owner": "account-1", "type": "paid" },
+        { "key": "sk-key2", "owner": "account-2", "type": "paid" }
+      ],
+      "models": [{ "id": "devstral-latest", "contextLength": 131072 }]
+    }
+  }
+}
+```
+
+Supported protocols: `"openai"` (OpenAI-compatible), `"anthropic"`, `"gemini"`.
+
+### Using the provider
+
+Set two environment variables, then pass `providerId: "keypoollive"` to `Agent`.
+The `modelId` is in `"vaultProviderName/modelId"` format, and `apiKey: "auto"`
+tells the provider to load the vault automatically:
+
+```bash
+export KEYPOOL_VAULT_URL=https://my-server.example.com/vault/ai.json.enc
+# or a local file:
+export KEYPOOL_VAULT_URL=file:///absolute/path/to/vault/ai.json.enc
+export KEYPOOL_LIVE_SECRET=my-vault-password
+```
+
+```ts
+import { Agent } from "@cline/agents";
+
+const agent = new Agent({
+  providerId: "keypoollive",
+  modelId: "mistral/devstral-latest",  // "<vaultProvider>/<modelId>"
+  apiKey: "auto",                       // loads vault from env vars
+  systemPrompt: "You are a concise assistant.",
+  tools: [/* ... */],
+});
+
+const result = await agent.run("Summarise the last 10 upstream commits.");
+console.log(result.outputText);
+```
+
+The vault is cached for 5 minutes. On each 401 / 403 / 429 the failing key is
+cooled down and the next available key is tried (up to 5 attempts). After 3
+failures a key enters a 15-minute cooldown before being eligible again.
+
+### Manual key rotation
+
+If you detect a key error outside the normal stream flow (e.g. in a health
+check), force rotation with `rotateKeypoolliveKey`:
+
+```ts
+import { rotateKeypoolliveKey } from "@cline/llms/providers/vendors/keypoollive";
+
+// Mark the key as failed and clear the vault cache
+rotateKeypoolliveKey("mistral", failingApiKey);
+
+// Mark the key as failed without clearing the vault cache
+rotateKeypoolliveKey("mistral", failingApiKey, false);
+```
+
 ## Core Concepts
 
 ### Tools
@@ -262,7 +345,8 @@ mailboxes, task management, and outcome convergence.
 - `@cline/shared`: shared types (`AgentTool`, `AgentMessage`,
   `AgentRuntimeEvent`, `AgentRuntimeHooks`, etc.)
 - `@cline/llms`: provider settings, model catalogs, and gateway/handler
-  creation
+  creation — including the built-in `keypoollive` provider with automatic
+  key rotation (`rotateKeypoolliveKey`)
 - `@cline/core`: stateful runtime assembly, storage, default tools,
   subprocess hooks, hub transport, and MCP integration
 
