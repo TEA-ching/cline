@@ -163,9 +163,10 @@ jobs:
 
       - name: Version SDK packages (preview semver)
         run: |
-          # datetime_safe example: 2026-05-24T01-55-05Z
-          # Result: 3.84.0-preview.2026-05-24T01-55-05Z  (valid semver pre-release)
-          SDK_VERSION="${{ needs.setup.outputs.version }}-preview.${{ needs.setup.outputs.datetime_safe }}"
+          # Strip everything except digits from datetime_safe to get a semver-safe identifier.
+          # 2026-05-24T01-55-05Z → 20260524015505  (only [0-9] — avoids uppercase T/Z rejections)
+          SEMVER_TAG=$(echo "${{ needs.setup.outputs.datetime_safe }}" | tr -cd '0-9')
+          SDK_VERSION="${{ needs.setup.outputs.version }}-preview.${SEMVER_TAG}"
           echo "SDK preview version: $SDK_VERSION"
           bun scripts/version.ts "$SDK_VERSION"
 
