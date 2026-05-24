@@ -300,11 +300,28 @@ In the Cline settings panel, select **KeypoolLive** as the API provider and fill
 ```bash
 npm install
 npm run compile        # TypeScript + esbuild
-npx @vscode/vsce package --allow-package-secrets sendgrid --out cline.vsix
+
+# Package the VSIX (includes better-sqlite3 compiled for VS Code's Electron):
+npm run package:vsix
+# This is equivalent to:
+#   npm run rebuild:native   ← recompiles better-sqlite3 for VS Code's bundled Electron
+#   npx @vscode/vsce package --allow-package-secrets sendgrid --out cline.vsix
+
 code --install-extension cline.vsix
 ```
 
-> **Note on `better-sqlite3`:** Key usage statistics are persisted to a local SQLite database. The native `better-sqlite3` module must be present in the extension's `node_modules` directory. If it is missing, a warning is logged and the extension continues to work without persistence.
+The `rebuild:native` step automatically detects the Electron version from your
+installed VS Code (macOS / Windows / Linux). You can also override it explicitly:
+
+```bash
+VSCODE_ELECTRON_VERSION=39.8.8 npm run package:vsix
+```
+
+> **Note on `better-sqlite3`:** Key usage statistics are persisted to a local
+> SQLite database using the native `better-sqlite3` module. The VSIX packages the
+> prebuilt binary compiled for VS Code's Electron ABI. If for any reason the binary
+> is incompatible, a warning is logged and the extension continues to work without
+> persistence (graceful degradation).
 
 ---
 

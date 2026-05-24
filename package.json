@@ -380,7 +380,9 @@
 		}
 	},
 	"scripts": {
-		"vscode:prepublish": "npm run package",
+		"vscode:prepublish": "npm run rebuild:native && npm run package",
+		"rebuild:native": "node scripts/rebuild-native-for-vscode.mjs",
+		"package:vsix": "npm run rebuild:native && npx @vscode/vsce package --allow-package-secrets sendgrid --out cline.vsix",
 		"compile": "npm run check-types && npm run lint && node esbuild.mjs",
 		"compile-standalone": "npm run check-types && npm run lint && node esbuild.mjs --standalone",
 		"postcompile-standalone": "node scripts/package-standalone.mjs",
