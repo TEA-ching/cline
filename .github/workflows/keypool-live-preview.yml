@@ -140,9 +140,8 @@ jobs:
     name: Build SDK bundle
     needs: setup
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: sdk
+    permissions:
+      contents: write   # required to push the docs deploy branch
 
     steps:
       - uses: actions/checkout@v6
@@ -160,6 +159,8 @@ jobs:
           const path = require('node:path')
 
           const root = process.cwd()
+          const sdkDir = path.join(root, 'sdk')
+          const docsDir = path.join(root, 'docs')
           const ignoredDirs = new Set([
             'node_modules',
             '.git',
@@ -228,7 +229,9 @@ jobs:
            * @returns {string} Content with package references updated
            */
           function replaceClineReferences(content) {
-            return content.replace(/@cline\/([a-zA-Z][a-zA-Z0-9-]*)/g, '@sctg/cline-$1')
+            return content
+              .replace(/@cline\/([a-zA-Z][a-zA-Z0-9-]*)/g, '@sctg/cline-$1')
+              .replace(/docs\.cline\.bot/g, 'docs.ai-ml.pp.ua')
           }
 
           // Get repository information for setting package repository URLs
@@ -295,7 +298,7 @@ jobs:
           }
 
           // Update README.md files to ensure documentation references correct package names
-          const readmeFiles = findFilesByExtension(root, 'README.md')
+          const readmeFiles = findFilesByExtension(sdkDir, 'README.md')
           for (const readmePath of readmeFiles) {
             let content = fs.readFileSync(readmePath, 'utf8')
             const originalContent = content
@@ -308,7 +311,7 @@ jobs:
           }
 
           // Update all other files (source code, config files, etc.) to ensure consistency
-          const allFiles = findAllFiles(root)
+          const allFiles = findAllFiles(sdkDir).concat(findAllFiles(docsDir))
           for (const filePath of allFiles) {
             // Skip package.json and README.md files as they were already processed
             if (filePath.endsWith('package.json') || filePath.endsWith('README.md')) {
@@ -345,14 +348,17 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Install SDK dependencies
+        working-directory: sdk
         run: bun install
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build SDK
+        working-directory: sdk
         run: bun run build:sdk
 
       - name: Version SDK packages (preview semver)
+        working-directory: sdk
         run: |
           # Build a semver prerelease suffix in the form: -beta.YYYYMMDDHHMMSS
           # 2026-05-24T01-55-05Z -> 20260524015505
@@ -362,11 +368,13 @@ jobs:
           bun scripts/version.ts "$SDK_VERSION"
 
       - name: Refresh Bun workspace lockfile after package renaming
+        working-directory: sdk
         run: bun install
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pack all SDK packages
+        working-directory: sdk
         run: |
           mkdir -p "$RUNNER_TEMP/sdk-packs"
           for PKG in shared llms agents core sdk; do
@@ -376,6 +384,7 @@ jobs:
           done
 
       - name: Bundle SDK packs into single archive
+        working-directory: sdk
         run: |
           BUNDLE="clinepool-${{ needs.setup.outputs.version }}-preview-${{ needs.setup.outputs.datetime_safe }}.tar.gz"
           tar -czf "$RUNNER_TEMP/$BUNDLE" -C "$RUNNER_TEMP/sdk-packs" .
@@ -391,11 +400,11 @@ jobs:
           if-no-files-found: error
 
       - name: Prepare npm publish tarball directory
+        working-directory: sdk
         run: mkdir -p "$RUNNER_TEMP/sdk-npm-packs"
 
       - name: Publish @sctg/cline-shared
-        # env:
-        #   NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+        working-directory: sdk
         run: |
           if [ -z "${NODE_AUTH_TOKEN}" ]; then
             echo "Missing NPMJS_TOKEN secret"
@@ -406,37 +415,60 @@ jobs:
           npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
 
       - name: Publish @sctg/cline-llms
-        # env:
-        #   NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+        working-directory: sdk
         run: |
           cd packages/llms
           TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
           npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
 
       - name: Publish @sctg/cline-agents
-        # env:
-        #   NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+        working-directory: sdk
         run: |
           cd packages/agents
           TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
           npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
 
       - name: Publish @sctg/cline-core
-        # env:
-        #   NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+        working-directory: sdk
         run: |
           cd packages/core
           TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
           npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
 
       - name: Publish @sctg/cline-sdk
-        # env:
-        #   NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+        working-directory: sdk
         run: |
           cd packages/sdk
           TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
           npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
 
+      - name: Push modified docs to Mintlify deploy branch
+        run: |
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+          # Snapshot the already-renamed docs/ content
+          DOCS_TMP=$(mktemp -d)
+          cp -r docs/. "$DOCS_TMP/"
+
+          # Create an orphan branch containing only the docs content at root
+          # so Mintlify can be configured without a monorepo subdirectory.
+          git checkout --orphan keypool-docs-deploy
+          git rm -rf . --quiet 2>/dev/null || true
+          cp -r "$DOCS_TMP/." .
+          git add .
+          git commit -m "deploy: preview docs [${{ needs.setup.outputs.datetime }}] ${{ github.sha }}"
+          git push origin keypool-docs-deploy --force
+
+      - name: Trigger Mintlify redeploy via API
+        # The GitHub App may auto-trigger on push, but an explicit call ensures
+        # immediate deployment and surfaces errors in the workflow log.
+        run: |
+          HTTP_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" -X POST \
+            "https://api.mintlify.com/v1/project/update/${{ secrets.MINTLIFY_PROJECT }}" \
+            -H "Authorization: Bearer ${{ secrets.MINTLIFY_ADMIN_API_KEY }}")
+          echo "Mintlify redeploy response: HTTP $HTTP_STATUS"
+          [ "$HTTP_STATUS" -eq 202 ] || { echo "Unexpected status $HTTP_STATUS"; exit 1; }
   # ─────────────────────────────────────────────────────────────────────────────
   # 4. Gather artifacts, generate release notes, and publish a GitHub pre-release.
   # ─────────────────────────────────────────────────────────────────────────────
