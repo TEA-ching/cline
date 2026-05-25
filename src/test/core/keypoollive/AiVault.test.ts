@@ -71,7 +71,7 @@ describe("AiVault", () => {
 			const invalidBase64 = btoa("NotSalted__somecontent")
 			try {
 				await decryptAiConfig(invalidBase64, "any")
-				should.fail("Should have thrown error", "")
+				should.fail("Should have thrown error", "", "Expected error to be thrown", "")
 			} catch (e: any) {
 				e.message.should.equal("Invalid vault format: missing 'Salted__' magic header")
 			}
@@ -135,7 +135,7 @@ describe("AiVault", () => {
 			delete process.env.KEYPOOL_LIVE_SECRET
 			try {
 				await loadAiVault("some-url")
-				should.fail("Should have thrown error", "")
+				should.fail("Should have thrown error", "", "Expected error to be thrown", "")
 			} catch (e: any) {
 				e.message.should.equal("KEYPOOL_LIVE_SECRET environment variable is not set")
 			} finally {
