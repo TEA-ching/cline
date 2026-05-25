@@ -178,6 +178,12 @@ jobs:
       - name: Rename SDK package scope for SCTG publish
         run: |
           node <<'NODE'
+          /**
+           * This script renames all @cline/ package references to @sctg/cline-*
+           * for publishing to the SCTG npm registry.
+           * This ensures proper scoping and namespace isolation for the preview release.
+           */
+
           const fs = require('node:fs')
           const path = require('node:path')
 
@@ -190,48 +196,82 @@ jobs:
             '.next',
           ])
 
+          /**
+           * Maps @cline/ package names to @sctg/cline-* format
+           * @param {string} name - The original package name
+           * @returns {string} The mapped package name with SCTG scope
+           */
           function mapClineName(name) {
             if (typeof name !== 'string') return name
             if (!name.startsWith('@cline/')) return name
             return `@sctg/cline-${name.slice('@cline/'.length)}`
           }
 
+          /**
+           * Recursively finds all files with a specific extension in a directory
+           * @param {string} dir - The directory to search
+           * @param {string} extension - The file extension to find
+           * @param {string[]} acc - Accumulator for found files
+           * @returns {string[]} Array of file paths matching the extension
+           */
+          function findFilesByExtension(dir, extension, acc = []) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (entry.isDirectory()) {
+                if (!ignoredDirs.has(entry.name)) {
+                  findFilesByExtension(path.join(dir, entry.name), extension, acc)
+                }
+                continue
+              }
+              if (entry.isFile() && entry.name.endsWith(extension)) {
+                acc.push(path.join(dir, entry.name))
+              }
+            }
+            return acc
+          }
+
+          /**
+           * Recursively finds all files in a directory (excluding ignored directories)
+           * @param {string} dir - The directory to search
+           * @param {string[]} acc - Accumulator for found files
+           * @returns {string[]} Array of all file paths found
+           */
+          function findAllFiles(dir, acc = []) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (entry.isDirectory()) {
+                if (!ignoredDirs.has(entry.name)) {
+                  findAllFiles(path.join(dir, entry.name), acc)
+                }
+                continue
+              }
+              if (entry.isFile()) {
+                acc.push(path.join(dir, entry.name))
+              }
+            }
+            return acc
+          }
+
+          /**
+           * Replaces all @cline/ package references with @sctg/cline-* equivalents
+           * @param {string} content - The file content to process
+           * @returns {string} Content with package references updated
+           */
+          function replaceClineReferences(content) {
+            return content
+              .replace(/@cline\/agents/g, '@sctg/cline-agents')
+              .replace(/@cline\/core/g, '@sctg/cline-core')
+              .replace(/@cline\/llms/g, '@sctg/cline-llms')
+              .replace(/@cline\/shared/g, '@sctg/cline-shared')
+              .replace(/@cline\/sdk/g, '@sctg/cline-sdk')
+          }
+
+          // Get repository information for setting package repository URLs
           const githubRepository = process.env.GITHUB_REPOSITORY
           const githubServerUrl = process.env.GITHUB_SERVER_URL || 'https://github.com'
           const repositoryUrl = githubRepository
             ? `${githubServerUrl}/${githubRepository}`
             : null
 
-          function findPackageJsonFiles(dir, acc = []) {
-            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-              if (entry.isDirectory()) {
-                if (!ignoredDirs.has(entry.name)) {
-                  findPackageJsonFiles(path.join(dir, entry.name), acc)
-                }
-                continue
-              }
-              if (entry.isFile() && entry.name === 'package.json') {
-                acc.push(path.join(dir, entry.name))
-              }
-            }
-            return acc
-          }
-
-          function findReadmeFiles(dir, acc = []) {
-            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-              if (entry.isDirectory()) {
-                if (!ignoredDirs.has(entry.name)) {
-                  findReadmeFiles(path.join(dir, entry.name), acc)
-                }
-                continue
-              }
-              if (entry.isFile() && entry.name === 'README.md') {
-                acc.push(path.join(dir, entry.name))
-              }
-            }
-            return acc
-          }
-
+          // List of package.json dependency fields to process
           const keysToRewrite = [
             'dependencies',
             'devDependencies',
@@ -239,19 +279,21 @@ jobs:
             'optionalDependencies',
           ]
 
-          const packageJsonFiles = findPackageJsonFiles(root)
+          // Update package.json files - this is the primary transformation
+          const packageJsonFiles = findFilesByExtension(root, 'package.json')
           let touched = 0
 
-          // Update package.json files
           for (const pkgPath of packageJsonFiles) {
             const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
 
+            // Update package name if it's a @cline/ package
             const oldName = pkg.name
             const mappedName = mapClineName(oldName)
             if (mappedName !== oldName) {
               pkg.name = mappedName
             }
 
+            // Update all dependency fields
             for (const key of keysToRewrite) {
               if (!pkg[key] || typeof pkg[key] !== 'object') {
                 continue
@@ -263,6 +305,7 @@ jobs:
               pkg[key] = rewritten
             }
 
+            // Set repository URL for trusted publishing provenance
             if (repositoryUrl) {
               if (typeof pkg.repository === 'string') {
                 pkg.repository = repositoryUrl
@@ -276,22 +319,17 @@ jobs:
               }
             }
 
+            // Write updated package.json with consistent formatting
             fs.writeFileSync(pkgPath, `${JSON.stringify(pkg, null, '\t')}\n`)
             touched++
           }
 
-          // Update README.md files
-          const readmeFiles = findReadmeFiles(root)
+          // Update README.md files to ensure documentation references correct package names
+          const readmeFiles = findFilesByExtension(root, 'README.md')
           for (const readmePath of readmeFiles) {
             let content = fs.readFileSync(readmePath, 'utf8')
             const originalContent = content
-
-            // Replace @cline/ package names in README files
-            content = content.replace(/@cline\/agents/g, '@sctg/cline-agents')
-            content = content.replace(/@cline\/core/g, '@sctg/cline-core')
-            content = content.replace(/@cline\/llms/g, '@sctg/cline-llms')
-            content = content.replace(/@cline\/shared/g, '@sctg/cline-shared')
-            content = content.replace(/@cline\/sdk/g, '@sctg/cline-sdk')
+            content = replaceClineReferences(content)
 
             if (content !== originalContent) {
               fs.writeFileSync(readmePath, content)
@@ -299,10 +337,30 @@ jobs:
             }
           }
 
+          // Update all other files (source code, config files, etc.) to ensure consistency
+          const allFiles = findAllFiles(root)
+          for (const filePath of allFiles) {
+            // Skip package.json and README.md files as they were already processed
+            if (filePath.endsWith('package.json') || filePath.endsWith('README.md')) {
+              continue
+            }
+
+            let content = fs.readFileSync(filePath, 'utf8')
+            const originalContent = content
+            content = replaceClineReferences(content)
+
+            if (content !== originalContent) {
+              fs.writeFileSync(filePath, content)
+              console.log(`Updated package references in ${filePath}`)
+            }
+          }
+
+          // Log summary of changes made
           console.log(`Rewrote ${touched} package.json file(s): @cline/* -> @sctg/cline-*`)
           if (repositoryUrl) {
             console.log(`Set repository.url to ${repositoryUrl} for trusted publishing provenance`)
           }
+          console.log('Updated @cline/ package references in all repository files')
           NODE
 
       - name: Refresh Bun workspace lockfile after package renaming
