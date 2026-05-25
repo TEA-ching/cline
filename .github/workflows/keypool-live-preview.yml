@@ -228,12 +228,7 @@ jobs:
            * @returns {string} Content with package references updated
            */
           function replaceClineReferences(content) {
-            return content
-              .replace(/@cline\/agents/g, '@sctg/cline-agents')
-              .replace(/@cline\/core/g, '@sctg/cline-core')
-              .replace(/@cline\/llms/g, '@sctg/cline-llms')
-              .replace(/@cline\/shared/g, '@sctg/cline-shared')
-              .replace(/@cline\/sdk/g, '@sctg/cline-sdk')
+            return content.replace(/@cline\/([a-zA-Z][a-zA-Z0-9-]*)/g, '@sctg/cline-$1')
           }
 
           // Get repository information for setting package repository URLs
@@ -291,8 +286,11 @@ jobs:
               }
             }
 
-            // Write updated package.json with consistent formatting
-            fs.writeFileSync(pkgPath, `${JSON.stringify(pkg, null, '\t')}\n`)
+            // Write updated package.json with consistent formatting.
+            // Also run replaceClineReferences on the serialized JSON to catch
+            // any remaining @cline/ references in scripts, bin, exports, etc.
+            const serialized = replaceClineReferences(JSON.stringify(pkg, null, '\t'))
+            fs.writeFileSync(pkgPath, `${serialized}\n`)
             touched++
           }
 
