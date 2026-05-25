@@ -444,14 +444,16 @@ jobs:
           npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
 
       - name: Push modified docs to Mintlify deploy branch
+        working-directory: docs
         run: |
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
-
+          # ensure no node_modules or other ignored content is accidentally included in the deploy branch
+          rm -rf node_modules dist .turbo .next
           # Snapshot the already-renamed docs/ content
           DOCS_TMP=$(mktemp -d)
-          cp -r docs/. "$DOCS_TMP/"
-
+          cp -r . "$DOCS_TMP/"
+          # ensure 
           # Create an orphan branch containing only the docs content at root
           # so Mintlify can be configured without a monorepo subdirectory.
           git checkout --orphan keypool-docs-deploy
