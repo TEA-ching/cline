@@ -142,6 +142,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write   # required to push the docs deploy branch
+      id-token: write # Required for OIDC (if we later want to use it for authenticated npm publish)
 
     steps:
       - uses: actions/checkout@v6
