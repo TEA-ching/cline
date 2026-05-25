@@ -226,6 +226,8 @@ jobs:
 
           /**
            * Replaces all @cline/ package references with @sctg/cline-* equivalents
+           * - also updates any docs.cline.bot references to docs.ai-ml.pp.ua
+           * - also updates any https://github.com/cline/cline.git to the repository URL for trusted publishing provenance
            * @param {string} content - The file content to process
            * @returns {string} Content with package references updated
            */
@@ -233,6 +235,9 @@ jobs:
             return content
               .replace(/@cline\/([a-zA-Z][a-zA-Z0-9-]*)/g, '@sctg/cline-$1')
               .replace(/docs\.cline\.bot/g, 'docs.ai-ml.pp.ua')
+              .replace(/https:\/\/github\.com\/cline\/cline\.git/g, `${repositoryUrl}.git`)
+              .replace(/https:\/\/github\.com\/cline\/cline/g, `${repositoryUrl}`)
+              .replace(/https:\/\/marketplace\.visualstudio\.com\/items\?itemName=saoudrizwan\.claude-dev/g, `${repositoryUrl}/releases` )
           }
 
           // Get repository information for setting package repository URLs
