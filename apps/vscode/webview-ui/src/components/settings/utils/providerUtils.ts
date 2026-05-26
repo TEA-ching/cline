@@ -72,6 +72,7 @@ import {
 } from "@shared/api"
 import { Mode } from "@shared/storage/types"
 import * as reasoningSupport from "@shared/utils/reasoning-support"
+import { getKplModelInfo } from "@/components/chat/keypoolliveModelCache"
 
 export function supportsReasoningEffortForModelId(modelId?: string, _allowShortOpenAiIds = false): boolean {
 	return reasoningSupport.supportsReasoningEffortForModel(modelId)
@@ -506,12 +507,24 @@ export function normalizeApiConfiguration(
 						? nousResearchModels[nousResearchModelId as keyof typeof nousResearchModels]
 						: nousResearchModels[nousResearchDefaultModelId],
 			}
-		case "keypoollive":
+		case "keypoollive": {
+			const kplCached = modelId ? getKplModelInfo(modelId) : undefined
+			const kplModelInfo: ModelInfo = {
+				contextWindow: Number(kplCached?.contextWindow ?? 128000),
+				maxTokens: kplCached?.maxOutputTokens
+					? Number(kplCached.maxOutputTokens)
+					: kplCached?.contextWindow
+						? Math.floor(Number(kplCached.contextWindow) * 0.8)
+						: undefined,
+				supportsImages: kplCached?.supportsImages ?? false,
+				supportsPromptCache: kplCached?.supportsPromptCache ?? false,
+			}
 			return {
 				selectedProvider: provider,
 				selectedModelId: modelId || "",
-				selectedModelInfo: { contextWindow: 128000, supportsImages: false, supportsPromptCache: false },
+				selectedModelInfo: kplModelInfo,
 			}
+		}
 		default:
 			return getProviderData(anthropicModels, anthropicDefaultModelId)
 	}

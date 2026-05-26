@@ -10,7 +10,8 @@ export interface VaultKey {
 export interface VaultModel {
 	id: string
 	name?: string
-	contextLength?: number
+	contextWindow?: number
+	maxOutputTokens?: number
 	usage?: "chat" | "embedding"
 	supportsImages?: boolean
 	supportsPromptCache?: boolean
@@ -53,7 +54,8 @@ export interface AiKey {
 export interface AiModel {
 	id: string
 	name?: string
-	contextLength?: number
+	contextWindow?: number
+	maxOutputTokens?: number
 	usage?: "chat" | "embedding"
 	supportsImages?: boolean
 	supportsPromptCache?: boolean

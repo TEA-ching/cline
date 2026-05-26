@@ -41,6 +41,10 @@ export async function keypoolGetVaultModels(controller: Controller, _request: Em
 				title: d.title,
 				combinedId: `${d.vaultProviderName}/${d.vaultModelId}`,
 				clineProvider: d.clineProvider ?? undefined,
+				contextWindow: d.contextWindow,
+				maxOutputTokens: d.maxOutputTokens,
+				supportsImages: d.supportsImages,
+				supportsPromptCache: d.supportsPromptCache,
 			}),
 		)
 

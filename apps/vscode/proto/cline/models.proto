@@ -720,6 +720,10 @@ message KeypoolVaultModel {
   string title = 3; // display label
   string combined_id = 4; // "vaultProviderName/vaultModelId"
   optional string cline_provider = 5;
+  optional int64 context_window = 6;
+  optional int64 max_output_tokens = 7;
+  optional bool supports_images = 8;
+  optional bool supports_prompt_cache = 9;
 }
 
 // Response for keypoolGetVaultModels

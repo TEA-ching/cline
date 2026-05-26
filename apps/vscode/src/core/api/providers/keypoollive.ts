@@ -2,6 +2,7 @@
 // © 2026 Ronan LE MEILLAT — MIT License
 
 import { ModelInfo } from "@shared/api"
+import { getCachedVaultModel, loadAiVault } from "@/core/keypoollive/AiVault"
 import { KeypoolUsageDb } from "@/core/keypoollive/KeypoolUsageDb"
 import { configureSessionKeyManager, getSessionApiConfig, rotateSessionKey } from "@/core/keypoollive/SessionKeyManager"
 import type { AiProtocol, ResolvedApiConfig } from "@/core/keypoollive/types"
@@ -79,6 +80,9 @@ export class KeypoolLiveHandler implements ApiHandler {
 		}
 		if (options.keypoolliveVaultUrl) {
 			configureSessionKeyManager(options.keypoolliveVaultUrl)
+			// Preload vault so getCachedVaultModel() works synchronously in getModel()
+			// before the first createMessage() call (e.g. for the model picker UI).
+			loadAiVault(options.keypoolliveVaultUrl).catch(() => {})
 		}
 	}
 
@@ -230,14 +234,18 @@ export class KeypoolLiveHandler implements ApiHandler {
 
 	getModel(): ApiHandlerModel {
 		const { vaultProviderName, vaultModelId } = this.parseModelId()
-		const config = this.resolvedConfig
+		// resolvedConfig is set after the first createMessage(); before that, fall back to the
+		// vault cache (populated by the constructor preload) so the model picker shows correct values.
+		const vaultModel = this.resolvedConfig?.model ?? getCachedVaultModel(vaultProviderName, vaultModelId)
 		const modelInfo: ModelInfo = {
-			contextWindow: config?.model.contextLength ?? 128000,
-			maxTokens: config?.model.contextLength ? Math.floor(config.model.contextLength * 0.8) : undefined,
-			supportsImages: config?.model.supportsImages ?? false,
-			supportsPromptCache: config?.model.supportsPromptCache ?? false,
-			inputPrice: config?.model.inputPrice,
-			outputPrice: config?.model.outputPrice,
+			contextWindow: vaultModel?.contextWindow ?? 128000,
+			maxTokens:
+				vaultModel?.maxOutputTokens ??
+				(vaultModel?.contextWindow ? Math.floor(vaultModel.contextWindow * 0.8) : undefined),
+			supportsImages: vaultModel?.supportsImages ?? false,
+			supportsPromptCache: vaultModel?.supportsPromptCache ?? false,
+			inputPrice: vaultModel?.inputPrice,
+			outputPrice: vaultModel?.outputPrice,
 		}
 		return {
 			id: vaultModelId ? `${vaultProviderName}/${vaultModelId}` : vaultProviderName,

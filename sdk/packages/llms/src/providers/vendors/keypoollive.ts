@@ -58,7 +58,8 @@ interface VaultKey {
 interface VaultModel {
 	id: string;
 	name?: string;
-	contextLength?: number;
+	contextWindow?: number;
+	maxOutputTokens?: number;
 	usage?: "chat" | "embedding";
 	supportsImages?: boolean;
 	supportsPromptCache?: boolean;
@@ -100,7 +101,8 @@ interface RawAiKey {
 interface RawAiModel {
 	id: string;
 	name?: string;
-	contextLength?: number;
+	contextWindow?: number;
+	maxOutputTokens?: number;
 	usage?: "chat" | "embedding";
 	supportsImages?: boolean;
 	supportsPromptCache?: boolean;

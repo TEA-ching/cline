@@ -94,6 +94,10 @@ export type ModelDescription = {
 	gatewayUrl?: string
 	vaultProviderName: string
 	vaultModelId: string
+	contextWindow?: number
+	maxOutputTokens?: number
+	supportsImages?: boolean
+	supportsPromptCache?: boolean
 }
 
 /**
@@ -134,6 +138,10 @@ export function buildModelDescriptions(vault: AiVaultConfig, kplConfig?: Keypool
 				gatewayUrl,
 				vaultProviderName: providerName,
 				vaultModelId: model.id,
+				contextWindow: model.contextWindow,
+				maxOutputTokens: model.maxOutputTokens,
+				supportsImages: model.supportsImages,
+				supportsPromptCache: model.supportsPromptCache,
 			})
 		}
 	}

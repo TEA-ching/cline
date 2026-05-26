@@ -9,6 +9,7 @@ import { useClickAway, useWindowSize } from "react-use"
 import PopupModalContainer from "@/components/common/PopupModalContainer"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ModelsServiceClient } from "@/services/grpc-client"
+import { setKplModelCache } from "./keypoolliveModelCache"
 
 interface Props {
 	currentModelId: string
@@ -31,6 +32,7 @@ const KeypoolModelSelector: React.FC<Props> = ({ currentModelId, onSelect }) => 
 			ModelsServiceClient.keypoolGetVaultModels(EmptyRequest.create({}))
 				.then((resp) => {
 					setModels(resp.models)
+					setKplModelCache(resp.models)
 				})
 				.catch(() => {
 					setModels([])

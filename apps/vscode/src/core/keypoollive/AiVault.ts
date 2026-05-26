@@ -77,7 +77,8 @@ function transformAiConfigToVaultConfig(aiConfig: AiConfig): AiVaultConfig {
 			models: provider.models.map((m) => ({
 				id: m.id,
 				name: m.name,
-				contextLength: m.contextLength,
+				contextWindow: m.contextWindow,
+				maxOutputTokens: m.maxOutputTokens,
 				usage: m.usage,
 				supportsImages: m.supportsImages,
 				supportsPromptCache: m.supportsPromptCache,
@@ -110,4 +111,17 @@ export async function loadAiVault(vaultUrl: string): Promise<AiVaultConfig> {
 
 export function clearVaultCache(): void {
 	vaultCache = null
+}
+
+/**
+ * Synchronously looks up a model from the in-memory vault cache.
+ * Returns null if the cache is empty or the model isn't found.
+ * Used by getModel() to serve correct context-window info before the first createMessage() call.
+ */
+export function getCachedVaultModel(providerName: string, modelId: string): import("./types").VaultModel | null {
+	if (!vaultCache) return null
+	const provider = vaultCache.config.providers[providerName]
+	if (!provider) return null
+	const chatModels = provider.models.filter((m) => !m.usage || m.usage === "chat")
+	return (modelId ? chatModels.find((m) => m.id === modelId) : chatModels[0]) ?? null
 }
