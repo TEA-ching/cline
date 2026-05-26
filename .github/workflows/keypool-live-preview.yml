@@ -33,7 +33,7 @@ jobs:
       - name: Compute version and datetime
         id: meta
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          VERSION=$(node -p "require('./apps/vscode/package.json').version")
           DATETIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           DATETIME_SAFE=$(echo "$DATETIME" | tr ':' '-')
           echo "version=$VERSION"             >> "$GITHUB_OUTPUT"
@@ -89,6 +89,10 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    defaults:
+      run:
+        working-directory: apps/vscode
+
     steps:
       - uses: actions/checkout@v6
         with:
@@ -130,7 +134,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: vsix-${{ matrix.platform }}-${{ matrix.arch }}
-          path: "clinepool-*.vsix"
+          path: "apps/vscode/clinepool-*.vsix"
           if-no-files-found: error
 
   # ─────────────────────────────────────────────────────────────────────────────
@@ -458,7 +462,7 @@ jobs:
           # Snapshot the already-renamed docs/ content
           DOCS_TMP=$(mktemp -d)
           cp -r . "$DOCS_TMP/"
-          # ensure 
+          # ensure
           # Create an orphan branch containing only the docs content at root
           # so Mintlify can be configured without a monorepo subdirectory.
           git checkout --orphan keypool-docs-deploy
