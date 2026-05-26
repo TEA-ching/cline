@@ -422,35 +422,35 @@ jobs:
           fi
           cd packages/shared
           TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
-          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
 
       - name: Publish @sctg/cline-llms
         working-directory: sdk
         run: |
           cd packages/llms
           TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
-          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
 
       - name: Publish @sctg/cline-agents
         working-directory: sdk
         run: |
           cd packages/agents
           TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
-          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
 
       - name: Publish @sctg/cline-core
         working-directory: sdk
         run: |
           cd packages/core
           TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
-          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
 
       - name: Publish @sctg/cline-sdk
         working-directory: sdk
         run: |
           cd packages/sdk
           TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
-          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag preview --access public
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
 
       - name: Push modified docs to Mintlify deploy branch
         working-directory: docs
