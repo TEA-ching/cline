@@ -1,0 +1,215 @@
+# customizations.yaml
+# Carte des personnalisations du fork keypool-live (sctg/cline)
+# Point de fork upstream : 8a6441fddd3b4d372d086886ebe4ee11e78dc993
+# Branche : keypool-live
+#
+# Rôle : guider l'agent de backport pour détecter les conflits sensibles,
+# choisir un niveau de validation approprié et éviter d'écraser silencieusement
+# une fonctionnalité du fork.
+
+customizations:
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 1. Fournisseur KeypoolLive (cœur métier du fork)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: keypoollive-provider
+    description: >
+      Ajoute le fournisseur KeypoolLive : accès à un coffre-fort de clés API
+      chiffré (AiVault), gestion de pool de clés (KeyPool), rotation automatique,
+      suivi d'utilisation via SQLite (KeypoolUsageDb), et gestion de session
+      (SessionKeyManager). Le fournisseur est enregistré dans la chaîne complète :
+      shared/api.ts → proto/cline/models.proto → api-configuration-conversion.ts
+      → provider-keys.ts → providers.json → ApiOptions.tsx → core/api/index.ts.
+      Il expose en plus quatre RPC gRPC dédiés (keypoolGetVaultModels,
+      keypoolRotateKey, keypoolGetUsageStats, keypoolGetErrorStats) et une gestion
+      native du context window.
+    paths:
+      - "apps/vscode/src/core/keypoollive/**"
+      - "apps/vscode/src/core/api/providers/keypoollive.ts"
+      - "apps/vscode/src/core/api/providers/__tests__/keypoollive.test.ts"
+      - "apps/vscode/src/core/controller/models/keypoolGetVaultModels.ts"
+      - "apps/vscode/src/core/controller/models/keypoolRotateKey.ts"
+      - "apps/vscode/src/core/controller/models/keypoolGetUsageStats.ts"
+      - "apps/vscode/src/core/controller/models/keypoolGetErrorStats.ts"
+      - "apps/vscode/src/test/core/keypoollive/**"
+      - "sdk/packages/llms/src/providers/vendors/keypoollive.ts"
+      - "sdk/packages/llms/src/providers/ids.ts"
+      - "sdk/packages/llms/src/providers/builtins.ts"
+      - "sdk/packages/llms/src/providers/builtins-runtime.ts"
+    related_files:
+      # Fichiers upstream partagés qui contiennent des entrées keypoollive —
+      # toute modification upstream sur ces fichiers doit être intégrée avec soin.
+      - "apps/vscode/src/shared/api.ts"                                    # union ApiProvider
+      - "apps/vscode/proto/cline/models.proto"                             # enum ApiProvider + RPCs + champs state
+      - "apps/vscode/src/shared/proto-conversions/models/api-configuration-conversion.ts"
+      - "apps/vscode/src/shared/storage/provider-keys.ts"                  # clés de stockage sécurisé
+      - "apps/vscode/src/shared/providers/providers.json"                  # registry fournisseur
+      - "apps/vscode/src/core/api/index.ts"                                # routage buildApiHandler
+      - "apps/vscode/webview-ui/src/components/settings/providers/KeypoolLiveProvider.tsx"
+      - "apps/vscode/webview-ui/src/components/settings/utils/providerUtils.ts"
+      - "apps/vscode/webview-ui/src/utils/validate.ts"
+      - "apps/vscode/webview-ui/src/components/settings/ApiOptions.tsx"
+    invariants:
+      - "L'id de fournisseur 'keypoollive' doit rester dans l'union ApiProvider de shared/api.ts."
+      - "L'enum ApiProvider du proto doit contenir KEYPOOLLIVE avec sa valeur numérique stable."
+      - "convertApiProviderToProto() et convertProtoToApiProvider() doivent être symétriques pour 'keypoollive'."
+      - "Les clés keypoolliveSecret et keypoolliveGatewaySecret doivent rester dans provider-keys.ts."
+      - "providers.json doit contenir l'entrée keypoollive (value, label, website)."
+      - "buildApiHandler() dans core/api/index.ts doit router le cas 'keypoollive' vers KeypoolLiveHandler."
+      - "Les quatre RPCs gRPC keypool* doivent rester déclarés dans models.proto et leurs handlers câblés."
+      - "Les champs proto keypoollive_* (secret, gateway_secret, vault_url, use_gateway, gateway_id, gateway_cache_skip) doivent rester dans state.proto / models.proto."
+      - "Le context window doit être calculé dynamiquement depuis le vault (ne pas hardcoder une valeur par défaut upstream)."
+      - "KeypoolUsageDb doit persister dans le globalStorageFsPath de l'extension, pas en mémoire."
+    tests:
+      - "cd apps/vscode && npm run test:unit -- --timeout 10000 --grep 'KeypoolLive|keypool|Keypool'"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 2. Dashboard et sélecteur de modèle KeypoolLive dans la webview
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: keypoollive-webview-ui
+    description: >
+      Composants React intégrés dans ChatTextArea pour afficher le tableau de bord
+      KeypoolLive (KeypoolLiveDashboard) et le sélecteur de modèle inline
+      (KeypoolModelSelector). Un cache mémoire côté webview (keypoolliveModelCache)
+      stocke les modèles chargés depuis le vault afin d'éviter des allers-retours
+      gRPC répétés. Ces composants ne sont rendus que lorsque le fournisseur actif
+      est 'keypoollive'.
+    paths:
+      - "apps/vscode/webview-ui/src/components/chat/KeypoolLiveDashboard.tsx"
+      - "apps/vscode/webview-ui/src/components/chat/KeypoolModelSelector.tsx"
+      - "apps/vscode/webview-ui/src/components/chat/keypoolliveModelCache.ts"
+    related_files:
+      - "apps/vscode/webview-ui/src/components/chat/ChatTextArea.tsx"   # point d'intégration
+      - "apps/vscode/webview-ui/src/components/settings/utils/providerUtils.ts"
+    invariants:
+      - "KeypoolLiveDashboard et KeypoolModelSelector doivent être importés et rendus conditionnellement dans ChatTextArea."
+      - "Le cache keypoolliveModelCache doit être invalidé lors d'une rotation de clé."
+      - "Le sélecteur de modèle doit utiliser les modèles retournés par le vault, pas une liste statique."
+    tests:
+      - "cd apps/vscode && npm run test:unit -- --timeout 10000 --grep 'KeypoolLive|keypool|Keypool'"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 3. Renommage @cline/* → @sctg/cline-* pour la publication npm
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: sctg-package-publishing
+    description: >
+      Lors du build CI sur la branche keypool-live, un script inline dans le
+      workflow réécrit à la volée tous les package.json du monorepo pour remplacer
+      les noms de scope @cline/ par @sctg/cline-* avant la publication sur npmjs.
+      Les packages publiés sont : @sctg/cline-shared, @sctg/cline-llms,
+      @sctg/cline-agents, @sctg/cline-core, @sctg/cline-sdk.
+      Le renommage n'est fait QUE dans le job CI, jamais dans les sources — les
+      imports internes du monorepo continuent d'utiliser @cline/*.
+      L'URL de dépôt est aussi réécrite pour le trusted publishing OIDC.
+    paths:
+      - ".github/workflows/keypool-live-preview.yml"   # job publish-sdk
+    related_files:
+      - "sdk/packages/llms/package.json"
+      - "sdk/packages/agents/package.json"
+      - "sdk/packages/shared/package.json"
+      - "sdk/packages/core/package.json"
+      - "sdk/package.json"
+    invariants:
+      - "Le renommage @cline/* → @sctg/cline-* doit rester un step CI inline, ne jamais modifier les sources."
+      - "Les imports TypeScript dans le monorepo doivent continuer à utiliser @cline/* (pas @sctg/cline-*)."
+      - "Le regex de remplacement /@cline\\/([a-zA-Z][a-zA-Z0-9-]*)/g → '@sctg/cline-$1' doit rester exact."
+      - "Les packages @sctg/cline-* doivent être publiés avec --tag latest --access public."
+      - "La permission id-token: write doit rester dans le job publish-sdk pour l'OIDC npm."
+      - "Le script doit sortir en erreur si aucun package.json n'a été touché (guard contre une régression silencieuse)."
+    tests:
+      - "grep -q '@sctg/cline-' .github/workflows/keypool-live-preview.yml"
+      - "grep -q 'Rename SDK package scope for SCTG publish' .github/workflows/keypool-live-preview.yml"
+      - "! grep -rq '@sctg/cline-' sdk/packages --include='*.ts' 2>/dev/null"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 4. Branding ClinePool / SCTG
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: sctg-branding
+    description: >
+      Le displayName de l'extension VS Code est "ClinePool" (au lieu de "Cline").
+      Les icônes (icon.png, icon.svg, robot_panel_dark.png, robot_panel_light.png,
+      sleepy-cline.svg, cline-bot.*) ont été remplacées par les visuels SCTG.
+      L'icône racine du dépôt (assets/icons/) a également été remplacée.
+      Ce changement évite la confusion visuelle avec l'extension Cline officielle
+      et est requis par les règles de publication du VS Code Marketplace.
+    paths:
+      - "apps/vscode/assets/icons/**"
+      - "assets/icons/**"
+    related_files:
+      - "apps/vscode/package.json"   # displayName = "ClinePool", icon path
+    invariants:
+      - "Le champ displayName dans apps/vscode/package.json doit rester 'ClinePool'."
+      - "Les icônes du fork (icon.png, robot_panel_*.png, cline-bot.woff) ne doivent pas être remplacées par les icônes upstream lors d'un merge."
+      - "Le publisher doit rester 'saoudrizwan' (compte de publication du fork)."
+    tests:
+      - "node -e \"const p=require('./apps/vscode/package.json'); console.assert(p.displayName==='ClinePool','displayName must be ClinePool')\""
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 5. Workflow de release preview keypool-live
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: keypoollive-release-workflow
+    description: >
+      Workflow GitHub Actions déclenché sur push vers la branche keypool-live.
+      Il effectue en séquence :
+        (1) calcul du métadata de version ;
+        (2) build multi-plateforme de VSIX (win32-x64, win32-arm64, linux-x64,
+            linux-arm64, darwin-x64, darwin-arm64) ;
+        (3) publication des packages SDK sous @sctg/cline-* sur npmjs via OIDC ;
+        (4) création d'une GitHub pre-release avec les artefacts VSIX.
+      Ce workflow est distinct du workflow upstream (ext-vscode-publish-stable.yml)
+      et ne doit pas être écrasé par un merge automatique.
+    paths:
+      - ".github/workflows/keypool-live-preview.yml"
+    invariants:
+      - "Le trigger 'push: branches: [keypool-live]' doit rester inchangé."
+      - "Le job publish-sdk doit toujours précéder le job github-release (dépendance needs)."
+      - "Le step 'Rename SDK package scope for SCTG publish' doit rester dans publish-sdk avant tout bun pm pack."
+      - "La concurrency group 'preview-release-${{ github.ref }}' doit rester pour éviter les double-publications."
+      - "Les secrets VSCE_PAT, NPM_TOKEN (ou OIDC), NODE_AUTH_TOKEN doivent rester référencés correctement."
+    tests:
+      - "yamllint -d relaxed .github/workflows/keypool-live-preview.yml"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 6. Agent de backport et infrastructure d'analyse
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: backport-agent-infra
+    description: >
+      Infrastructure ajoutée pour automatiser les synchronisations upstream :
+      dossier evals/analysis/ contenant les patterns de détection de conflits,
+      les scripts de test du backport, et ce fichier customizations.yaml lui-même.
+      Le fichier .clinerules/general.md contient les règles tribales du projet
+      qui doivent être transmises à l'agent à chaque synchronisation.
+    paths:
+      - "evals/analysis/**"
+      - "customizations.yaml"
+      - ".clinerules/general.md"
+      - ".claude/settings.json"
+    invariants:
+      - "customizations.yaml doit être maintenu à jour après chaque nouvelle personnalisation."
+      - ".clinerules/general.md doit être inclus dans le contexte de l'agent lors d'un backport."
+      - "Les patterns de détection dans evals/analysis/ ne doivent pas être supprimés lors d'un merge."
+    tests:
+      - "test -f customizations.yaml && echo 'customizations.yaml exists'"
+      - "test -f .clinerules/general.md && echo '.clinerules/general.md exists'"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 7. Documentation Mintlify / sdk/model-providers
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: sctg-documentation
+    description: >
+      La documentation (docs/) et la page sdk/model-providers.mdx ont été
+      adaptées pour mentionner KeypoolLive comme fournisseur supporté et utiliser
+      les noms de packages @sctg/cline-*. Le README principal du dépôt et le
+      README marketplace ont également été mis à jour.
+    paths:
+      - "docs/**"
+      - "apps/vscode/README.md"
+      - "apps/vscode/README.marketplace.md"
+      - "README.md"
+      - "docs/sdk/model-providers.mdx"
+      - "sdk/packages/agents/README.md"
+    invariants:
+      - "docs/sdk/model-providers.mdx doit mentionner keypoollive comme fournisseur."
+      - "Le README marketplace ne doit pas référencer uniquement les fournisseurs upstream (il doit mentionner KeypoolLive)."
+    tests:
+      - "grep -qiE 'keypoollive|keypool' docs/sdk/model-providers.mdx && echo 'OK'"
