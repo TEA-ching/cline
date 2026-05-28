@@ -173,10 +173,12 @@ export type ModelDescription = {
  * Each entry corresponds to a chat-capable model in the vault.
  */
 export function buildModelDescriptions(vault: AiVaultConfig, kplConfig?: KeypoolLiveConfig): ModelDescription[] {
+	// Determine if we should route requests through an AI Gateway (e.g., Cloudflare AI Gateway).
 	const useGateway = (kplConfig?.useGateway ?? false) && !!kplConfig?.gatewaySecret && !!kplConfig?.gatewayId
 	const descriptions: ModelDescription[] = []
 
 	for (const [providerName, provider] of Object.entries(vault.providers)) {
+		// We only expose models intended for 'chat' usage to the UI.
 		const chatModels = provider.models.filter((m) => !m.usage || m.usage === "chat")
 		const clineProvider = mapToClineProvider(providerName, provider.protocol)
 
@@ -184,6 +186,8 @@ export function buildModelDescriptions(vault: AiVaultConfig, kplConfig?: Keypool
 			const endpoint = provider.endpoint
 			let gatewayUrl: string | undefined
 
+			// If the gateway is enabled, we construct a Cloudflare-compatible gateway URL.
+			// The slug often differs from our internal provider name (e.g., Gemini is 'google-ai-studio').
 			if (useGateway && kplConfig?.gatewayId) {
 				const cfSlug =
 					provider.protocol === "gemini"

@@ -41,6 +41,7 @@ export async function getSessionApiConfig(
 	providerName: string,
 	modelId?: string,
 ): Promise<ResolvedApiConfig | null> {
+	// First, check if we've already assigned a key to this specific session/provider/model combo.
 	const sessionKey = `${sessionId}:${providerName}:${modelId ?? "default"}`
 	const existing = sessionKeyMap.get(sessionKey)
 	if (existing) return existing
@@ -49,6 +50,7 @@ export async function getSessionApiConfig(
 		throw new Error("[KeypoolLive] SessionKeyManager not configured: call configureSessionKeyManager(url) first")
 	}
 
+	// Load the vault (this uses internal caching to avoid redundant network hits).
 	let vault: AiVaultConfig
 	try {
 		vault = await loadAiVault(vaultUrl)
@@ -57,9 +59,11 @@ export async function getSessionApiConfig(
 		return null
 	}
 
+	// Resolve the next available key from the pool.
 	const resolved = resolveNextApiConfig(vault, providerName, modelId)
 	if (!resolved) return null
 
+	// Store the resolved config in both our detailed map and our simplified key cache.
 	sessionKeyMap.set(sessionKey, resolved)
 	sessionKeyCache.set(`${sessionId}:${providerName}`, resolved.apiKey)
 	return resolved
@@ -89,11 +93,14 @@ export async function rotateSessionKey(
 	const sessionKey = `${sessionId}:${providerName}:${modelId ?? "default"}`
 	const current = sessionKeyMap.get(sessionKey)
 
+	// If a key failed, we notify the global KeyPool so it can mark it as unhealthy
+	// and put it on cooldown for all sessions.
 	if (reason === "key_failure" && current) {
 		markKeyAsFailed(providerName, current.apiKey)
 	}
 
-	// Remove the current session key to force re-resolution
+	// By deleting the current assignment, the next call to getSessionApiConfig
+	// will be forced to pick a new (and hopefully healthy) key from the vault.
 	sessionKeyMap.delete(sessionKey)
 	sessionKeyCache.delete(`${sessionId}:${providerName}`)
 
@@ -107,6 +114,8 @@ export async function rotateSessionKey(
  * @param sessionId - The session to clean up.
  */
 export function cleanupSession(sessionId: string): void {
+	// We iterate over the keys of our maps and delete anything belonging to the target sessionId.
+	// This prevents memory leaks as users start and finish many tasks.
 	for (const key of [...sessionKeyMap.keys()]) {
 		if (key.startsWith(`${sessionId}:`)) {
 			sessionKeyMap.delete(key)

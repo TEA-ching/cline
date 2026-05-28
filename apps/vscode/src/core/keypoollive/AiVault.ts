@@ -146,21 +146,28 @@ function transformAiConfigToVaultConfig(aiConfig: AiConfig): AiVaultConfig {
  * @throws {Error} If the KEYPOOL_LIVE_SECRET is missing or vault processing fails.
  */
 export async function loadAiVault(vaultUrl: string): Promise<AiVaultConfig> {
-	// Return cached version if still valid
+	// Step 1: Check if we have a valid, non-expired configuration in the in-memory cache.
 	if (vaultCache && Date.now() - vaultCache.fetchedAt < VAULT_CACHE_TTL_MS) {
 		return vaultCache.config
 	}
 
+	// Step 2: Retrieve the decryption secret from environment variables.
+	// This secret is used to derive the AES key and IV.
 	const secret = process.env.KEYPOOL_LIVE_SECRET
 	if (!secret) {
 		throw new Error("KEYPOOL_LIVE_SECRET environment variable is not set")
 	}
 
+	// Step 3: Fetch the encrypted vault from the remote server.
 	const base64Ciphertext = await fetchEncryptedVault(vaultUrl)
+
+	// Step 4: Decrypt the vault using AES-256-CBC.
 	const aiConfig = await decryptAiConfig(base64Ciphertext, secret)
+
+	// Step 5: Transform the raw JSON structure into the internal format used by the extension.
 	const config = transformAiConfigToVaultConfig(aiConfig)
 
-	// Update cache
+	// Step 6: Store the result in the cache and update the timestamp.
 	vaultCache = { config, fetchedAt: Date.now() }
 	return config
 }

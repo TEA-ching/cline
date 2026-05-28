@@ -180,6 +180,10 @@ export class KeypoolUsageDb {
 	 */
 	private static initSchema(db: Database.Database): void {
 		db.exec(`
+			/* 
+			   The 'key_usage' table tracks every successful request. 
+			   We store timestamps as integers (milliseconds) for easy sorting and filtering. 
+			*/
 			CREATE TABLE IF NOT EXISTS key_usage (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				ts INTEGER NOT NULL,
@@ -190,9 +194,15 @@ export class KeypoolUsageDb {
 				prompt_tokens INTEGER NOT NULL DEFAULT 0,
 				completion_tokens INTEGER NOT NULL DEFAULT 0
 			);
+			/* Index on timestamp for fast time-range queries (e.g., last 24h). */
 			CREATE INDEX IF NOT EXISTS idx_key_usage_ts ON key_usage(ts);
+			/* Compound index for grouping stats by provider and owner. */
 			CREATE INDEX IF NOT EXISTS idx_key_usage_provider ON key_usage(provider, key_owner, key_hint);
 
+			/* 
+			   The 'key_errors' table tracks API failures. 
+			   By keeping errors separate from usage, we can easily calculate error rates via joins. 
+			*/
 			CREATE TABLE IF NOT EXISTS key_errors (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				ts INTEGER NOT NULL,
@@ -263,10 +273,14 @@ export class KeypoolUsageDb {
 		try {
 			const db = KeypoolUsageDb.getDb()
 			if (!db) return []
+
+			// Determine the grouping format (e.g., hourly, daily) and the time window.
 			const fmt = periodFormat(period)
 			const cutoff = periodCutoffMs(period)
+
 			const stmt = db.prepare(`
 				SELECT
+					/* SQLite strftime expects seconds, so we divide our millisecond timestamp by 1000. */
 					strftime('${fmt}', ts / 1000, 'unixepoch') AS period,
 					provider,
 					key_owner AS keyOwner,
@@ -296,6 +310,7 @@ export class KeypoolUsageDb {
 		try {
 			const db = KeypoolUsageDb.getDb()
 			if (!db) return []
+
 			const stmt = db.prepare(`
 				SELECT
 					e.provider,
@@ -303,9 +318,11 @@ export class KeypoolUsageDb {
 					e.key_hint AS keyHint,
 					u.total_requests AS totalRequests,
 					COUNT(e.id) AS errorCount,
+					/* Calculate error rate. We use MAX(..., 1) to avoid division by zero if usage is somehow missing. */
 					CAST(COUNT(e.id) AS REAL) / MAX(u.total_requests, 1) AS errorRate,
 					MAX(e.error_code) AS lastErrorCode
 				FROM key_errors e
+				/* Join with the usage table to get the total number of successful requests for comparison. */
 				LEFT JOIN (
 					SELECT provider, key_owner, key_hint, COUNT(*) AS total_requests
 					FROM key_usage

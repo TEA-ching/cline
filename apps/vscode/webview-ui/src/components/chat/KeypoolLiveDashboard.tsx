@@ -1,5 +1,15 @@
-// KeypoolLive — Dashboard: token usage + error rates per key, 4 time scales, CSV export
-// © 2026 Ronan LE MEILLAT — MIT License
+/**
+ * KeypoolLive — Monitoring Dashboard.
+ *
+ * This component displays real-time statistics for the API keys managed by KeypoolLive.
+ * It provides two main views:
+ * 1. Token Usage: Shows consumption (prompt/completion tokens) per key and provider.
+ * 2. Error Rates: Shows reliability metrics and recent error codes per key.
+ *
+ * Data can be filtered across 4 time scales and exported to CSV for further analysis.
+ *
+ * © 2026 Ronan LE MEILLAT — MIT License
+ */
 
 import { KeypoolErrorStat, KeypoolStatsRequest, KeypoolUsageStat } from "@shared/proto/cline/models"
 import { VSCodeButton } from "@vscode/webview-ui-toolkit/react"
@@ -9,7 +19,10 @@ import PopupModalContainer from "@/components/common/PopupModalContainer"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ModelsServiceClient } from "@/services/grpc-client"
 
+/** Supported time periods for statistics aggregation */
 type Period = "hour" | "day" | "week" | "month"
+
+/** Configuration for the period selector buttons */
 const PERIODS: { key: Period; label: string }[] = [
 	{ key: "hour", label: "1h" },
 	{ key: "day", label: "24h" },
@@ -17,6 +30,10 @@ const PERIODS: { key: Period; label: string }[] = [
 	{ key: "month", label: "30d" },
 ]
 
+/**
+ * Formats large token counts into human-readable strings (e.g., 1.2M, 450k).
+ * Handles both standard numbers and BigInts returned by gRPC.
+ */
 function formatTokens(n: bigint | number): string {
 	const v = typeof n === "bigint" ? Number(n) : n
 	if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
@@ -24,6 +41,9 @@ function formatTokens(n: bigint | number): string {
 	return String(v)
 }
 
+/**
+ * Converts usage statistics into a CSV string.
+ */
 function toUsageCsv(stats: KeypoolUsageStat[]): string {
 	const header = "period,provider,key_owner,key_hint,prompt_tokens,completion_tokens,requests"
 	const rows = stats.map(
@@ -33,6 +53,9 @@ function toUsageCsv(stats: KeypoolUsageStat[]): string {
 	return [header, ...rows].join("\n")
 }
 
+/**
+ * Converts error statistics into a CSV string.
+ */
 function toErrorCsv(stats: KeypoolErrorStat[]): string {
 	const header = "provider,key_owner,key_hint,total_requests,error_count,error_rate,last_error_code"
 	const rows = stats.map(
@@ -42,6 +65,9 @@ function toErrorCsv(stats: KeypoolErrorStat[]): string {
 	return [header, ...rows].join("\n")
 }
 
+/**
+ * Triggers a browser download for a generated CSV file.
+ */
 function downloadCsv(content: string, filename: string): void {
 	const blob = new Blob([content], { type: "text/csv;charset=utf-8;" })
 	const url = URL.createObjectURL(blob)
@@ -53,26 +79,41 @@ function downloadCsv(content: string, filename: string): void {
 }
 
 const KeypoolLiveDashboard: React.FC = () => {
+	// Visibility and navigation state
 	const [isVisible, setIsVisible] = useState(false)
 	const [period, setPeriod] = useState<Period>("day")
+	const [tab, setTab] = useState<"usage" | "errors">("usage")
+
+	// Data state
 	const [usageStats, setUsageStats] = useState<KeypoolUsageStat[]>([])
 	const [errorStats, setErrorStats] = useState<KeypoolErrorStat[]>([])
 	const [loading, setLoading] = useState(false)
-	const [tab, setTab] = useState<"usage" | "errors">("usage")
+
+	// UI Refs and layout state
 	const buttonRef = useRef<HTMLDivElement>(null)
 	const modalRef = useRef<HTMLDivElement>(null)
 	const { width: viewportWidth, height: viewportHeight } = useWindowSize()
 	const [arrowPosition, setArrowPosition] = useState(0)
 	const [menuPosition, setMenuPosition] = useState(0)
 
+	/**
+	 * Fetches both usage and error statistics from the backend service.
+	 * Requests are performed in parallel.
+	 */
 	const fetchStats = useCallback(
 		(p: Period) => {
 			if (!isVisible) return
 			setLoading(true)
 			const req = KeypoolStatsRequest.create({ period: p })
 			Promise.all([
-				ModelsServiceClient.keypoolGetUsageStats(req).catch(() => ({ stats: [] })),
-				ModelsServiceClient.keypoolGetErrorStats(req).catch(() => ({ stats: [] })),
+				ModelsServiceClient.keypoolGetUsageStats(req).catch((err) => {
+					console.error("Failed to fetch usage stats:", err)
+					return { stats: [] }
+				}),
+				ModelsServiceClient.keypoolGetErrorStats(req).catch((err) => {
+					console.error("Failed to fetch error stats:", err)
+					return { stats: [] }
+				}),
 			])
 				.then(([usage, errors]) => {
 					setUsageStats(usage.stats)
@@ -83,14 +124,20 @@ const KeypoolLiveDashboard: React.FC = () => {
 		[isVisible],
 	)
 
+	// Fetch data whenever the dashboard is opened or the period changes
 	useEffect(() => {
 		if (isVisible) {
 			fetchStats(period)
 		}
 	}, [isVisible, period, fetchStats])
 
+	// Close dashboard when clicking outside the popup
 	useClickAway(modalRef, () => setIsVisible(false))
 
+	/**
+	 * Position the popup modal relative to the trigger button in the toolbar.
+	 * Adjusts dynamically based on viewport dimensions.
+	 */
 	useEffect(() => {
 		if (isVisible && buttonRef.current) {
 			const rect = buttonRef.current.getBoundingClientRect()
