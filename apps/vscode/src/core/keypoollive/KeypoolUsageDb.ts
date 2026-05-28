@@ -11,8 +11,14 @@ import path from "path"
 import { HostProvider } from "@/hosts/host-provider"
 import { Logger } from "@/shared/services/Logger"
 
+/**
+ * Defines the time granularity for usage statistics.
+ */
 export type UsagePeriod = "hour" | "day" | "week" | "month"
 
+/**
+ * Represents a single usage event (typically one successful request).
+ */
 export interface KeyUsageEntry {
 	provider: string
 	modelId: string
@@ -22,6 +28,9 @@ export interface KeyUsageEntry {
 	completionTokens: number
 }
 
+/**
+ * Represents a single error event recorded for an API key.
+ */
 export interface KeyErrorEntry {
 	provider: string
 	modelId: string
@@ -30,6 +39,9 @@ export interface KeyErrorEntry {
 	errorCode: number | null
 }
 
+/**
+ * Aggregated usage statistics for a specific key within a time period.
+ */
 export interface KeyUsageStat {
 	period: string
 	provider: string
@@ -40,6 +52,9 @@ export interface KeyUsageStat {
 	requestCount: number
 }
 
+/**
+ * Aggregated error statistics for a specific key, including calculated error rates.
+ */
 export interface KeyErrorStat {
 	provider: string
 	keyOwner: string
@@ -50,6 +65,13 @@ export interface KeyErrorStat {
 	lastErrorCode: number | null
 }
 
+/**
+ * Maps a UsagePeriod to its corresponding SQLite strftime format string.
+ * Used for grouping stats by time intervals.
+ *
+ * @param period - The usage period.
+ * @returns A strftime-compatible format string.
+ */
 function periodFormat(period: UsagePeriod): string {
 	switch (period) {
 		case "hour":
@@ -73,6 +95,13 @@ function tryLoadBetterSqlite3(): typeof Database | null {
 	}
 }
 
+/**
+ * Calculates the cutoff timestamp (in milliseconds) for a given usage period
+ * relative to the current time. Used to filter recent history.
+ *
+ * @param period - The usage period.
+ * @returns The cutoff timestamp.
+ */
 function periodCutoffMs(period: UsagePeriod): number {
 	const now = Date.now()
 	switch (period) {
@@ -87,14 +116,31 @@ function periodCutoffMs(period: UsagePeriod): number {
 	}
 }
 
+/**
+ * Determines the file path for the SQLite database within the extension's
+ * global storage directory.
+ *
+ * @returns The absolute path to usage.db.
+ */
 function getUsageDbPath(): string {
 	const storagePath = HostProvider.get().globalStorageFsPath
 	return path.join(storagePath, "keypoollive", "usage.db")
 }
 
+/**
+ * Handles persistent storage of API key usage and error history using SQLite.
+ *
+ * NOTE: This class uses lazy-loading for 'better-sqlite3' to ensure the extension
+ * can still boot even if the native module is missing or incompatible with the current environment.
+ */
 export class KeypoolUsageDb {
+	/** Singleton database connection instance. */
 	private static db: Database.Database | null = null
-	/** Set to true once we've confirmed the module is unavailable, to avoid repeated require() attempts. */
+
+	/**
+	 * Set to true if the 'better-sqlite3' module fails to load.
+	 * This prevents repeated expensive attempts to require() a missing module.
+	 */
 	private static dbUnavailable = false
 
 	/**
@@ -127,6 +173,11 @@ export class KeypoolUsageDb {
 		return KeypoolUsageDb.db
 	}
 
+	/**
+	 * Creates the necessary tables and indexes if they don't already exist.
+	 *
+	 * @param db - The SQLite database instance.
+	 */
 	private static initSchema(db: Database.Database): void {
 		db.exec(`
 			CREATE TABLE IF NOT EXISTS key_usage (
@@ -156,6 +207,11 @@ export class KeypoolUsageDb {
 		`)
 	}
 
+	/**
+	 * Persists a new usage entry to the database.
+	 *
+	 * @param entry - The usage details (tokens, model, etc.).
+	 */
 	static recordUsage(entry: KeyUsageEntry): void {
 		try {
 			const db = KeypoolUsageDb.getDb()
@@ -178,6 +234,11 @@ export class KeypoolUsageDb {
 		}
 	}
 
+	/**
+	 * Persists a new error entry to the database.
+	 *
+	 * @param entry - The error details (error code, model, etc.).
+	 */
 	static recordError(entry: KeyErrorEntry): void {
 		try {
 			const db = KeypoolUsageDb.getDb()
@@ -192,6 +253,12 @@ export class KeypoolUsageDb {
 		}
 	}
 
+	/**
+	 * Retrieves aggregated usage statistics for the specified period.
+	 *
+	 * @param period - The time interval to group by (hour, day, etc.).
+	 * @returns An array of usage statistics.
+	 */
 	static getUsageStats(period: UsagePeriod): KeyUsageStat[] {
 		try {
 			const db = KeypoolUsageDb.getDb()
@@ -219,6 +286,12 @@ export class KeypoolUsageDb {
 		}
 	}
 
+	/**
+	 * Retrieves aggregated error statistics for all keys, calculated from both
+	 * the error and usage tables to derive error rates.
+	 *
+	 * @returns An array of error statistics sorted by descending error rate.
+	 */
 	static getErrorStats(): KeyErrorStat[] {
 		try {
 			const db = KeypoolUsageDb.getDb()
@@ -248,6 +321,10 @@ export class KeypoolUsageDb {
 		}
 	}
 
+	/**
+	 * Safely closes the database connection.
+	 * Should be called when the extension is deactivated.
+	 */
 	static close(): void {
 		if (KeypoolUsageDb.db) {
 			KeypoolUsageDb.db.close()

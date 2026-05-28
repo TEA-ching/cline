@@ -6,11 +6,28 @@ import { loadAiVault } from "./AiVault"
 import { markKeyAsFailed, resolveNextApiConfig } from "./KeyPool"
 import type { AiVaultConfig, ResolvedApiConfig } from "./types"
 
+/**
+ * Maps a unique session-provider-model combination to its assigned API configuration.
+ * This ensures "stickiness" within a session: once a key is picked for a task,
+ * it stays the same unless rotated.
+ */
 const sessionKeyMap = new Map<string, ResolvedApiConfig>()
+
+/**
+ * A simpler cache mapping session+provider to the raw API key string.
+ * Used for quick lookups when only the key is needed.
+ */
 const sessionKeyCache = new Map<string, string>()
 
+/** The URL of the remote AI vault. Must be configured before use. */
 let vaultUrl: string | null = null
 
+/**
+ * Configures the manager with the vault URL.
+ * This must be called at extension startup.
+ *
+ * @param url - Remote URL for the encrypted vault.
+ */
 export function configureSessionKeyManager(url: string): void {
 	vaultUrl = url
 }
@@ -51,6 +68,18 @@ export async function getSessionApiConfig(
 /**
  * Forces rotation: if reason is "key_failure", marks current key as unhealthy.
  */
+/**
+ * Forces a change of the API key for a given session.
+ *
+ * If the reason is "key_failure", the currently assigned key is marked as unhealthy
+ * in the global KeyPool to prevent it from being picked again immediately.
+ *
+ * @param sessionId - Unique identifier for the current task/session.
+ * @param providerName - The AI provider.
+ * @param modelId - Optional model identifier.
+ * @param reason - Why rotation is requested.
+ * @returns The new resolved API configuration.
+ */
 export async function rotateSessionKey(
 	sessionId: string,
 	providerName: string,
@@ -71,6 +100,12 @@ export async function rotateSessionKey(
 	return getSessionApiConfig(sessionId, providerName, modelId)
 }
 
+/**
+ * Removes all assigned keys and cached info associated with a session.
+ * Should be called when a task is completed or deleted to free memory.
+ *
+ * @param sessionId - The session to clean up.
+ */
 export function cleanupSession(sessionId: string): void {
 	for (const key of [...sessionKeyMap.keys()]) {
 		if (key.startsWith(`${sessionId}:`)) {
@@ -84,6 +119,13 @@ export function cleanupSession(sessionId: string): void {
 	}
 }
 
+/**
+ * Retrieves metadata about the key currently assigned to a session.
+ * Useful for UI components that want to show which key is active (e.g., in the dashboard).
+ *
+ * @param sessionId - The session identifier.
+ * @returns Metadata object including provider, owner, and a hint of the key.
+ */
 export function getSessionKeyInfo(
 	sessionId: string,
 ): { providerName: string; keyOwner: string; keyHint: string; modelId: string } | null {
@@ -100,6 +142,14 @@ export function getSessionKeyInfo(
 	return null
 }
 
+/**
+ * Quickly retrieves the active API key string for a session without triggering
+ * any resolution logic or vault loads.
+ *
+ * @param sessionId - The session identifier.
+ * @param providerName - The AI provider.
+ * @returns The API key string if cached, or null.
+ */
 export function getCachedSessionKey(sessionId: string, providerName: string): string | null {
 	return sessionKeyCache.get(`${sessionId}:${providerName}`) ?? null
 }
