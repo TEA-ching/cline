@@ -67,6 +67,10 @@ async function loadFamilyFactory(
 				const module = await import("./vendors/keypoollive");
 				return module.createKeypoolliveProvider;
 			}
+			case "sap-ai-core": {
+				const module = await import("./ai-sdk");
+				return module.createSapAiCoreProvider;
+			}
 		}
 	})();
 
