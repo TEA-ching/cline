@@ -875,19 +875,14 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 
 			const maskedKey = keyMask(resolvedApiKey);
 			if (attempt === 0) {
-				yield {
-					type: "reasoning-delta",
-					text: `[keypoollive] Active key for ${providerName}/${modelId}: ${maskedKey}`,
-					redacted: true,
-					metadata: {
-						providerId: "keypoollive",
-						event: "active-key",
-						providerName,
-						modelId,
-						key: maskedKey,
-						roundRobin: selectedByRoundRobin,
-					},
-				};
+				context.logger?.log("KeypoolLive active key", {
+					providerId: "keypoollive",
+					severity: "info",
+					providerName,
+					modelId,
+					key: maskedKey,
+					roundRobin: selectedByRoundRobin,
+				});
 			}
 
 			// Create sub-request with the actual (un-prefixed) model ID
