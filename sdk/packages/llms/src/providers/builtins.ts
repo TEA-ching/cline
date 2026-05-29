@@ -793,6 +793,15 @@ export const BUILTIN_SPECS: BuiltinSpec[] = [
 		modelsFactory: () => ({}),
 	},
 	{
+		id: "keypoollive",
+		name: "KeypoolLive",
+		description: "Encrypted vault-backed key rotation provider",
+		family: "keypoollive",
+		capabilities: ["reasoning", "prompt-cache", "tools"],
+		defaultModelId: "mistral/devstral-latest",
+		apiKeyEnv: ["KEYPOOL_VAULT_URL", "KEYPOOL_LIVE_SECRET"],
+	},
+	{
 		id: "sapaicore",
 		name: "SAP AI Core",
 		description: "SAP AI Core inference and orchestration platform",

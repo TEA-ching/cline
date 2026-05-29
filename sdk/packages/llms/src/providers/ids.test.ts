@@ -140,4 +140,23 @@ describe("provider-ids", () => {
 			createProvider: createSapAiCoreProvider,
 		});
 	});
+
+	it("registers KeypoolLive as a built-in provider", async () => {
+		expect(BUILT_IN_PROVIDER_IDS).toContain("keypoollive");
+
+		await expect(getProvider("keypoollive")).resolves.toMatchObject({
+			id: "keypoollive",
+			name: "KeypoolLive",
+			defaultModelId: "mistral/devstral-latest",
+			client: "openai-compatible",
+		});
+
+		const registration = BUILTIN_PROVIDER_REGISTRATIONS.find(
+			(item) => item.manifest.id === "keypoollive",
+		);
+		expect(registration).toBeDefined();
+
+		const loaded = await registration?.loadProvider?.();
+		expect(typeof loaded?.createProvider).toBe("function");
+	});
 });
