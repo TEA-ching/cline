@@ -1,0 +1,549 @@
+name: keypool-live — Preview Release
+
+on:
+  push:
+    branches:
+      - keypool-live
+
+# Cancel any in-flight run for the same ref so only the latest commit gets published.
+concurrency:
+  group: preview-release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write  # Required for OIDC
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 1. Compute shared metadata (version + datetime) once, shared across all jobs.
+  # ─────────────────────────────────────────────────────────────────────────────
+  setup:
+    name: Compute build metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      datetime: ${{ steps.meta.outputs.datetime }}
+      # datetime_safe: colons replaced by '-' — required for Windows filenames
+      # and for git tag names (colons are not allowed in refs).
+      datetime_safe: ${{ steps.meta.outputs.datetime_safe }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Compute version and datetime
+        id: meta
+        run: |
+          VERSION=$(node -p "require('./apps/vscode/package.json').version")
+          DATETIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          DATETIME_SAFE=$(echo "$DATETIME" | tr ':' '-')
+          echo "version=$VERSION"             >> "$GITHUB_OUTPUT"
+          echo "datetime=$DATETIME"           >> "$GITHUB_OUTPUT"
+          echo "datetime_safe=$DATETIME_SAFE" >> "$GITHUB_OUTPUT"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 2. Build a platform-specific VSIX for each target.
+  #    vscode:prepublish handles compilation + better-sqlite3 rebuild automatically.
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-vsix:
+    name: VSIX ${{ matrix.platform }}-${{ matrix.arch }}
+    needs: setup
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win32
+            arch: x64
+            native_arch: x64
+          - os: windows-latest
+            platform: win32
+            arch: arm64
+            native_arch: arm64
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            native_arch: x64
+          - os: ubuntu-latest
+            platform: linux
+            arch: arm64
+            native_arch: arm64
+          - os: ubuntu-latest
+            platform: linux
+            arch: armhf
+            # prebuild-install uses 'arm' (not 'armhf') for the ARM v7 prebuilt
+            native_arch: arm
+          - os: ubuntu-latest
+            platform: alpine
+            arch: x64
+            # No musl prebuilt for better-sqlite3; linux-x64 glibc binary is used.
+            # The extension degrades gracefully when the native module fails to load.
+            native_arch: x64
+          - os: macos-latest
+            platform: darwin
+            arch: x64
+            native_arch: x64
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+            native_arch: arm64
+
+    runs-on: ${{ matrix.os }}
+
+    defaults:
+      run:
+        working-directory: apps/vscode
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: true
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          # Keep aligned with the nightly publish workflow.
+          # Node 24 / npm 11 can cause ELSPROBLEMS with `npm list` during vsce packaging.
+          node-version: "22"
+
+      - name: Install @vscode/vsce globally
+        run: npm install -g @vscode/vsce
+        shell: bash
+
+      - name: Install root dependencies
+        run: npm ci --include=optional
+        shell: bash
+
+      - name: Install webview-ui dependencies
+        run: cd webview-ui && npm ci --include=optional
+        shell: bash
+
+      - name: Package VSIX
+        # vsce triggers vscode:prepublish → `npm run rebuild:native && npm run package`
+        # rebuild:native reads VSCODE_ELECTRON_VERSION and TARGET_ARCH.
+        env:
+          VSCODE_ELECTRON_VERSION: "39.8.8"
+          TARGET_ARCH: ${{ matrix.native_arch }}
+        run: |
+          vsce package \
+            --target ${{ matrix.platform }}-${{ matrix.arch }} \
+            --allow-package-secrets sendgrid \
+            --out "clinepool-${{ needs.setup.outputs.version }}-preview-${{ needs.setup.outputs.datetime_safe }}-${{ matrix.platform }}-${{ matrix.arch }}.vsix"
+        shell: bash
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-${{ matrix.platform }}-${{ matrix.arch }}
+          path: "apps/vscode/clinepool-*.vsix"
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 3. Build the SDK and bundle all packages into a single archive.
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-sdk:
+    name: Build SDK bundle
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # required to push the docs deploy branch
+      id-token: write # Required for OIDC (if we later want to use it for authenticated npm publish)
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Rename SDK package scope for SCTG publish
+        run: |
+          node <<'NODE'
+          /**
+           * This script renames all @cline/ package references to @sctg/cline-*
+           * for publishing to the SCTG npm registry.
+           * This ensures proper scoping and namespace isolation for the preview release.
+           */
+
+          const fs = require('node:fs')
+          const path = require('node:path')
+
+          const root = process.cwd()
+          const sdkDir = path.join(root, 'sdk')
+          const docsDir = path.join(root, 'docs')
+          const ignoredDirs = new Set([
+            'node_modules',
+            '.git',
+            'dist',
+            '.turbo',
+            '.next',
+          ])
+
+          /**
+           * Maps @cline/ package names to @sctg/cline-* format
+           * @param {string} name - The original package name
+           * @returns {string} The mapped package name with SCTG scope
+           */
+          function mapClineName(name) {
+            if (typeof name !== 'string') return name
+            if (!name.startsWith('@cline/')) return name
+            return `@sctg/cline-${name.slice('@cline/'.length)}`
+          }
+
+          /**
+           * Recursively finds all files with a specific extension in a directory
+           * @param {string} dir - The directory to search
+           * @param {string} extension - The file extension to find
+           * @param {string[]} acc - Accumulator for found files
+           * @returns {string[]} Array of file paths matching the extension
+           */
+          function findFilesByExtension(dir, extension, acc = []) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (entry.isDirectory()) {
+                if (!ignoredDirs.has(entry.name)) {
+                  findFilesByExtension(path.join(dir, entry.name), extension, acc)
+                }
+                continue
+              }
+              if (entry.isFile() && entry.name.endsWith(extension)) {
+                acc.push(path.join(dir, entry.name))
+              }
+            }
+            return acc
+          }
+
+          /**
+           * Recursively finds all files in a directory (excluding ignored directories)
+           * @param {string} dir - The directory to search
+           * @param {string[]} acc - Accumulator for found files
+           * @returns {string[]} Array of all file paths found
+           */
+          function findAllFiles(dir, acc = []) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (entry.isDirectory()) {
+                if (!ignoredDirs.has(entry.name)) {
+                  findAllFiles(path.join(dir, entry.name), acc)
+                }
+                continue
+              }
+              if (entry.isFile()) {
+                acc.push(path.join(dir, entry.name))
+              }
+            }
+            return acc
+          }
+
+          /**
+           * Replaces all @cline/ package references with @sctg/cline-* equivalents
+           * - also updates any docs.cline.bot references to docs.ai-ml.pp.ua
+           * - also updates any https://github.com/cline/cline.git to the repository URL for trusted publishing provenance
+           * @param {string} content - The file content to process
+           * @returns {string} Content with package references updated
+           */
+          function replaceClineReferences(content) {
+            return content
+              .replace(/@cline\/([a-zA-Z][a-zA-Z0-9-]*)/g, '@sctg/cline-$1')
+              .replace(/docs\.cline\.bot/g, 'docs.ai-ml.pp.ua')
+              .replace(/https:\/\/github\.com\/cline\/cline\.git/g, `${repositoryUrl}.git`)
+              .replace(/https:\/\/github\.com\/cline\/cline/g, `${repositoryUrl}`)
+              .replace(/https:\/\/marketplace\.visualstudio\.com\/items\?itemName=saoudrizwan\.claude-dev/g, `${repositoryUrl}/releases` )
+          }
+
+          // Get repository information for setting package repository URLs
+          const githubRepository = process.env.GITHUB_REPOSITORY
+          const githubServerUrl = process.env.GITHUB_SERVER_URL || 'https://github.com'
+          const repositoryUrl = githubRepository
+            ? `${githubServerUrl}/${githubRepository}`
+            : null
+
+          // List of package.json dependency fields to process
+          const keysToRewrite = [
+            'dependencies',
+            'devDependencies',
+            'peerDependencies',
+            'optionalDependencies',
+          ]
+
+          // Update package.json files - this is the primary transformation
+          const packageJsonFiles = findFilesByExtension(root, 'package.json')
+          let touched = 0
+
+          for (const pkgPath of packageJsonFiles) {
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
+
+            // Update package name if it's a @cline/ package
+            const oldName = pkg.name
+            const mappedName = mapClineName(oldName)
+            if (mappedName !== oldName) {
+              pkg.name = mappedName
+            }
+
+            // Update all dependency fields
+            for (const key of keysToRewrite) {
+              if (!pkg[key] || typeof pkg[key] !== 'object') {
+                continue
+              }
+              const rewritten = {}
+              for (const [depName, depVersion] of Object.entries(pkg[key])) {
+                rewritten[mapClineName(depName)] = depVersion
+              }
+              pkg[key] = rewritten
+            }
+
+            // Set repository URL for trusted publishing provenance
+            if (repositoryUrl) {
+              if (typeof pkg.repository === 'string') {
+                pkg.repository = repositoryUrl
+              } else if (pkg.repository && typeof pkg.repository === 'object') {
+                pkg.repository.url = repositoryUrl
+              } else {
+                pkg.repository = {
+                  type: 'git',
+                  url: repositoryUrl,
+                }
+              }
+            }
+
+            // Write updated package.json with consistent formatting.
+            // Also run replaceClineReferences on the serialized JSON to catch
+            // any remaining @cline/ references in scripts, bin, exports, etc.
+            const serialized = replaceClineReferences(JSON.stringify(pkg, null, '\t'))
+            fs.writeFileSync(pkgPath, `${serialized}\n`)
+            touched++
+          }
+
+          // Update README.md files to ensure documentation references correct package names
+          const readmeFiles = findFilesByExtension(sdkDir, 'README.md')
+          for (const readmePath of readmeFiles) {
+            let content = fs.readFileSync(readmePath, 'utf8')
+            const originalContent = content
+            content = replaceClineReferences(content)
+
+            if (content !== originalContent) {
+              fs.writeFileSync(readmePath, content)
+              console.log(`Updated package references in ${readmePath}`)
+            }
+          }
+
+          // Update all other files (source code, config files, etc.) to ensure consistency
+          const allFiles = findAllFiles(sdkDir).concat(findAllFiles(docsDir))
+          for (const filePath of allFiles) {
+            // Skip package.json and README.md files as they were already processed
+            if (filePath.endsWith('package.json') || filePath.endsWith('README.md')) {
+              continue
+            }
+
+            let content = fs.readFileSync(filePath, 'utf8')
+            const originalContent = content
+            content = replaceClineReferences(content)
+
+            if (content !== originalContent) {
+              fs.writeFileSync(filePath, content)
+              console.log(`Updated package references in ${filePath}`)
+            }
+          }
+
+          // Log summary of changes made
+          console.log(`Rewrote ${touched} package.json file(s): @cline/* -> @sctg/cline-*`)
+          if (repositoryUrl) {
+            console.log(`Set repository.url to ${repositoryUrl} for trusted publishing provenance`)
+          }
+          console.log('Updated @cline/ package references in all repository files')
+          NODE
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.x"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install SDK dependencies
+        working-directory: sdk
+        run: bun install
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build SDK
+        working-directory: sdk
+        run: bun run build:sdk
+
+      - name: Version SDK packages (preview semver)
+        working-directory: sdk
+        run: |
+          # Build a semver prerelease suffix in the form: -beta.YYYYMMDDHHMMSS
+          # 2026-05-24T01-55-05Z -> 20260524015505
+          SEMVER_TAG=$(echo "${{ needs.setup.outputs.datetime_safe }}" | tr -cd '0-9')
+          SDK_VERSION="${{ needs.setup.outputs.version }}-beta.${SEMVER_TAG}"
+          echo "SDK preview version: $SDK_VERSION"
+          bun scripts/version.ts "$SDK_VERSION"
+
+      - name: Refresh Bun workspace lockfile after package renaming
+        working-directory: sdk
+        run: bun install
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pack all SDK packages
+        working-directory: sdk
+        run: |
+          mkdir -p "$RUNNER_TEMP/sdk-packs"
+          for PKG in shared llms agents core sdk; do
+            cd "packages/$PKG"
+            bun pm pack --destination "$RUNNER_TEMP/sdk-packs" --quiet
+            cd ../..
+          done
+
+      - name: Bundle SDK packs into single archive
+        working-directory: sdk
+        run: |
+          BUNDLE="clinepool-${{ needs.setup.outputs.version }}-preview-${{ needs.setup.outputs.datetime_safe }}.tar.gz"
+          tar -czf "$RUNNER_TEMP/$BUNDLE" -C "$RUNNER_TEMP/sdk-packs" .
+          # Copy to workspace root so upload-artifact (which resolves from GITHUB_WORKSPACE) can find it
+          cp "$RUNNER_TEMP/$BUNDLE" "$GITHUB_WORKSPACE/$BUNDLE"
+
+      - name: Upload SDK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          # Path is resolved from GITHUB_WORKSPACE (not the job's working-directory)
+          name: sdk-bundle
+          path: "${{ github.workspace }}/clinepool-*-preview-*.tar.gz"
+          if-no-files-found: error
+
+      - name: Prepare npm publish tarball directory
+        working-directory: sdk
+        run: mkdir -p "$RUNNER_TEMP/sdk-npm-packs"
+
+      - name: Publish @sctg/cline-shared
+        working-directory: sdk
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "Missing NPMJS_TOKEN secret"
+            exit 1
+          fi
+          cd packages/shared
+          TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
+
+      - name: Publish @sctg/cline-llms
+        working-directory: sdk
+        run: |
+          cd packages/llms
+          TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
+
+      - name: Publish @sctg/cline-agents
+        working-directory: sdk
+        run: |
+          cd packages/agents
+          TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
+
+      - name: Publish @sctg/cline-core
+        working-directory: sdk
+        run: |
+          cd packages/core
+          TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
+
+      - name: Publish @sctg/cline-sdk
+        working-directory: sdk
+        run: |
+          cd packages/sdk
+          TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
+
+      - name: Push modified docs to Mintlify deploy branch
+        working-directory: docs
+        run: |
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          # ensure no node_modules or other ignored content is accidentally included in the deploy branch
+          rm -rf node_modules dist .turbo .next
+          # Snapshot the already-renamed docs/ content
+          DOCS_TMP=$(mktemp -d)
+          cp -r . "$DOCS_TMP/"
+          # ensure
+          # Create an orphan branch containing only the docs content at root
+          # so Mintlify can be configured without a monorepo subdirectory.
+          git checkout --orphan keypool-docs-deploy
+          git rm -rf . --quiet 2>/dev/null || true
+          cp -r "$DOCS_TMP/." .
+          git add .
+          git commit -m "deploy: preview docs [${{ needs.setup.outputs.datetime }}] ${{ github.sha }}"
+          git push origin keypool-docs-deploy --force
+
+      - name: Trigger Mintlify redeploy via API
+        # The GitHub App may auto-trigger on push, but an explicit call ensures
+        # immediate deployment and surfaces errors in the workflow log.
+        run: |
+          HTTP_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" -X POST \
+            "https://api.mintlify.com/v1/project/update/${{ secrets.MINTLIFY_PROJECT }}" \
+            -H "Authorization: Bearer ${{ secrets.MINTLIFY_ADMIN_API_KEY }}")
+          echo "Mintlify redeploy response: HTTP $HTTP_STATUS"
+          [ "$HTTP_STATUS" -eq 202 ] || { echo "Unexpected status $HTTP_STATUS"; exit 1; }
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 4. Gather artifacts, generate release notes, and publish a GitHub pre-release.
+  # ─────────────────────────────────────────────────────────────────────────────
+  release:
+    name: Publish GitHub pre-release
+    needs: [setup, build-vsix, build-sdk]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Generate release notes from recent commits
+        run: |
+          # Commits since the previous preview tag on this branch (or last 30)
+          PREV=$(git tag --sort=-creatordate --list 'preview/*' | head -1 || true)
+          if [ -n "$PREV" ]; then
+            LOG=$(git log --oneline --no-merges --pretty=format:"- %s (%h)" "${PREV}..HEAD")
+          else
+            LOG=$(git log --oneline --no-merges --pretty=format:"- %s (%h)" -30)
+          fi
+          {
+            printf "**Branch:** \`keypool-live\`  **Commit:** \`%s\`\n\n" "${{ github.sha }}"
+            printf "### Changes\n\n"
+            echo "$LOG"
+          } > release-notes.md
+          echo "--- Release notes preview ---"
+          cat release-notes.md
+
+      - name: Download all VSIX artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: vsix-*
+          path: release-assets/
+          merge-multiple: true
+
+      - name: Download SDK artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: sdk-bundle
+          path: sdk-artifact/
+
+      - name: Move SDK artifact alongside VSIXes
+        run: mv sdk-artifact/clinepool-*.tar.gz release-assets/
+
+      - name: List release assets
+        run: ls -lh release-assets/
+
+      - name: Create GitHub pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DATETIME: ${{ needs.setup.outputs.datetime }}
+          DATETIME_SAFE: ${{ needs.setup.outputs.datetime_safe }}
+        run: |
+          TAG="preview/${DATETIME_SAFE}"
+          TITLE="ClinePool Preview ${DATETIME}"
+
+          gh release create "$TAG" \
+            --prerelease \
+            --title "$TITLE" \
+            --notes-file release-notes.md \
+            release-assets/*
