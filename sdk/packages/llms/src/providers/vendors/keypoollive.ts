@@ -314,6 +314,19 @@ interface KeyStatus {
 	failureCount: number; // Number of consecutive failures
 }
 
+interface PersistedKeyStatus {
+	providerName: string;
+	keySuffix: string;
+	cooledDownAt?: number;
+	failureCount: number;
+}
+
+interface PersistedRoundRobinState {
+	version: 1;
+	roundRobinIndexes: Record<string, number>;
+	keyStatuses: PersistedKeyStatus[];
+}
+
 /**
  * Cooldown period for failed keys (15 minutes)
  */
@@ -334,6 +347,12 @@ const roundRobinIndexes = new Map<string, number>();
  */
 const keyStatuses = new Map<string, KeyStatus>();
 
+let persistentStateLoaded = false;
+let persistentStateWriteChain: Promise<void> = Promise.resolve();
+
+const KEYPOOL_STATE_FILE_ENV = "KEYPOOL_STATE_FILE";
+const DEFAULT_KEYPOOL_STATE_FILE = "keypoollive-state.json";
+
 /**
  * Generates a unique identifier for a key within a provider
  *
@@ -343,6 +362,109 @@ const keyStatuses = new Map<string, KeyStatus>();
  */
 function keyStatusId(providerName: string, keyValue: string): string {
 	return `${providerName}:${keyValue.slice(-8)}`;
+}
+
+function keySuffix(keyValue: string): string {
+	return keyValue.length <= 8 ? keyValue : keyValue.slice(-8);
+}
+
+function keyMask(keyValue: string): string {
+	const suffix = keySuffix(keyValue);
+	return `***${suffix}`;
+}
+
+function keyStatusIdFromSuffix(providerName: string, suffix: string): string {
+	return `${providerName}:${suffix}`;
+}
+
+async function getPersistentStatePath(): Promise<string> {
+	if (process.env[KEYPOOL_STATE_FILE_ENV]) {
+		return process.env[KEYPOOL_STATE_FILE_ENV] as string;
+	}
+	const os = await import("node:os");
+	const path = await import("node:path");
+	return path.join(os.tmpdir(), DEFAULT_KEYPOOL_STATE_FILE);
+}
+
+async function loadPersistentStateOnce(): Promise<void> {
+	if (persistentStateLoaded) {
+		return;
+	}
+	persistentStateLoaded = true;
+
+	try {
+		const statePath = await getPersistentStatePath();
+		const fs = await import("node:fs/promises");
+		const raw = await fs.readFile(statePath, "utf8");
+		const parsed = JSON.parse(raw) as PersistedRoundRobinState;
+
+		if (parsed.version !== 1) {
+			return;
+		}
+
+		for (const [providerName, index] of Object.entries(
+			parsed.roundRobinIndexes ?? {},
+		)) {
+			if (Number.isInteger(index) && index >= 0) {
+				roundRobinIndexes.set(providerName, index);
+			}
+		}
+
+		for (const status of parsed.keyStatuses ?? []) {
+			if (
+				typeof status.providerName !== "string" ||
+				typeof status.keySuffix !== "string" ||
+				typeof status.failureCount !== "number"
+			) {
+				continue;
+			}
+			keyStatuses.set(
+				keyStatusIdFromSuffix(status.providerName, status.keySuffix),
+				{
+					key: status.keySuffix,
+					failureCount: Math.max(0, Math.trunc(status.failureCount)),
+					cooledDownAt:
+						typeof status.cooledDownAt === "number"
+							? status.cooledDownAt
+							: undefined,
+				},
+			);
+		}
+	} catch {
+		// Ignore: state file is optional and recreated on next write.
+	}
+}
+
+function persistStateSoon(): void {
+	persistentStateWriteChain = persistentStateWriteChain
+		.then(async () => {
+			const statePath = await getPersistentStatePath();
+			const fs = await import("node:fs/promises");
+			const path = await import("node:path");
+
+			await fs.mkdir(path.dirname(statePath), { recursive: true });
+
+			const persisted: PersistedRoundRobinState = {
+				version: 1,
+				roundRobinIndexes: Object.fromEntries(roundRobinIndexes.entries()),
+				keyStatuses: Array.from(keyStatuses.entries()).map(([id, status]) => {
+					const sep = id.indexOf(":");
+					return {
+						providerName: sep >= 0 ? id.slice(0, sep) : "unknown",
+						keySuffix: sep >= 0 ? id.slice(sep + 1) : keySuffix(status.key),
+						cooledDownAt: status.cooledDownAt,
+						failureCount: status.failureCount,
+					};
+				}),
+			};
+
+			const tmpPath = `${statePath}.tmp`;
+			await fs.writeFile(tmpPath, `${JSON.stringify(persisted)}\n`, "utf8");
+			await fs.rename(tmpPath, statePath);
+		})
+		.catch(() => {
+			// Ignore write failures: in-memory rotation still works.
+		});
 }
 
 /**
@@ -364,11 +486,20 @@ function isKeyUsable(providerName: string, keyValue: string): boolean {
 		) {
 			// Cooldown expired, remove status and allow key to be used again
 			keyStatuses.delete(keyStatusId(providerName, keyValue));
+			persistStateSoon();
 			return true;
 		}
 		return false; // Still in cooldown
 	}
 	return true; // Below failure threshold
+}
+
+function markKeyAsHealthy(providerName: string, keyValue: string): void {
+	const id = keyStatusId(providerName, keyValue);
+	if (keyStatuses.has(id)) {
+		keyStatuses.delete(id);
+		persistStateSoon();
+	}
 }
 
 /**
@@ -388,6 +519,7 @@ function markKeyAsFailed(providerName: string, keyValue: string): void {
 		cooledDownAt:
 			failureCount >= MAX_FAILURE_COUNT ? Date.now() : existing?.cooledDownAt,
 	});
+	persistStateSoon();
 }
 
 /**
@@ -413,12 +545,14 @@ function selectNextKey(
 	if (usable.length === 0) {
 		const idx = (roundRobinIndexes.get(providerName) ?? 0) % eligible.length;
 		roundRobinIndexes.set(providerName, (idx + 1) % eligible.length);
+		persistStateSoon();
 		return eligible[idx];
 	}
 
 	// Select next key using round-robin from usable keys
 	const idx = (roundRobinIndexes.get(providerName) ?? 0) % usable.length;
 	roundRobinIndexes.set(providerName, (idx + 1) % usable.length);
+	persistStateSoon();
 	return usable[idx];
 }
 
@@ -489,21 +623,61 @@ function resolveNextApiConfig(
 function isKeyError(error: unknown): boolean {
 	if (!error || typeof error !== "object") return false;
 	const e = error as Record<string, unknown>;
+	const nested =
+		e.error && typeof e.error === "object"
+			? (e.error as Record<string, unknown>)
+			: undefined;
+	const response =
+		e.response && typeof e.response === "object"
+			? (e.response as Record<string, unknown>)
+			: undefined;
 
-	// Check for specific HTTP status codes that indicate key issues
-	const status =
-		typeof e.status === "number"
-			? e.status
-			: typeof e.statusCode === "number"
-				? e.statusCode
-				: undefined;
+	// Check for specific HTTP status codes that indicate key issues.
+	const statusCandidates = [
+		e.status,
+		e.statusCode,
+		nested?.status,
+		nested?.statusCode,
+		response?.status,
+		response?.statusCode,
+	];
+	const status = statusCandidates.find(
+		(value): value is number => typeof value === "number",
+	);
 	if (status === 401 || status === 403 || status === 429) return true;
 
+	const codeCandidates = [e.code, nested?.code, response?.code];
+	for (const code of codeCandidates) {
+		if (typeof code === "number" && code === 429) {
+			return true;
+		}
+		if (typeof code === "string") {
+			const normalized = code.toLowerCase();
+			if (
+				normalized === "429" ||
+				normalized.includes("rate_limit") ||
+				normalized.includes("quota") ||
+				normalized.includes("exhaust")
+			) {
+				return true;
+			}
+		}
+	}
+
 	// Check error message for keywords that indicate key issues
-	const msg = typeof e.message === "string" ? e.message.toLowerCase() : "";
+	const messageCandidates = [e.message, nested?.message, response?.message];
+	const msg = messageCandidates
+		.filter((value): value is string => typeof value === "string")
+		.join(" ")
+		.toLowerCase();
 	return (
 		msg.includes("unauthorized") ||
 		msg.includes("forbidden") ||
+		msg.includes("resource has been exhausted") ||
+		msg.includes("resource exhausted") ||
+		msg.includes("insufficient_quota") ||
+		msg.includes("too many requests") ||
+		msg.includes("throttle") ||
 		msg.includes("rate limit") ||
 		msg.includes("quota")
 	);
@@ -634,6 +808,8 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 		request: GatewayStreamRequest,
 		context: GatewayProviderContext,
 	): AsyncIterable<AgentModelEvent> {
+		await loadPersistentStateOnce();
+
 		// Parse the composite modelId to extract provider name and actual model ID
 		const { providerName, modelId } = parseModelId(request.modelId);
 
@@ -669,6 +845,8 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 		for (let attempt = 0; attempt < MAX_KEY_ATTEMPTS; attempt++) {
 			let resolvedApiKey: string;
 			let resolvedEndpoint: string | undefined;
+			let resolvedProtocol: AiProtocol = "openai";
+			let selectedByRoundRobin = false;
 
 			// Handle explicit key mode (no rotation)
 			if (!isAuto) {
@@ -679,6 +857,7 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 				}
 				resolvedApiKey = apiKeyValue;
 				resolvedEndpoint = config.baseUrl;
+				resolvedProtocol = "openai";
 			} else {
 				// Auto mode: load vault and resolve next API configuration
 				const vault = await loadAiVault(getRequiredVaultUrl());
@@ -690,6 +869,25 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 				}
 				resolvedApiKey = resolved.apiKey;
 				resolvedEndpoint = resolved.endpoint;
+				resolvedProtocol = resolved.protocol;
+				selectedByRoundRobin = true;
+			}
+
+			const maskedKey = keyMask(resolvedApiKey);
+			if (attempt === 0) {
+				yield {
+					type: "reasoning-delta",
+					text: `[keypoollive] Active key for ${providerName}/${modelId}: ${maskedKey}`,
+					redacted: true,
+					metadata: {
+						providerId: "keypoollive",
+						event: "active-key",
+						providerName,
+						modelId,
+						key: maskedKey,
+						roundRobin: selectedByRoundRobin,
+					},
+				};
 			}
 
 			// Create sub-request with the actual (un-prefixed) model ID
@@ -717,19 +915,10 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 			};
 
 			try {
-				// Determine the AI protocol to use
-				let protocol: AiProtocol = "openai";
-				if (isAuto) {
-					// Get protocol from vault configuration
-					const vault = await loadAiVault(getRequiredVaultUrl());
-					const provider = vault.providers[providerName];
-					if (provider) protocol = provider.protocol;
-				}
-
 				// Create resolved configuration for sub-provider creation
 				const resolved: ResolvedApiConfig = {
 					providerName,
-					protocol,
+					protocol: resolvedProtocol,
 					endpoint: resolvedEndpoint,
 					apiKey: resolvedApiKey,
 					model: { id: modelId },
@@ -743,6 +932,15 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 
 				// Yield all events from the sub-provider stream
 				yield* iterable;
+				markKeyAsHealthy(providerName, resolvedApiKey);
+				context.logger?.log("KeypoolLive request succeeded", {
+					providerId: "keypoollive",
+					severity: "info",
+					providerName,
+					modelId,
+					key: maskedKey,
+					attempt,
+				});
 				return; // Success - exit the retry loop
 			} catch (err) {
 				lastError = err;
@@ -755,6 +953,29 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 				// Key error detected - mark key as failed and rotate
 				markKeyAsFailed(providerName, resolvedApiKey);
 				clearVaultCache(); // Force vault reload in case it was updated
+				const errorMessage = err instanceof Error ? err.message : String(err);
+				context.logger?.log("KeypoolLive rotating key after provider error", {
+					providerId: "keypoollive",
+					severity: "warn",
+					providerName,
+					modelId,
+					key: maskedKey,
+					attempt,
+					error: errorMessage,
+				});
+				yield {
+					type: "reasoning-delta",
+					text: `[keypoollive] Key rotation triggered for ${providerName}/${modelId}: ${maskedKey}`,
+					redacted: true,
+					metadata: {
+						providerId: "keypoollive",
+						event: "key-rotated",
+						providerName,
+						modelId,
+						key: maskedKey,
+						error: errorMessage,
+					},
+				};
 
 				// If this was the last attempt, throw a comprehensive error
 				if (attempt === MAX_KEY_ATTEMPTS - 1) {
