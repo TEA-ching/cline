@@ -1,0 +1,58 @@
+---
+title: "Week of May 29, 2026"
+sidebarTitle: "May 29, 2026"
+description: "New model support, Discord multi-user sessions, and a wave of CLI fixes."
+---
+
+## New features
+
+### Claude Opus 4.8 support
+
+Cline now supports Anthropic's Claude Opus 4.8. Select it from the model dropdown when using the Anthropic provider or any compatible gateway. See [Anthropic configuration](/provider-config/anthropic).
+
+### Moonshot Kimi K2.6
+
+Added Moonshot's Kimi K2.6 to the available model list for compatible providers. See [Models & Providers](/provider-config/other-30-plus-providers).
+
+### GPT-5.5
+
+OpenAI's GPT-5.5 is now selectable wherever OpenAI models are offered. See [OpenAI configuration](/provider-config/openai).
+
+### DeepSeek V4
+
+DeepSeek V4 models are now available. See [DeepSeek configuration](/provider-config/deepseek).
+
+### Per-user Discord sessions
+
+The Discord connector now binds sessions to individual message authors, so multiple people can talk to the same bot without sharing one conversation. See [CLI connectors](/cli/connectors).
+
+### Global AGENTS rules (SDK)
+
+The SDK now picks up globally configured AGENTS rules, making it easier to apply consistent guidance across every project. See [Cline Rules](/customization/cline-rules).
+
+## Updates
+
+### CLI 3.0.14
+
+The CLI has been updated to v3.0.14, rolling up the week's stability fixes listed below. See the [CLI reference](/cli/cli-reference) for installation and upgrade steps.
+
+### Qwen 3.7 Max cache support in VS Code
+
+The VS Code extension now correctly surfaces prompt caching for Qwen 3.7 Max, lowering cost on repeated context. See [Qwen configuration](/provider-config/qwen).
+
+## Bug fixes
+
+- **Vertex AI (Claude):** Uses the correct base URL for the Vertex AI global endpoint when running Claude models.
+- **Vertex AI (Gemini):** Now authenticates via Google auth, fixing intermittent auth failures.
+- **SAP AI Core:** Now routes through the AI SDK community provider so requests succeed end-to-end.
+- **Discord connector:** Resolved a registration issue that prevented the bot from coming online in some workspaces.
+- **CLI – history resume:** Shows a loading dialog while resuming a previous task, so it's clear the CLI is working.
+- **CLI – model settings:** Shows a loading dialog during model and provider switches.
+- **CLI – ask question tool:** Inline prompt now renders cleanly when the agent asks a follow-up question.
+- **CLI – manual updates:** Manual update checks no longer get blocked by the release age gate.
+- **CLI – connector sessions:** Active connector sessions are correctly steered across turn keys, avoiding cross-talk between conversations.
+- **CLI – config UI:** The footer toggle hint is now contextual to the highlighted option.
+- **Output limits:** Reverted an implicit output cap regression that could truncate long responses.
+- **ACP integrations:** Diagnostic logging now writes correctly for ACP editor output. See [ACP editor integrations](/cli/acp-editor-integrations).
+- **SDK skills:** Symlinked skill directories are now discovered, matching expectations for monorepo setups. See [Skills](/customization/skills).
+- **OTEL:** Telemetry variables are bundled correctly so opt-in observability works out of the box.
