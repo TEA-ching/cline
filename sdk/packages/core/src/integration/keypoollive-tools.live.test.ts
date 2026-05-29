@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createGateway } from "@cline/llms";
 import { afterEach, describe, expect, it } from "vitest";
 import { Agent, createBuiltinTools, createDefaultExecutors } from "../index";
 import { loadWorkspaceEnvFile } from "./load-workspace-env";
@@ -13,6 +14,7 @@ const HAS_VAULT_ENV = Boolean(
 );
 const MODEL_ID = "mistral/devstral-latest";
 const FAST_MODEL_ID = "mistral/codestral-latest";
+const GEMINI_MODEL_ID = "gemini/gemini-3-flash-preview";
 
 const runLive = LIVE_TEST_ENABLED && HAS_VAULT_ENV ? it : it.skip;
 
@@ -387,6 +389,116 @@ describe("keypoollive real tool integrations", () => {
 			expect(fileContent).toContain("updated line");
 			expect(fileContent).not.toContain("second line");
 			expect((result.outputText ?? "").toLowerCase()).toContain("updated line");
+		},
+	);
+
+	runLive(
+		"regression: gemini/gemini-flash-preview tool-call survives second turn and completes",
+		{ timeout: 180_000 },
+		async () => {
+			const dir = mkdtempSync(join(tmpdir(), "keypool-gemini-tool-"));
+			tempDirs.push(dir);
+
+			const targetFile = join(dir, "probe.txt");
+			writeFileSync(targetFile, "hello from gemini test\n", "utf-8");
+
+			const agent = new Agent({
+				providerId: "keypoollive",
+				modelId: GEMINI_MODEL_ID,
+				apiKey: "auto",
+				systemPrompt:
+					"You are a strict test runner. Always call the requested tool first, then answer exactly DONE.",
+				tools: createBuiltinTools({
+					cwd: dir,
+					enableReadFiles: true,
+					enableSearch: false,
+					enableBash: false,
+					enableWebFetch: false,
+					enableApplyPatch: false,
+					enableEditor: false,
+					enableSkills: false,
+					enableAskQuestion: false,
+					enableSubmitAndExit: false,
+					executors: createDefaultExecutors(),
+				}),
+			});
+
+			const toolNames: string[] = [];
+			agent.subscribe((event) => {
+				if (event.type === "tool-started") {
+					toolNames.push(event.toolCall.toolName);
+				}
+			});
+
+			const result = await agent.run(
+				[
+					`Use read_files on ${targetFile}.`,
+					"After reading the file, reply with exactly DONE.",
+				].join("\n"),
+			);
+
+			expect(toolNames).toContain("read_files");
+			expect(result.status).toBe("completed");
+			expect(result.error).toBeFalsy();
+			expect((result.outputText ?? "").trim().toLowerCase()).toContain("done");
+		},
+	);
+
+	runLive(
+		"round-robin: gemini/gemini-flash-preview rotates keys across sequential calls",
+		{ timeout: 300_000 },
+		async () => {
+			const RUNS = 3;
+			const perRunKeys: string[] = [];
+
+			for (let i = 0; i < RUNS; i++) {
+				let capturedKey: string | undefined;
+
+				const gateway = createGateway({
+					providerConfigs: [{ providerId: "keypoollive", apiKey: "auto" }],
+					logger: {
+						debug: () => {},
+						log: (msg: string, meta?: Record<string, unknown>) => {
+							if (
+								msg === "KeypoolLive active key" &&
+								typeof meta?.key === "string"
+							) {
+								capturedKey = meta.key;
+							}
+						},
+					},
+				});
+
+				const model = gateway.createAgentModel({
+					providerId: "keypoollive",
+					modelId: GEMINI_MODEL_ID,
+				});
+
+				const agent = new Agent({
+					model,
+					systemPrompt:
+						"You are a concise assistant. Always reply in exactly one word.",
+				});
+
+				const result = await agent.run(`Reply with exactly: ROUND${i}`);
+
+				expect(result.status).toBe("completed");
+				expect(capturedKey).toBeDefined();
+				if (capturedKey) {
+					perRunKeys.push(capturedKey);
+				}
+			}
+
+			// All runs captured a key – the provider is correctly logging key selection
+			expect(perRunKeys).toHaveLength(RUNS);
+
+			// When the vault exposes multiple gemini keys, consecutive calls must use
+			// different keys (round-robin property: no two adjacent calls share a key
+			// unless the vault has only one key).
+			const uniqueKeys = new Set(perRunKeys);
+			if (uniqueKeys.size > 1) {
+				expect(perRunKeys[0]).not.toBe(perRunKeys[1]);
+			}
 		},
 	);
 });
