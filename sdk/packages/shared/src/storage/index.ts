@@ -23,6 +23,7 @@ export {
 	resolveDbDataDir,
 	resolveDocumentsClineDirectoryPath,
 	resolveDocumentsExtensionPath,
+	resolveGlobalAgentsRulesPath,
 	resolveGlobalCronSpecsDir,
 	resolveGlobalSettingsPath,
 	resolveHooksConfigSearchPaths,

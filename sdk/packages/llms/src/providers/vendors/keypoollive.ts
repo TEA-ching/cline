@@ -846,6 +846,7 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 			let resolvedApiKey: string;
 			let resolvedEndpoint: string | undefined;
 			let resolvedProtocol: AiProtocol = "openai";
+			let resolvedVaultModel: VaultModel | undefined;
 			let selectedByRoundRobin = false;
 
 			// Handle explicit key mode (no rotation)
@@ -870,6 +871,7 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 				resolvedApiKey = resolved.apiKey;
 				resolvedEndpoint = resolved.endpoint;
 				resolvedProtocol = resolved.protocol;
+				resolvedVaultModel = resolved.model;
 				selectedByRoundRobin = true;
 			}
 
@@ -891,10 +893,18 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 				modelId,
 			};
 
-			// Create sub-context with resolved API key and endpoint
+			// Create sub-context with resolved API key, endpoint and vault model metadata
 			const subContext: GatewayProviderContext = {
 				...context,
-				model: { ...context.model, id: modelId },
+				model: {
+					...context.model,
+					id: modelId,
+					contextWindow:
+						resolvedVaultModel?.contextWindow ?? context.model.contextWindow,
+					maxOutputTokens:
+						resolvedVaultModel?.maxOutputTokens ??
+						context.model.maxOutputTokens,
+				},
 				config: {
 					...context.config,
 					apiKey: resolvedApiKey,
@@ -910,13 +920,13 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 			};
 
 			try {
-				// Create resolved configuration for sub-provider creation
+				// Create resolved configuration for sub-provider creation (with full vault model info)
 				const resolved: ResolvedApiConfig = {
 					providerName,
 					protocol: resolvedProtocol,
 					endpoint: resolvedEndpoint,
 					apiKey: resolvedApiKey,
-					model: { id: modelId },
+					model: resolvedVaultModel ?? { id: modelId },
 				};
 
 				// Create protocol-specific provider and stream the request
