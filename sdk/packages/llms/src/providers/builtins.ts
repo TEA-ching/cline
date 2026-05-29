@@ -662,7 +662,6 @@ const OPENAI_COMPATIBLE_SPECS: BuiltinSpec[] = [
 		modelsProviderId: "sapaicore",
 		metadata: ANTHROPIC_ROUTING_METADATA,
 	},
-	...OPENAI_COMPATIBLE_SPECS,
 ];
 
 export const BUILTIN_SPECS: BuiltinSpec[] = [
