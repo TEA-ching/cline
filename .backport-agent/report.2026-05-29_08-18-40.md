@@ -54,13 +54,13 @@ flowchart TD
         33e521e5[33e521e5<br>fix: SAP AI Core uses AI SDK community provider<br>high<br>✅]:::applied
         0c90bd9b[0c90bd9b<br>feat: add Moonshot Kimi K2.6 model<br>medium<br>✅]:::applied
         f2d692cf[f2d692cf<br>ci: gate ext-jb-test-integration auto-trigger on PR author association<br>low<br>✅]:::applied
-        c2879dba[c2879dba<br>feat(models): add Claude Opus 4.8 provider support<br>high<br>✅]:::applied
-        e330695c[e330695c<br>chore(codeowners): replace @candieduniverse with @dominiccooney<br>low<br>✅]:::applied
-        107f0f83[107f0f83<br>bump version and update changelog<br>low<br>✅]:::applied
-        854ac75f[854ac75f<br>feat(cli): bind discord sessions to individual message authors<br>high<br>✅]:::applied
-        81121663[81121663<br>fix(sdk): pin SAP AI provider for smoke install<br>low<br>✅]:::applied
-        38f1c7eb[38f1c7eb<br>fix(cli): steer active connector sessions across turn keys<br>high<br>✅]:::applied
-        b87f61f9[b87f61f9<br>fix(cli): stabilize core tests on Windows<br>high<br>✅]:::applied
+        c2879dba["c2879dba<br>feat(models): add Claude Opus 4.8 provider support<br>high<br>✅"]:::applied
+        e330695c["e330695c<br>chore(codeowners): replace @candieduniverse with @dominiccooney<br>low<br>✅"]:::applied
+        107f0f83["107f0f83<br>bump version and update changelog<br>low<br>✅"]:::applied
+        854ac75f["854ac75f<br>feat(cli): bind discord sessions to individual message authors<br>high<br>✅"]:::applied
+        81121663["81121663<br>fix(sdk): pin SAP AI provider for smoke install<br>low<br>✅"]:::applied
+        38f1c7eb["38f1c7eb<br>fix(cli): steer active connector sessions across turn keys<br>high<br>✅"]:::applied
+        b87f61f9["b87f61f9<br>fix(cli): stabilize core tests on Windows<br>high<br>✅"]:::applied
     end
     subgraph AI Tools
         resolve_conflict_with_ai_mistral[resolve_conflict_with_ai<br>mistral/devstral-latest<br>3897ms]:::ai
