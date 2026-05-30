@@ -213,3 +213,13 @@ customizations:
       - "Le README marketplace ne doit pas référencer uniquement les fournisseurs upstream (il doit mentionner KeypoolLive)."
     tests:
       - "grep -qiE 'keypoollive|keypool' docs/sdk/model-providers.mdx && echo 'OK'"
+  # ──────────────────────────────────────────────────────────────────────────
+  # 8. Visuels et assets
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: sctg-assets
+    description: >
+      Les icônes ont été remplacées par des visuels SCTG pour différencier le fork de l'extension officielle.
+    paths:
+      - "apps/vscode/assets/icons/icon.png"
+      - "apps/vscode/assets/icons/icon.svg"
+      - "assets/icons/icon.png"

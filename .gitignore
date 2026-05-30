@@ -71,3 +71,4 @@ tests/**/cache
 .cline/**/managed.json
 .cline/**/bundle.json
 ai.json
+run-*.prompts.jsonl
