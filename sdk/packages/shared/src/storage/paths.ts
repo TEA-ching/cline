@@ -338,10 +338,6 @@ export function resolveHooksConfigSearchPaths(
 	return dedupePaths(hooks);
 }
 
-export function resolveGlobalAgentsRulesPath(): string {
-	return join(HOME_DIR, LEGACY_AGENT_SKILLS_CONFIG_DIR, AGENTS_RULES_FILE_NAME);
-}
-
 export function resolveSkillsConfigSearchPaths(
 	workspacePath?: string,
 ): string[] {
@@ -356,6 +352,10 @@ export function resolveSkillsConfigSearchPaths(
 	]);
 }
 
+export function resolveGlobalAgentsRulesPath(): string {
+	return join(HOME_DIR, LEGACY_AGENT_SKILLS_CONFIG_DIR, AGENTS_RULES_FILE_NAME);
+}
+
 export function resolveRulesConfigSearchPaths(
 	workspacePath?: string,
 ): string[] {
@@ -366,7 +366,7 @@ export function resolveRulesConfigSearchPaths(
 			]
 		: [];
 	const workspaceAgentsFile = workspacePath
-		? [join(workspacePath, "AGENTS.md")]
+		? [join(workspacePath, AGENTS_RULES_FILE_NAME)]
 		: [];
 	return dedupePaths([
 		...workspaceAgentsFile,
