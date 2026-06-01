@@ -224,6 +224,7 @@ jobs:
           const root = process.cwd()
           const sdkDir = path.join(root, 'sdk')
           const docsDir = path.join(root, 'docs')
+          const agentsDir = path.join(root, '.agents')
           const ignoredDirs = new Set([
             'node_modules',
             '.git',
@@ -380,7 +381,7 @@ jobs:
           }
 
           // Update all other files (source code, config files, etc.) to ensure consistency
-          const allFiles = findAllFiles(sdkDir).concat(findAllFiles(docsDir))
+          const allFiles = findAllFiles(sdkDir).concat(findAllFiles(docsDir)).concat(findAllFiles(agentsDir))
           for (const filePath of allFiles) {
             // Skip package.json and README.md files as they were already processed
             if (filePath.endsWith('package.json') || filePath.endsWith('README.md')) {
@@ -398,7 +399,7 @@ jobs:
           }
 
           // Log summary of changes made
-          console.log(`Rewrote ${touched} package.json file(s): @cline/* -> @sctg/cline-*`)
+          console.log(`Rewrote ${touched} file(s): @cline/* -> @sctg/cline-*`)
           if (repositoryUrl) {
             console.log(`Set repository.url to ${repositoryUrl} for trusted publishing provenance`)
           }
