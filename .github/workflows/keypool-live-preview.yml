@@ -105,6 +105,14 @@ jobs:
           # Node 24 / npm 11 can cause ELSPROBLEMS with `npm list` during vsce packaging.
           node-version: "22"
 
+      - name: Patch VSIX package metadata for SCTG
+        run: |
+          jq '.publisher = "sctg-development" |
+              .repository.url = "https://github.com/TEA-ching/cline" |
+              .homepage = "https://github.com/TEA-ching/cline" |
+              .author.name = "Cline Bot Inc. & Ronan Le Meillat - SCTG Development"' apps/vscode/package.json > apps/vscode/package.json.tmp && mv apps/vscode/package.json.tmp apps/vscode/package.json
+        shell: bash
+
       - name: Install @vscode/vsce globally
         run: npm install -g @vscode/vsce
         shell: bash
