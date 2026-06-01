@@ -525,14 +525,18 @@ jobs:
           # Snapshot the already-renamed docs/ content
           DOCS_TMP=$(mktemp -d)
           cp -r . "$DOCS_TMP/"
-          # ensure
           # Create an orphan branch containing only the docs content at root
           # so Mintlify can be configured without a monorepo subdirectory.
+          # IMPORTANT: git rm must run from the repo root (not docs/ CWD) to clear the
+          # entire index — otherwise git checkout --orphan leaves all non-docs files
+          # (apps/, .agents/, sdk/, …) staged with their pre-rename content, causing
+          # unreplaced @cline/ references to appear in the deploy branch.
+          REPO_ROOT=$(git rev-parse --show-toplevel)
           git checkout --orphan keypool-docs-deploy
-          git rm -rf . --quiet 2>/dev/null || true
-          cp -r "$DOCS_TMP/." .
-          git add .
-          git commit -m "deploy: preview docs [${{ needs.setup.outputs.datetime }}] ${{ github.sha }}"
+          git -C "$REPO_ROOT" rm -rf . --quiet 2>/dev/null || true
+          cp -r "$DOCS_TMP/." "$REPO_ROOT/"
+          git -C "$REPO_ROOT" add .
+          git -C "$REPO_ROOT" commit -m "deploy: preview docs [${{ needs.setup.outputs.datetime }}] ${{ github.sha }}"
           git push origin keypool-docs-deploy --force
 
       - name: Trigger Mintlify redeploy via API
