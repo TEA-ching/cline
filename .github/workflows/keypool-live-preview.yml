@@ -186,8 +186,44 @@ jobs:
       contents: write   # required to push the docs deploy branch
       id-token: write # Required for OIDC (if we later want to use it for authenticated npm publish)
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 3.5. Build CLI binaries for all platforms
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-cli:
+    name: Build CLI binaries
+    needs: setup
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      - name: Build CLI binaries
+        working-directory: sdk
+        run: |
+          bun install
+          bun run build:models
+          bun run build:sdk
+          bun run build:apps
+          cd apps/cli
+          bun run build
+          bun run build:platforms
+
+      - name: Upload CLI binaries as artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-binaries
+          path: |
+            sdk/apps/cli/dist/cli-windows-arm64/bin/cline.exe
+            sdk/apps/cli/dist/cli-windows-x64/bin/cline.exe
+            sdk/apps/cli/dist/cli-linux-arm64/bin/cline
+            sdk/apps/cli/dist/cli-darwin-arm64/bin/cline
+            sdk/apps/cli/dist/cli-linux-x64/bin/cline
+            sdk/apps/cli/dist/cli-darwin-x64/bin/cline
+          if-no-files-found: error
 
       - name: Rename SDK package scope for SCTG publish
         run: |
@@ -421,6 +457,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Build SDK packages
+        working-directory: sdk
+        run: |
+          bun run build
+          bun run build:models
+          bun run build:sdk
+          bun run build:apps
+          cd apps/cli && bun run build && bun run build:platforms && cd ../..
+
       - name: Pack all SDK packages
         working-directory: sdk
         run: |
@@ -530,13 +575,13 @@ jobs:
         with:
           name: modified-repo
           path: . 
-          
+
   # ─────────────────────────────────────────────────────────────────────────────
   # 4. Gather artifacts, generate release notes, and publish a GitHub pre-release.
   # ─────────────────────────────────────────────────────────────────────────────
   release:
     name: Publish GitHub pre-release
-    needs: [setup, build-vsix, build-sdk]
+    needs: [setup, build-vsix, build-sdk, build-cli]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -580,6 +625,30 @@ jobs:
       - name: Move SDK artifact alongside VSIXes
         run: mv sdk-artifact/clinepool-*.tar.gz release-assets/
 
+      - name: Download CLI binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: cli-binaries
+          path: cli-binaries/
+
+      - name: Rename CLI binaries with version and datetime
+        env:
+          VERSION: ${{ needs.setup.outputs.version }}
+          DATETIME_SAFE: ${{ needs.setup.outputs.datetime_safe }}
+        run: |
+          mkdir -p release-assets/cli
+          # Rename Windows binaries
+          mv cli-binaries/cli-windows-arm64/bin/cline.exe "release-assets/cli/cline-${VERSION}-preview-${DATETIME_SAFE}-windows-arm64.exe"
+          mv cli-binaries/cli-windows-x64/bin/cline.exe "release-assets/cli/cline-${VERSION}-preview-${DATETIME_SAFE}-windows-x64.exe"
+
+          # Rename Linux binaries
+          mv cli-binaries/cli-linux-arm64/bin/cline "release-assets/cli/cline-${VERSION}-preview-${DATETIME_SAFE}-linux-arm64"
+          mv cli-binaries/cli-linux-x64/bin/cline "release-assets/cli/cline-${VERSION}-preview-${DATETIME_SAFE}-linux-x64"
+
+          # Rename macOS binaries
+          mv cli-binaries/cli-darwin-arm64/bin/cline "release-assets/cli/cline-${VERSION}-preview-${DATETIME_SAFE}-darwin-arm64"
+          mv cli-binaries/cli-darwin-x64/bin/cline "release-assets/cli/cline-${VERSION}-preview-${DATETIME_SAFE}-darwin-x64"
+
       - name: List release assets
         run: ls -lh release-assets/
 
@@ -596,4 +665,6 @@ jobs:
             --prerelease \
             --title "$TITLE" \
             --notes-file release-notes.md \
-            release-assets/*
+            release-assets/*.vsix \
+            release-assets/*.tar.gz \
+            release-assets/cli/*
