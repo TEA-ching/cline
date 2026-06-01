@@ -520,7 +520,7 @@ jobs:
           find . -name "node_modules" -or -name ".bun" -or -name "dist" -type d -prune -exec rm -rf '{}' + || true
 
       - name: Push modified docs to Mintlify deploy branch
-        working-directory: docs
+        #working-directory: docs
         run: |
           git config user.email "ronan+github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
