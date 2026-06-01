@@ -518,7 +518,8 @@ jobs:
       - name: Push modified docs to Mintlify deploy branch
         working-directory: docs
         run: |
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          find . -type d -name node_modules -prune -exec rm -rf {} +
+          git config user.email "ronan+github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
           # ensure no node_modules or other ignored content is accidentally included in the deploy branch
           rm -rf node_modules dist .turbo .next
