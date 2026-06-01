@@ -110,7 +110,7 @@ jobs:
           jq '.publisher = "sctg-development" |
               .repository.url = "https://github.com/TEA-ching/cline" |
               .homepage = "https://github.com/TEA-ching/cline" |
-              .author.name = "Cline Bot Inc. & Ronan Le Meillat - SCTG Development"' apps/vscode/package.json > apps/vscode/package.json.tmp && mv apps/vscode/package.json.tmp apps/vscode/package.json
+              .author.name = "Cline Bot Inc. & Ronan Le Meillat - SCTG Development"' package.json > package.json.tmp && mv package.json.tmp package.json
         shell: bash
 
       - name: Install @vscode/vsce globally
