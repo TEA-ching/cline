@@ -444,15 +444,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build SDK packages
-        working-directory: sdk
-        run: |
-          bun run build
-          bun run build:models
-          bun run build:sdk
-          bun run build:apps
-          cd apps/cli && bun run build && bun run build:platforms && cd ../..
-
       - name: Pack all SDK packages
         working-directory: sdk
         run: |
