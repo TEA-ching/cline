@@ -57,12 +57,12 @@
 
 ```mermaid
 flowchart TD
-    A[2b45b7b7<br>Remove the VSCode Nightly (SDK) publish workflow] -->|high| B[applied ✅]
-    C[75309001<br>fix: repair vscode nightly publish workflows] -->|high| D[applied ✅]
-    E[3068fcfe<br>docs(sdk): note single-file plugin dep limit and pluginPaths dir form] -->|high| F[applied ✅]
-    G[71b8f43a<br>Fix OTEL variable bundling] -->|low| H[applied ✅]
-    I[49e8c1b3<br>Update CLI to 3.0.14] -->|low| J[applied ✅]
-    K[762e3c42<br>fix(vscode): show Qwen 3.7 Max cache support] -->|low| L[applied ✅]
+    A["2b45b7b7<br>Remove the VSCode Nightly (SDK) publish workflow"] -->|high| B[applied ✅]
+    C["75309001<br>fix: repair vscode nightly publish workflows"] -->|high| D[applied ✅]
+    E["3068fcfe<br>docs(sdk): note single-file plugin dep limit and pluginPaths dir form"] -->|high| F[applied ✅]
+    G["71b8f43a<br>Fix OTEL variable bundling"] -->|low| H[applied ✅]
+    I["49e8c1b3<br>Update CLI to 3.0.14"] -->|low| J[applied ✅]
+    K["762e3c42<br>fix(vscode): show Qwen 3.7 Max cache support"] -->|low| L[applied ✅]
     M[6f609e89<br>fix: writeDiagnostic for logging ACP output] -->|low| N[applied ✅]
     O[9e942fbb<br>Fix Discord connector registration] -->|high| P[applied ✅]
     Q[0c90bd9b<br>feat: add Moonshot Kimi K2.6 model] -->|low| R[applied ✅]
