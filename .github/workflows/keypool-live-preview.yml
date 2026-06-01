@@ -515,14 +515,17 @@ jobs:
           TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
           npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
 
+      - name: Clean before
+        run: |
+          find . -name "node_modules" -or -name ".bun" -or -name "dist" -type d -prune -exec rm -rf '{}' + || true
+
       - name: Push modified docs to Mintlify deploy branch
         working-directory: docs
         run: |
-          find . -type d -name node_modules -prune -exec rm -rf {} +
           git config user.email "ronan+github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
           # ensure no node_modules or other ignored content is accidentally included in the deploy branch
-          rm -rf node_modules dist .turbo .next
+          rm -rf node_modules dist .turbo .next 
           # Snapshot the already-renamed docs/ content
           DOCS_TMP=$(mktemp -d)
           cp -r . "$DOCS_TMP/"
@@ -549,11 +552,6 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.MINTLIFY_ADMIN_API_KEY }}")
           echo "Mintlify redeploy response: HTTP $HTTP_STATUS"
           [ "$HTTP_STATUS" -eq 202 ] || { echo "Unexpected status $HTTP_STATUS"; exit 1; }
-
-      - name: Clean before
-        run: |
-          find . -name "node_modules" -type d -prune -exec rm -rf '{}' + || true
-          rm -rf .git node_modules dist .turbo .next
 
       - name: Upload local repo to Artifact
         uses: actions/upload-artifact@v7
