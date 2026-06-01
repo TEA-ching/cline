@@ -528,7 +528,8 @@ jobs:
           rm -rf node_modules dist .turbo .next 
           # Snapshot the already-renamed docs/ content
           DOCS_TMP=$(mktemp -d)
-          cp -r . "$DOCS_TMP/"
+          #cp -r . "$DOCS_TMP/"
+          rsync -av --exclude='.git' . "$DOCS_TMP/"
           # Create an orphan branch containing only the docs content at root
           # so Mintlify can be configured without a monorepo subdirectory.
           # IMPORTANT: git rm must run from the repo root (not docs/ CWD) to clear the
