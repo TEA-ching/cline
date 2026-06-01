@@ -299,7 +299,8 @@ jobs:
               .replace(/docs\.cline\.bot/g, 'docs.ai-ml.pp.ua')
               .replace(/https:\/\/github\.com\/cline\/cline\.git/g, `${repositoryUrl}.git`)
               .replace(/https:\/\/github\.com\/cline\/cline/g, `${repositoryUrl}`)
-              .replace(/https:\/\/marketplace\.visualstudio\.com\/items\?itemName=saoudrizwan\.claude-dev/g, `${repositoryUrl}/releases` )
+              .replace(/https:\/\/marketplace\.visualstudio\.com\/items\?itemName=saoudrizwan\.claude-dev/g, `${repositoryUrl}/releases`)
+              .replace(/npm i -g cline/g, 'https://github.com/TEA-ching/cline/releases')
           }
 
           // Get repository information for setting package repository URLs
@@ -616,16 +617,16 @@ jobs:
         run: |
           mkdir -p release-assets/cli
           # Rename Windows binaries
-          mv cli-binaries/cli-windows-arm64/bin/cline.exe "release-assets/cli/cline-${VERSION}-preview-${DATETIME_SAFE}-windows-arm64.exe"
-          mv cli-binaries/cli-windows-x64/bin/cline.exe "release-assets/cli/cline-${VERSION}-preview-${DATETIME_SAFE}-windows-x64.exe"
+          mv cli-binaries/cli-windows-arm64/bin/cline.exe "release-assets/cli/clinepool-cli-${VERSION}-preview-${DATETIME_SAFE}-windows-arm64.exe"
+          mv cli-binaries/cli-windows-x64/bin/cline.exe "release-assets/cli/clinepool-cli-${VERSION}-preview-${DATETIME_SAFE}-windows-x64.exe"
 
           # Rename Linux binaries
-          mv cli-binaries/cli-linux-arm64/bin/cline "release-assets/cli/cline-${VERSION}-preview-${DATETIME_SAFE}-linux-arm64"
-          mv cli-binaries/cli-linux-x64/bin/cline "release-assets/cli/cline-${VERSION}-preview-${DATETIME_SAFE}-linux-x64"
+          mv cli-binaries/cli-linux-arm64/bin/cline "release-assets/cli/clinepool-cli-${VERSION}-preview-${DATETIME_SAFE}-linux-arm64"
+          mv cli-binaries/cli-linux-x64/bin/cline "release-assets/cli/clinepool-cli-${VERSION}-preview-${DATETIME_SAFE}-linux-x64"
 
           # Rename macOS binaries
-          mv cli-binaries/cli-darwin-arm64/bin/cline "release-assets/cli/cline-${VERSION}-preview-${DATETIME_SAFE}-darwin-arm64"
-          mv cli-binaries/cli-darwin-x64/bin/cline "release-assets/cli/cline-${VERSION}-preview-${DATETIME_SAFE}-darwin-x64"
+          mv cli-binaries/cli-darwin-arm64/bin/cline "release-assets/cli/clinepool-cli-${VERSION}-preview-${DATETIME_SAFE}-darwin-arm64"
+          mv cli-binaries/cli-darwin-x64/bin/cline "release-assets/cli/clinepool-cli-${VERSION}-preview-${DATETIME_SAFE}-darwin-x64"
 
       - name: List release assets
         run: ls -lh release-assets/
