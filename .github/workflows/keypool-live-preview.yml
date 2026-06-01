@@ -188,7 +188,7 @@ jobs:
       id-token: write  # Required for OIDC when fetching private dependencies with authentication
     steps:
       - name: Install deps
-        run: apt-get update && sudo apt-get install -y libglib2.0-dev 
+        run: sudo apt-get update && sudo apt-get install -y libglib2.0-dev 
 
       - uses: actions/checkout@v6
 
