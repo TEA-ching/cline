@@ -1,5 +1,5 @@
-import { VSCodeLink } from "@vscode/webview-ui-toolkit/react"
-import Section from "../Section"
+import { VSCodeLink } from "@vscode/webview-ui-toolkit/react";
+import Section from "../Section";
 
 interface AboutSectionProps {
 	version: string
@@ -11,7 +11,7 @@ const AboutSection = ({ version, renderSectionHeader }: AboutSectionProps) => {
 			{renderSectionHeader("about")}
 			<Section>
 				<div className="flex px-4 flex-col gap-2">
-					<h2 className="text-lg font-semibold">Cline v{version} with Keypool Live</h2>
+					<h2 id="about_title" className="text-lg font-semibold">Cline v{version} with Keypool Live</h2>
 					<p>
 						An AI assistant that can use your CLI and Editor. Cline can handle complex software development tasks
 						step-by-step with tools that let him create & edit files, explore large projects, use the browser, and
