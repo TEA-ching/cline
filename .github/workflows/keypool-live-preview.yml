@@ -519,6 +519,18 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.MINTLIFY_ADMIN_API_KEY }}")
           echo "Mintlify redeploy response: HTTP $HTTP_STATUS"
           [ "$HTTP_STATUS" -eq 202 ] || { echo "Unexpected status $HTTP_STATUS"; exit 1; }
+
+      - name: Clean before
+        run: |
+          find . -name "node_modules" -type d -prune -exec rm -rf '{}' + || true
+          rm -rf .git node_modules dist .turbo .next
+
+      - name: Upload local repo to Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: modified-repo
+          path: . 
+          
   # ─────────────────────────────────────────────────────────────────────────────
   # 4. Gather artifacts, generate release notes, and publish a GitHub pre-release.
   # ─────────────────────────────────────────────────────────────────────────────
