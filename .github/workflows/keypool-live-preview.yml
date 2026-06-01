@@ -113,6 +113,36 @@ jobs:
               .author.name = "Cline Bot Inc. & Ronan Le Meillat - SCTG Development"' package.json > package.json.tmp && mv package.json.tmp package.json
         shell: bash
 
+      - name: Patch AboutSection build date
+        env:
+          BUILD_DATETIME: ${{ needs.setup.outputs.datetime }}
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          path = Path('webview-ui/src/components/settings/sections/AboutSection.tsx')
+          text = path.read_text(encoding='utf-8')
+          build_date = os.environ['BUILD_DATETIME']
+
+          pattern = re.compile(
+              r'(<h2[^>]*id="about_title"[^>]*>.*?</h2>)(?:\s*<p[^>]*className="text-xs"[^>]*>.*?</p>)?',
+              re.S,
+          )
+
+          def repl(match):
+              h2 = match.group(1)
+              build_line = f'<p className="text-xs">Build date: {build_date}</p>'
+              return f"{h2}\n\t\t\t\t\t{build_line}"
+
+          new_text, count = pattern.subn(repl, text, count=1)
+          if count != 1:
+              raise SystemExit('Failed to patch AboutSection.tsx: could not find the about_title header')
+          path.write_text(new_text, encoding='utf-8')
+          PY
+        shell: bash
+
       - name: Install @vscode/vsce globally
         run: npm install -g @vscode/vsce
         shell: bash
