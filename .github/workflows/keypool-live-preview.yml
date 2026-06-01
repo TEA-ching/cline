@@ -411,7 +411,6 @@ jobs:
           bun install
           bun run build:models
           bun run build:sdk
-          bun -F './apps/**' -F '!./apps/examples/**' --production build
           cd apps/cli
           bun run build
           bun run build:platforms
