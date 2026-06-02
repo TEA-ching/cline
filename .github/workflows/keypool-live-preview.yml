@@ -312,6 +312,7 @@ jobs:
               .replace(/https:\/\/github\.com\/cline\/cline/g, `${repositoryUrl}`)
               .replace(/https:\/\/marketplace\.visualstudio\.com\/items\?itemName=saoudrizwan\.claude-dev/g, `${repositoryUrl}/releases`)
               .replace(/npm i -g cline/g, 'https://github.com/TEA-ching/cline/releases')
+              .replace(/npx skills add cline/sdk-skill/g, 'npx skills add https://docs.ai-ml.pp.ua/')
           }
 
           // Get repository information for setting package repository URLs
