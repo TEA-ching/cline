@@ -541,7 +541,8 @@ jobs:
           #cp -r . "$DOCS_TMP/"
           rsync -av --exclude='.git' . "$DOCS_TMP/"
           #deploy the sdk skills
-          cp -av .agents/skills/cline-sdk/* "$DOCS_TMP/docs/"
+          mkdir -p "$DOCS_TMP/.mintlify/skills"
+          cp -av .agents/skills/cline-sdk/* "$DOCS_TMP/.mintlify/skills/"
           # Create an orphan branch containing only the docs content at root
           # so Mintlify can be configured without a monorepo subdirectory.
           # IMPORTANT: git rm must run from the repo root (not docs/ CWD) to clear the
