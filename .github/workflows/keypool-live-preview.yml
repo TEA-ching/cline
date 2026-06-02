@@ -197,6 +197,11 @@ jobs:
           echo -e '#!/bin/bash\nexit 0' | sudo tee /usr/bin/gitleaks > /dev/null
           sudo chmod +x /usr/bin/gitleaks
 
+      - name: Create fake lint-staged in /usr/bin to prevent build failures if lint-staged is not installed on the runner.
+        run: |
+          echo -e '#!/bin/bash\nexit 0' | sudo tee /usr/bin/lint-staged > /dev/null
+          sudo chmod +x /usr/bin/lint-staged
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
