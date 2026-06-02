@@ -3,7 +3,7 @@
 
 import { Logger } from "@/shared/services/Logger"
 import { loadAiVault } from "./AiVault"
-import { markKeyAsFailed, resolveNextApiConfig } from "./KeyPool"
+import { resolveNextApiConfig } from "./KeyPool"
 import type { AiVaultConfig, ResolvedApiConfig } from "./types"
 
 /**
@@ -49,6 +49,10 @@ export async function getSessionApiConfig(
 	if (!vaultUrl) {
 		throw new Error("[KeypoolLive] SessionKeyManager not configured: call configureSessionKeyManager(url) first")
 	}
+
+	// Load persistent state for round-robin indexes and key statuses
+	const { loadPersistentStateOnce } = await import("./KeyPool")
+	await loadPersistentStateOnce()
 
 	// Load the vault (this uses internal caching to avoid redundant network hits).
 	let vault: AiVaultConfig
@@ -96,13 +100,18 @@ export async function rotateSessionKey(
 	// If a key failed, we notify the global KeyPool so it can mark it as unhealthy
 	// and put it on cooldown for all sessions.
 	if (reason === "key_failure" && current) {
-		markKeyAsFailed(providerName, current.apiKey)
+		const { markKeyAsFailed } = await import("./KeyPool")
+		await markKeyAsFailed(providerName, current.apiKey)
 	}
 
 	// By deleting the current assignment, the next call to getSessionApiConfig
 	// will be forced to pick a new (and hopefully healthy) key from the vault.
 	sessionKeyMap.delete(sessionKey)
 	sessionKeyCache.delete(`${sessionId}:${providerName}`)
+
+	// Load persistent state for round-robin indexes and key statuses
+	const { loadPersistentStateOnce } = await import("./KeyPool")
+	await loadPersistentStateOnce()
 
 	return getSessionApiConfig(sessionId, providerName, modelId)
 }

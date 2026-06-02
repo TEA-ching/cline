@@ -1,6 +1,8 @@
 // KeypoolLive — KeyPool: round-robin selection, health tracking, model descriptions
 // © 2026 Ronan LE MEILLAT — MIT License
 
+import { homedir } from "os"
+import path from "path"
 import { Logger } from "@/shared/services/Logger"
 import type { AiVaultConfig, KeypoolLiveConfig, ResolvedApiConfig, VaultKey, VaultModel } from "./types"
 
@@ -14,6 +16,25 @@ interface KeyStatus {
 	cooledDownAt?: number
 	/** Number of consecutive failures observed for this key. */
 	failureCount: number
+}
+
+/**
+ * Interface for persisted key status data.
+ */
+interface PersistedKeyStatus {
+	providerName: string
+	keySuffix: string
+	cooledDownAt?: number
+	failureCount: number
+}
+
+/**
+ * Interface for the complete persisted state.
+ */
+interface PersistedRoundRobinState {
+	version: 1
+	roundRobinIndexes: Record<string, number>
+	keyStatuses: PersistedKeyStatus[]
 }
 
 /**
@@ -40,6 +61,26 @@ const roundRobinIndexes = new Map<string, number>()
 const keyStatuses = new Map<string, KeyStatus>()
 
 /**
+ * Tracks if persistent state has been loaded.
+ */
+let persistentStateLoaded = false
+
+/**
+ * Tracks pending write operations to avoid overlapping file operations.
+ */
+let persistentStateWriteChain: Promise<void> = Promise.resolve()
+
+/**
+ * Environment variable name for custom state file path.
+ */
+const KEYPOOL_STATE_FILE_ENV = "KEYPOOL_STATE_FILE"
+
+/**
+ * Default state file name.
+ */
+const DEFAULT_KEYPOOL_STATE_FILE = "keypoollive-state.json"
+
+/**
  * Generates a unique identifier for a key's health status.
  * We use the last 8 characters of the key as a hint to avoid storing full keys as map keys.
  *
@@ -52,30 +93,158 @@ function getKeyStatusId(providerName: string, keyValue: string): string {
 }
 
 /**
- * Determines if an API key is currently healthy and eligible for use.
- * A key is unusable if it has exceeded the failure threshold and is still in its cooldown period.
+ * Gets the path to the persistent state file.
+ * Uses KEYPOOL_STATE_FILE environment variable if set,
+ * otherwise defaults to ~/.cline/data/keypoollive-state.json
  *
- * @param providerName - The AI provider.
- * @param keyValue - The API key string.
- * @returns True if the key is usable, false otherwise.
+ * @returns Path to the state file
  */
-function isKeyUsable(providerName: string, keyValue: string): boolean {
-	const status = keyStatuses.get(getKeyStatusId(providerName, keyValue))
-	// No recorded failures means it's usable.
-	if (!status) return true
+async function getPersistentStatePath(): Promise<string> {
+	if (process.env[KEYPOOL_STATE_FILE_ENV]) {
+		return process.env[KEYPOOL_STATE_FILE_ENV] as string
+	}
 
-	// If the failure threshold is reached, check if the cooldown has expired.
+	// Default to ~/.cline/data/keypoollive-state.json if not specified
+	const homeDir = homedir()
+	return path.join(homeDir, ".cline", "data", DEFAULT_KEYPOOL_STATE_FILE)
+}
+
+/**
+ * Loads persistent state from file if it exists.
+ * This should be called once at startup.
+ */
+export async function loadPersistentStateOnce(): Promise<void> {
+	if (persistentStateLoaded) {
+		return
+	}
+	persistentStateLoaded = true
+
+	try {
+		const statePath = await getPersistentStatePath()
+		const fs = await import("fs")
+		const path = await import("path")
+
+		// Create the directory if it doesn't exist
+		await fs.promises.mkdir(path.dirname(statePath), { recursive: true })
+
+		// Create an empty state file if it doesn't exist
+		try {
+			await fs.promises.access(statePath)
+		} catch {
+			// File doesn't exist, create an empty one
+			await fs.promises.writeFile(
+				statePath,
+				JSON.stringify(
+					{
+						version: 1,
+						roundRobinIndexes: {},
+						keyStatuses: [],
+					},
+					null,
+					2,
+				),
+			)
+		}
+
+		// Load existing state if available
+		try {
+			const raw = await fs.promises.readFile(statePath, "utf8")
+			const parsed = JSON.parse(raw) as PersistedRoundRobinState
+
+			if (parsed.version !== 1) {
+				return
+			}
+
+			for (const [providerName, index] of Object.entries(parsed.roundRobinIndexes ?? {})) {
+				if (Number.isInteger(index) && index >= 0) {
+					roundRobinIndexes.set(providerName, index)
+				}
+			}
+
+			for (const status of parsed.keyStatuses ?? []) {
+				if (
+					typeof status.providerName !== "string" ||
+					typeof status.keySuffix !== "string" ||
+					typeof status.failureCount !== "number"
+				) {
+					continue
+				}
+				keyStatuses.set(`${status.providerName}:${status.keySuffix}`, {
+					key: status.keySuffix,
+					failureCount: Math.max(0, Math.trunc(status.failureCount)),
+					cooledDownAt: typeof status.cooledDownAt === "number" ? status.cooledDownAt : undefined,
+				})
+			}
+		} catch {
+			// Ignore: state file is optional and recreated on next write.
+		}
+	} catch {
+		// Ignore: state file is optional and recreated on next write.
+	}
+}
+
+/**
+ * Schedules a write of the current state to disk.
+ * Uses a promise chain to avoid overlapping writes.
+ */
+function persistStateSoon(): void {
+	persistentStateWriteChain = persistentStateWriteChain
+		.then(async () => {
+			try {
+				const statePath = await getPersistentStatePath()
+				const fs = await import("fs")
+				const path = await import("path")
+
+				await fs.promises.mkdir(path.dirname(statePath), { recursive: true })
+
+				const persisted: PersistedRoundRobinState = {
+					version: 1,
+					roundRobinIndexes: Object.fromEntries(roundRobinIndexes.entries()),
+					keyStatuses: Array.from(keyStatuses.entries()).map(([id, status]) => {
+						const sep = id.indexOf(":")
+						return {
+							providerName: sep >= 0 ? id.slice(0, sep) : "unknown",
+							keySuffix: sep >= 0 ? id.slice(sep + 1) : status.key.slice(-8),
+							cooledDownAt: status.cooledDownAt,
+							failureCount: status.failureCount,
+						}
+					}),
+				}
+
+				const tmpPath = `${statePath}.tmp`
+				await fs.promises.writeFile(tmpPath, `${JSON.stringify(persisted)}\n`, "utf8")
+				await fs.promises.rename(tmpPath, statePath)
+			} catch {
+				// Ignore write failures: in-memory rotation still works.
+			}
+		})
+		.catch(() => {
+			// Ignore write failures: in-memory rotation still works.
+		})
+}
+
+/**
+ * Checks if a key is currently usable (not in cooldown and below failure threshold)
+ *
+ * @param providerName - Name of the vault provider
+ * @param keyValue - API key string to check
+ * @returns true if key is usable, false if in cooldown or has too many failures
+ */
+export function isKeyUsable(providerName: string, keyValue: string): boolean {
+	const status = keyStatuses.get(getKeyStatusId(providerName, keyValue))
+	if (!status) return true // No status record means key is usable
+
+	// Check if key has exceeded failure threshold but cooldown has expired
 	if (status.failureCount >= MAX_FAILURE_COUNT) {
 		if (status.cooledDownAt && Date.now() - status.cooledDownAt >= KEY_COOLDOWN_MS) {
-			// Cooldown finished: reset the status and make it usable again.
+			// Cooldown expired, remove status and allow key to be used again
 			keyStatuses.delete(getKeyStatusId(providerName, keyValue))
+			persistStateSoon()
 			return true
 		}
-		// Still in cooldown.
-		return false
+		return false // Still in cooldown
 	}
-	// Below threshold, still usable.
-	return true
+	return true // Below failure threshold
 }
 
 /**
@@ -85,7 +254,12 @@ function isKeyUsable(providerName: string, keyValue: string): boolean {
  * @param providerName - The AI provider.
  * @param keyValue - The API key string.
  */
-export function markKeyAsFailed(providerName: string, keyValue: string): void {
+export async function markKeyAsFailed(providerName: string, keyValue: string): Promise<void> {
+	// Ensure persistent state is loaded
+	if (!persistentStateLoaded) {
+		await loadPersistentStateOnce()
+	}
+
 	const id = getKeyStatusId(providerName, keyValue)
 	const existing = keyStatuses.get(id)
 	const failureCount = (existing?.failureCount ?? 0) + 1
@@ -95,6 +269,7 @@ export function markKeyAsFailed(providerName: string, keyValue: string): void {
 		cooledDownAt: failureCount >= MAX_FAILURE_COUNT ? Date.now() : existing?.cooledDownAt,
 	})
 	Logger.warn(`[KeypoolLive] Key ...${keyValue.slice(-8)} for ${providerName} failed (count: ${failureCount})`)
+	persistStateSoon()
 }
 
 /**
@@ -115,11 +290,13 @@ function selectNextKey(providerName: string, keys: VaultKey[]): VaultKey | null 
 		// All keys are in cooldown; pick any non-expired key as fallback
 		const idx = (roundRobinIndexes.get(providerName) ?? 0) % eligible.length
 		roundRobinIndexes.set(providerName, (idx + 1) % eligible.length)
+		persistStateSoon()
 		return eligible[idx]
 	}
 
 	const idx = (roundRobinIndexes.get(providerName) ?? 0) % usable.length
 	roundRobinIndexes.set(providerName, (idx + 1) % usable.length)
+	persistStateSoon()
 	return usable[idx]
 }
 
@@ -251,4 +428,5 @@ function mapToClineProvider(providerName: string, protocol: string): string | nu
 export function resetKeyPool(): void {
 	roundRobinIndexes.clear()
 	keyStatuses.clear()
+	persistStateSoon()
 }
