@@ -527,7 +527,7 @@ jobs:
 
       - name: Clean before
         run: |
-          find . -name "node_modules" -or -name ".bun" -or -name "dist" -type d -prune -exec rm -rf '{}' + || true
+          find . -type d \( -name "node_modules" -o -name ".bun" -o -name "dist" \) -prune -exec rm -rf '{}' + || true
 
       - name: Push modified docs to Mintlify deploy branch
         #working-directory: docs
@@ -542,7 +542,7 @@ jobs:
           rsync -av --exclude='.git' . "$DOCS_TMP/"
           #deploy the sdk skills
           mkdir -p "$DOCS_TMP/.mintlify/skills"
-          cp -av .agents/skills/cline-sdk/* "$DOCS_TMP/.mintlify/skills/"
+          cp -av .agents/skills/* "$DOCS_TMP/.mintlify/skills/"
           # Create an orphan branch containing only the docs content at root
           # so Mintlify can be configured without a monorepo subdirectory.
           # IMPORTANT: git rm must run from the repo root (not docs/ CWD) to clear the
@@ -557,15 +557,15 @@ jobs:
           git -C "$REPO_ROOT" commit -m "deploy: preview docs [${{ needs.setup.outputs.datetime }}] ${{ github.sha }}"
           git push origin keypool-docs-deploy --force
 
-      - name: Trigger Mintlify redeploy via API
-        # The GitHub App may auto-trigger on push, but an explicit call ensures
-        # immediate deployment and surfaces errors in the workflow log.
-        run: |
-          HTTP_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" -X POST \
-            "https://api.mintlify.com/v1/project/update/${{ secrets.MINTLIFY_PROJECT }}" \
-            -H "Authorization: Bearer ${{ secrets.MINTLIFY_ADMIN_API_KEY }}")
-          echo "Mintlify redeploy response: HTTP $HTTP_STATUS"
-          [ "$HTTP_STATUS" -eq 202 ] || { echo "Unexpected status $HTTP_STATUS"; exit 1; }
+      # - name: Trigger Mintlify redeploy via API
+      #   # The GitHub App may auto-trigger on push, but an explicit call ensures
+      #   # immediate deployment and surfaces errors in the workflow log.
+      #   run: |
+      #     HTTP_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" -X POST \
+      #       "https://api.mintlify.com/v1/project/update/${{ secrets.MINTLIFY_PROJECT }}" \
+      #       -H "Authorization: Bearer ${{ secrets.MINTLIFY_ADMIN_API_KEY }}")
+      #     echo "Mintlify redeploy response: HTTP $HTTP_STATUS"
+      #     [ "$HTTP_STATUS" -eq 202 ] || { echo "Unexpected status $HTTP_STATUS"; exit 1; }
 
       - name: Upload local repo to Artifact
         uses: actions/upload-artifact@v7
