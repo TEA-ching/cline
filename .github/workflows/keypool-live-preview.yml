@@ -312,7 +312,7 @@ jobs:
               .replace(/https:\/\/github\.com\/cline\/cline/g, `${repositoryUrl}`)
               .replace(/https:\/\/marketplace\.visualstudio\.com\/items\?itemName=saoudrizwan\.claude-dev/g, `${repositoryUrl}/releases`)
               .replace(/npm i -g cline/g, 'https://github.com/TEA-ching/cline/releases')
-              .replace(/npx skills add cline\/sdk-skill/g, 'npx skills add https://docs.ai-ml.pp.ua/')
+              .replace(/npx skills add cline\/sdk-skill/g, 'npx skills add https://docs.ai-ml.pp.ua')
           }
 
           // Get repository information for setting package repository URLs
@@ -530,6 +530,14 @@ jobs:
         run: |
           find . -type d \( -name "node_modules" -o -name ".bun" -o -name "dist" \) -prune -exec rm -rf '{}' + || true
 
+      - name: Deploy the skills to Mintlify
+        run: |
+          #deploy the sdk skills
+          mkdir -p .mintlify/skills
+          mkdir -p docs/.mintlify/skills
+          cp -av .agents/skills/* .mintlify/skills/
+          cp -av .agents/skills/* docs/.mintlify/skills/
+          
       - name: Push modified docs to Mintlify deploy branch
         #working-directory: docs
         run: |
@@ -539,11 +547,7 @@ jobs:
           rm -rf node_modules dist .turbo .next 
           # Snapshot the already-renamed docs/ content
           DOCS_TMP=$(mktemp -d)
-          #cp -r . "$DOCS_TMP/"
           rsync -av --exclude='.git' . "$DOCS_TMP/"
-          #deploy the sdk skills
-          mkdir -p "$DOCS_TMP/.mintlify/skills"
-          cp -av .agents/skills/* "$DOCS_TMP/.mintlify/skills/"
           # Create an orphan branch containing only the docs content at root
           # so Mintlify can be configured without a monorepo subdirectory.
           # IMPORTANT: git rm must run from the repo root (not docs/ CWD) to clear the
