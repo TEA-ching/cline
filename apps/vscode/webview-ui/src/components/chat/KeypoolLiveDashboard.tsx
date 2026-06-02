@@ -42,6 +42,111 @@ function formatTokens(n: bigint | number): string {
 }
 
 /**
+ * Aggregates usage statistics by provider
+ */
+function aggregateUsageByProvider(stats: KeypoolUsageStat[]): Record<
+	string,
+	{
+		promptTokens: number
+		completionTokens: number
+		requestCount: number
+	}
+> {
+	return stats.reduce(
+		(acc, stat) => {
+			const provider = stat.provider
+			if (!acc[provider]) {
+				acc[provider] = {
+					promptTokens: 0,
+					completionTokens: 0,
+					requestCount: 0,
+				}
+			}
+			acc[provider].promptTokens += Number(stat.promptTokens)
+			acc[provider].completionTokens += Number(stat.completionTokens)
+			acc[provider].requestCount += Number(stat.requestCount)
+			return acc
+		},
+		{} as Record<string, { promptTokens: number; completionTokens: number; requestCount: number }>,
+	)
+}
+
+/**
+ * Aggregates error statistics by provider
+ */
+function aggregateErrorsByProvider(stats: KeypoolErrorStat[]): Record<
+	string,
+	{
+		totalRequests: number
+		errorCount: number
+		errorRate: number
+	}
+> {
+	return stats.reduce(
+		(acc, stat) => {
+			const provider = stat.provider
+			if (!acc[provider]) {
+				acc[provider] = {
+					totalRequests: 0,
+					errorCount: 0,
+					errorRate: 0,
+				}
+			}
+			acc[provider].totalRequests += Number(stat.totalRequests)
+			acc[provider].errorCount += Number(stat.errorCount)
+			acc[provider].errorRate = acc[provider].errorCount / acc[provider].totalRequests
+			return acc
+		},
+		{} as Record<string, { totalRequests: number; errorCount: number; errorRate: number }>,
+	)
+}
+
+/**
+ * Component to display provider totals
+ */
+const ProviderTotalsSection: React.FC<{
+	title: string
+	aggregatedData: Record<string, any>
+	columns: { key: string; label: string; align?: string; format?: (value: any) => string }[]
+}> = ({ title, aggregatedData, columns }) => {
+	if (Object.keys(aggregatedData).length === 0) return null
+
+	return (
+		<div className="mt-2 pt-2 border-t border-border">
+			<div className="text-xs font-medium mb-1">{title}</div>
+			<table className="w-full text-xs border-collapse">
+				<thead>
+					<tr className="text-muted-foreground text-left">
+						<th className="py-0.5 pr-2 font-medium">Provider</th>
+						{columns.map((col, i) => (
+							<th className={`py-0.5 pr-2 font-medium ${col.align === "right" ? "text-right" : ""}`} key={i}>
+								{col.label}
+							</th>
+						))}
+					</tr>
+				</thead>
+				<tbody>
+					{Object.entries(aggregatedData).map(([provider, data]) => (
+						<tr className="border-t border-border/50" key={provider}>
+							<td className="py-0.5 pr-2 font-medium">{provider}</td>
+							{columns.map((col, i) => {
+								const value = data[col.key]
+								const formattedValue = col.format ? col.format(value) : String(value)
+								return (
+									<td className={`py-0.5 pr-2 ${col.align === "right" ? "text-right" : ""}`} key={i}>
+										{col.key === "errorRate" ? `${(value * 100).toFixed(1)}%` : formattedValue}
+									</td>
+								)
+							})}
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</div>
+	)
+}
+
+/**
  * Converts usage statistics into a CSV string.
  */
 function toUsageCsv(stats: KeypoolUsageStat[]): string {
@@ -77,6 +182,9 @@ function downloadCsv(content: string, filename: string): void {
 	a.click()
 	URL.revokeObjectURL(url)
 }
+
+// Export des fonctions et composants pour les tests
+export { aggregateUsageByProvider, aggregateErrorsByProvider, formatTokens, toUsageCsv, toErrorCsv, ProviderTotalsSection }
 
 const KeypoolLiveDashboard: React.FC = () => {
 	// Visibility and navigation state
@@ -258,6 +366,22 @@ const KeypoolLiveDashboard: React.FC = () => {
 										Export CSV
 									</VSCodeButton>
 								</div>
+
+								{/* Provider Totals Section */}
+								<ProviderTotalsSection
+									aggregatedData={aggregateUsageByProvider(usageStats)}
+									columns={[
+										{ key: "promptTokens", label: "Prompt Tokens", align: "right", format: formatTokens },
+										{
+											key: "completionTokens",
+											label: "Completion Tokens",
+											align: "right",
+											format: formatTokens,
+										},
+										{ key: "requestCount", label: "Requests", align: "right" },
+									]}
+									title="Totals by Provider"
+								/>
 							</>
 						)}
 
@@ -306,6 +430,17 @@ const KeypoolLiveDashboard: React.FC = () => {
 										Export CSV
 									</VSCodeButton>
 								</div>
+
+								{/* Provider Totals Section */}
+								<ProviderTotalsSection
+									aggregatedData={aggregateErrorsByProvider(errorStats)}
+									columns={[
+										{ key: "totalRequests", label: "Requests", align: "right" },
+										{ key: "errorCount", label: "Errors", align: "right" },
+										{ key: "errorRate", label: "Error Rate", align: "right" },
+									]}
+									title="Totals by Provider"
+								/>
 							</>
 						)}
 					</div>
