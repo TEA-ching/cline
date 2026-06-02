@@ -381,9 +381,12 @@ async function getPersistentStatePath(): Promise<string> {
 	if (process.env[KEYPOOL_STATE_FILE_ENV]) {
 		return process.env[KEYPOOL_STATE_FILE_ENV] as string;
 	}
+
+	// Default to ~/.cline/data/keypoolliveState.json if not specified
 	const os = await import("node:os");
 	const path = await import("node:path");
-	return path.join(os.tmpdir(), DEFAULT_KEYPOOL_STATE_FILE);
+	const homeDir = os.homedir();
+	return path.join(homeDir, ".cline", "data", DEFAULT_KEYPOOL_STATE_FILE);
 }
 
 async function loadPersistentStateOnce(): Promise<void> {
@@ -395,40 +398,69 @@ async function loadPersistentStateOnce(): Promise<void> {
 	try {
 		const statePath = await getPersistentStatePath();
 		const fs = await import("node:fs/promises");
-		const raw = await fs.readFile(statePath, "utf8");
-		const parsed = JSON.parse(raw) as PersistedRoundRobinState;
+		const path = await import("node:path");
 
-		if (parsed.version !== 1) {
-			return;
-		}
+		// Create the directory if it doesn't exist
+		await fs.mkdir(path.dirname(statePath), { recursive: true });
 
-		for (const [providerName, index] of Object.entries(
-			parsed.roundRobinIndexes ?? {},
-		)) {
-			if (Number.isInteger(index) && index >= 0) {
-				roundRobinIndexes.set(providerName, index);
-			}
-		}
-
-		for (const status of parsed.keyStatuses ?? []) {
-			if (
-				typeof status.providerName !== "string" ||
-				typeof status.keySuffix !== "string" ||
-				typeof status.failureCount !== "number"
-			) {
-				continue;
-			}
-			keyStatuses.set(
-				keyStatusIdFromSuffix(status.providerName, status.keySuffix),
-				{
-					key: status.keySuffix,
-					failureCount: Math.max(0, Math.trunc(status.failureCount)),
-					cooledDownAt:
-						typeof status.cooledDownAt === "number"
-							? status.cooledDownAt
-							: undefined,
-				},
+		// Create an empty state file if it doesn't exist
+		try {
+			await fs.access(statePath);
+		} catch {
+			// File doesn't exist, create an empty one
+			await fs.writeFile(
+				statePath,
+				JSON.stringify(
+					{
+						version: 1,
+						roundRobinIndexes: {},
+						keyStatuses: [],
+					},
+					null,
+					2,
+				),
 			);
+		}
+
+		// Load existing state if available
+		try {
+			const raw = await fs.readFile(statePath, "utf8");
+			const parsed = JSON.parse(raw) as PersistedRoundRobinState;
+
+			if (parsed.version !== 1) {
+				return;
+			}
+
+			for (const [providerName, index] of Object.entries(
+				parsed.roundRobinIndexes ?? {},
+			)) {
+				if (Number.isInteger(index) && index >= 0) {
+					roundRobinIndexes.set(providerName, index);
+				}
+			}
+
+			for (const status of parsed.keyStatuses ?? []) {
+				if (
+					typeof status.providerName !== "string" ||
+					typeof status.keySuffix !== "string" ||
+					typeof status.failureCount !== "number"
+				) {
+					continue;
+				}
+				keyStatuses.set(
+					keyStatusIdFromSuffix(status.providerName, status.keySuffix),
+					{
+						key: status.keySuffix,
+						failureCount: Math.max(0, Math.trunc(status.failureCount)),
+						cooledDownAt:
+							typeof status.cooledDownAt === "number"
+								? status.cooledDownAt
+								: undefined,
+					},
+				);
+			}
+		} catch {
+			// Ignore: state file is optional and recreated on next write.
 		}
 	} catch {
 		// Ignore: state file is optional and recreated on next write.
