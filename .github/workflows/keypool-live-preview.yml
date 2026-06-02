@@ -539,7 +539,7 @@ jobs:
           # Snapshot the already-renamed docs/ content
           DOCS_TMP=$(mktemp -d)
           #cp -r . "$DOCS_TMP/"
-          rsync -av --exclude='.git' . "$DOCS_TMP/"
+          rsync -av --exclude='.git' . "$DOCS_TMP/docs/"
           #deploy the sdk skills
           cp -av .agents/skills/cline-sdk/* "$DOCS_TMP/"
           # Create an orphan branch containing only the docs content at root
