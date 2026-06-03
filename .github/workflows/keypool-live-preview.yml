@@ -98,6 +98,11 @@ jobs:
         with:
           lfs: true
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
       - name: Setup Node.js 22
         uses: actions/setup-node@v6
         with:
@@ -148,12 +153,24 @@ jobs:
         shell: bash
 
       - name: Install root dependencies
-        run: npm ci --include=optional
+        working-directory: .
+        run: bun install --include=optional
         shell: bash
 
-      - name: Install webview-ui dependencies
-        run: cd webview-ui && npm ci --include=optional
+      - name: Build root packages and CLI (to ensure vsce can find the built CLI for packaging)
+        working-directory: .
         shell: bash
+        run: |
+          bun run build
+          bun run build:models
+          bun run build:sdk
+          bun -F './apps/cli' --production build
+
+      - name: Build VSCode extension and native modules
+        run: |
+            # Workaround protos error
+            bun install @grpc/proto-loader
+            npm run rebuild:native
 
       - name: Package VSIX
         # vsce triggers vscode:prepublish → `npm run rebuild:native && npm run package`
@@ -169,7 +186,7 @@ jobs:
         shell: bash
 
       - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vsix-${{ matrix.platform }}-${{ matrix.arch }}
           path: "apps/vscode/clinepool-*.vsix"
@@ -378,8 +395,18 @@ jobs:
             touched++
           }
 
+          // apps/{cli,cline-hub,examples} were moved from sdk/apps/ to apps/ at root.
+          // They must be scanned for @cline/ refs just like sdk/ was before.
+          // apps/vscode/ is intentionally excluded: the extension source keeps @cline/* as-is.
+          const appsCliDir = path.join(root, 'apps/cli')
+          const appsClineHubDir = path.join(root, 'apps/cline-hub')
+          const appsExamplesDir = path.join(root, 'apps/examples')
+
           // Update README.md files to ensure documentation references correct package names
           const readmeFiles = findFilesByExtension(sdkDir, 'README.md')
+            .concat(fs.existsSync(appsCliDir) ? findFilesByExtension(appsCliDir, 'README.md') : [])
+            .concat(fs.existsSync(appsClineHubDir) ? findFilesByExtension(appsClineHubDir, 'README.md') : [])
+            .concat(fs.existsSync(appsExamplesDir) ? findFilesByExtension(appsExamplesDir, 'README.md') : [])
           for (const readmePath of readmeFiles) {
             let content = fs.readFileSync(readmePath, 'utf8')
             const originalContent = content
@@ -392,7 +419,12 @@ jobs:
           }
 
           // Update all other files (source code, config files, etc.) to ensure consistency
-          const allFiles = findAllFiles(sdkDir).concat(findAllFiles(docsDir)).concat(findAllFiles(agentsDir))
+          const allFiles = findAllFiles(sdkDir)
+            .concat(findAllFiles(docsDir))
+            .concat(findAllFiles(agentsDir))
+            .concat(fs.existsSync(appsCliDir) ? findAllFiles(appsCliDir) : [])
+            .concat(fs.existsSync(appsClineHubDir) ? findAllFiles(appsClineHubDir) : [])
+            .concat(fs.existsSync(appsExamplesDir) ? findAllFiles(appsExamplesDir) : [])
           for (const filePath of allFiles) {
             // Skip package.json and README.md files as they were already processed
             if (filePath.endsWith('package.json') || filePath.endsWith('README.md')) {
