@@ -496,7 +496,7 @@ export class McpHub {
 					// but many servers (incorrectly) return 404. The SDK only handles 405
 					// gracefully, so we normalize 404 -> 405 to fix compatibility.
 					// See: https://github.com/modelcontextprotocol/typescript-sdk/issues/1150
-					const streamableHttpFetch: typeof fetch = async (url, init) => {
+					const streamableHttpFetch = async (url: string | URL, init?: RequestInit): Promise<Response> => {
 						const response = await fetch(url, init)
 						if (init?.method === "GET" && response.status === 404) {
 							return new Response(response.body, {
