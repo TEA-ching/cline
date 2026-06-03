@@ -128,10 +128,26 @@ export const fetch: typeof globalThis.fetch = (() => {
 		baseFetch = undiciFetch as any as typeof globalThis.fetch;
 	}
 
-	return (
+	// Create a fetch function with the preconnect method
+	const fetchWithPreconnect = ((
 		input: string | URL | Request,
 		init?: RequestInit,
-	): Promise<Response> => (mockFetch || baseFetch)(input, init);
+	): Promise<Response> =>
+		(mockFetch || baseFetch)(input, init)) as typeof globalThis.fetch & {
+		preconnect: (url: string | URL, options?: RequestInit) => Promise<void>;
+	};
+
+	// Add the preconnect method to match the globalThis.fetch type
+	fetchWithPreconnect.preconnect = (
+		url: string | URL,
+		options?: RequestInit,
+	) => {
+		// In non-browser environments, preconnect is a no-op
+		// This matches the type signature but doesn't actually do anything
+		return Promise.resolve();
+	};
+
+	return fetchWithPreconnect;
 })();
 
 /**
