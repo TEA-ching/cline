@@ -169,8 +169,9 @@ jobs:
       - name: Build VSCode extension and native modules
         run: |
             # Workaround protos error
-            npm install
-            npm install @grpc/proto-loader nice-grpc-common jwt-decode @opentelemetry/api-logs@0.56.0 js-yaml@4.1.1
+            find . -name "node_modules" -type d -print0 | xargs -0 rm -rf
+            bun install --include=optional
+            bun install --include=optional @grpc/proto-loader nice-grpc-common jwt-decode @opentelemetry/api-logs@0.56.0 js-yaml@4.1.1
             cd webview-ui && npm install && cd ..
             npm run rebuild:native
 
