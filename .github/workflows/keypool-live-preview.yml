@@ -329,7 +329,7 @@ jobs:
               .replace(/https:\/\/github\.com\/cline\/cline/g, `${repositoryUrl}`)
               .replace(/https:\/\/marketplace\.visualstudio\.com\/items\?itemName=saoudrizwan\.claude-dev/g, `${repositoryUrl}/releases`)
               .replace(/npm i -g cline/g, 'https://github.com/TEA-ching/cline/releases')
-              .replace(/npx skills add cline\/sdk-skill/g, 'npx skills add https://docs.ai-ml.pp.ua')
+              .replace(/npx skills add cline\/sdk-skill/g, 'npx skills add https://github.com/TEA-ching/cline/tree/keypool-docs-deploy/.agents/skills/cline-sdk')
           }
 
           // Get repository information for setting package repository URLs
@@ -592,16 +592,6 @@ jobs:
           git -C "$REPO_ROOT" add .
           git -C "$REPO_ROOT" commit -m "deploy: preview docs [${{ needs.setup.outputs.datetime }}] ${{ github.sha }}"
           git push origin keypool-docs-deploy --force
-
-      # - name: Trigger Mintlify redeploy via API
-      #   # The GitHub App may auto-trigger on push, but an explicit call ensures
-      #   # immediate deployment and surfaces errors in the workflow log.
-      #   run: |
-      #     HTTP_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" -X POST \
-      #       "https://api.mintlify.com/v1/project/update/${{ secrets.MINTLIFY_PROJECT }}" \
-      #       -H "Authorization: Bearer ${{ secrets.MINTLIFY_ADMIN_API_KEY }}")
-      #     echo "Mintlify redeploy response: HTTP $HTTP_STATUS"
-      #     [ "$HTTP_STATUS" -eq 202 ] || { echo "Unexpected status $HTTP_STATUS"; exit 1; }
 
       - name: Upload local repo to Artifact
         uses: actions/upload-artifact@v7
