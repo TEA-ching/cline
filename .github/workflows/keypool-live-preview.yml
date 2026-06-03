@@ -419,7 +419,6 @@ jobs:
 
 
       - name: Build CLI binaries
-        working-directory: sdk
         run: |
           bun install
           bun run build:models
@@ -433,12 +432,12 @@ jobs:
         with:
           name: cli-binaries
           path: |
-            sdk/apps/cli/dist/cli-windows-arm64/bin/cline.exe
-            sdk/apps/cli/dist/cli-windows-x64/bin/cline.exe
-            sdk/apps/cli/dist/cli-linux-arm64/bin/cline
-            sdk/apps/cli/dist/cli-darwin-arm64/bin/cline
-            sdk/apps/cli/dist/cli-linux-x64/bin/cline
-            sdk/apps/cli/dist/cli-darwin-x64/bin/cline
+            apps/cli/dist/cli-windows-arm64/bin/cline.exe
+            apps/cli/dist/cli-windows-x64/bin/cline.exe
+            apps/cli/dist/cli-linux-arm64/bin/cline
+            apps/cli/dist/cli-darwin-arm64/bin/cline
+            apps/cli/dist/cli-linux-x64/bin/cline
+            apps/cli/dist/cli-darwin-x64/bin/cline
           if-no-files-found: error
 
       - name: Version SDK packages (preview semver)
