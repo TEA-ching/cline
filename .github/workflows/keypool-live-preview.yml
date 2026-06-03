@@ -152,6 +152,7 @@ jobs:
         run: npm install -g @vscode/vsce
         shell: bash
 
+      # workflow tested with `bun install && bun run build && bun run build:models && bun run build:sdk && cd apps/vscode && bun install && bun run protos && cd webview-ui && npm install && cd .. && npx vcse package & cd ../..`
       - name: Install root dependencies
         working-directory: .
         run: bun install --include=optional
@@ -166,20 +167,22 @@ jobs:
           bun run build:sdk
           bun -F './apps/cli' --production build
 
-      - name: Build VSCode extension and native modules
-        run: |
-            # Workaround protos error
-            find . -name "node_modules" -type d -print0 | xargs -0 rm -rf
-            # Remove workspace in package.json for using npm
-            jq 'del(.workspace)' package.json > package.json.tmp && mv package.json.tmp package.json
-            npm install --include=optional
-            npm install --include=optional @grpc/proto-loader nice-grpc-common jwt-decode @opentelemetry/api-logs@0.56.0 js-yaml@4.1.1 @anthropic-ai/sdk@0.37.0
-            cd webview-ui && npm install --include=optional @grpc/proto-loader nice-grpc-common jwt-decode @opentelemetry/api-logs@0.56.0 js-yaml@4.1.1 @anthropic-ai/sdk@0.37.0 && cd ..
-            npm run rebuild:native
+      - name: Install VSCode extension dependencies
+        working-directory: apps/vscode
+        run: bun install
+        shell: bash
 
-      - name: Workaround linting error remove linting package script to unblock vsce packaging
+      - name: Build VSCode extension
+        working-directory: apps/vscode
         run: |
-          npm pkg set scripts.package="npm run check-types && npm run build:webview && node esbuild.mjs --production"
+          bun run protos
+          bun run build
+        shell: bash
+
+      - name: Build VSCode extension webview UI
+        working-directory: apps/vscode/webview-ui
+        run: npm install
+        shell: bash
 
       - name: Package VSIX
         # vsce triggers vscode:prepublish → `npm run rebuild:native && npm run package`
