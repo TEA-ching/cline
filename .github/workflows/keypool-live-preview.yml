@@ -169,7 +169,7 @@ jobs:
       - name: Build VSCode extension and native modules
         run: |
             # Workaround protos error
-            bun install @grpc/proto-loader nice-grpc-common jwt-decode @opentelemetry/api-logs
+            bun install @grpc/proto-loader nice-grpc-common jwt-decode @@opentelemetry/api-logs@0.56.0
             npm run rebuild:native
 
       - name: Package VSIX
