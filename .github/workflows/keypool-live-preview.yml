@@ -171,7 +171,7 @@ jobs:
             # Workaround protos error
             find . -name "node_modules" -type d -print0 | xargs -0 rm -rf
             bun install --include=optional
-            bun install --include=optional @grpc/proto-loader nice-grpc-common jwt-decode @opentelemetry/api-logs@0.56.0 js-yaml@4.1.1
+            bun install --include=optional @grpc/proto-loader nice-grpc-common jwt-decode @opentelemetry/api-logs@0.56.0 js-yaml@4.1.1 @anthropic-ai/sdk@0.37.0
             cd webview-ui && npm install && cd ..
             npm run rebuild:native
 
