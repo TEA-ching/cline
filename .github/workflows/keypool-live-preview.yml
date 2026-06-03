@@ -152,7 +152,7 @@ jobs:
         run: npm install -g @vscode/vsce
         shell: bash
 
-      # workflow tested with `bun install && bun run build && bun run build:models && bun run build:sdk && cd apps/vscode && bun install && bun run protos && cd webview-ui && npm install && cd .. && npx vcse package & cd ../..`
+      # workflow tested with `rm -rf cline && git clone https://github.com/cline/cline.git && cd cline && bun install && bun run build && bun run build:models && bun run build:sdk && cd apps/vscode && bun install && bun run protos && cd webview-ui && npm install && cd .. && npx vcse package & cd ../..`
       - name: Install root dependencies
         working-directory: .
         run: bun install --include=optional
@@ -165,7 +165,6 @@ jobs:
           bun run build
           bun run build:models
           bun run build:sdk
-          bun -F './apps/cli' --production build
 
       - name: Install VSCode extension dependencies
         working-directory: apps/vscode
@@ -176,7 +175,6 @@ jobs:
         working-directory: apps/vscode
         run: |
           bun run protos
-          bun run build
         shell: bash
 
       - name: Build VSCode extension webview UI
@@ -191,7 +189,7 @@ jobs:
           VSCODE_ELECTRON_VERSION: "39.8.8"
           TARGET_ARCH: ${{ matrix.native_arch }}
         run: |
-          vsce package \
+          npx vsce package \
             --target ${{ matrix.platform }}-${{ matrix.arch }} \
             --allow-package-secrets sendgrid \
             --out "clinepool-${{ needs.setup.outputs.version }}-preview-${{ needs.setup.outputs.datetime_safe }}-${{ matrix.platform }}-${{ matrix.arch }}.vsix"
