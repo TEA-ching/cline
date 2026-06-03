@@ -71,20 +71,42 @@ flowchart TD
     style E fill:#90EE90,stroke:#333
     G[b0590554<br>feat: add skills bundled with plugins] -->|high| H[applied ✅]
     style G fill:#90EE90,stroke:#333
-    I[1f7adbd8<br>feat(cli): group plugin skills in settings] -->|low| J[applied ✅]
+    I["1f7adbd8<br>feat(cli): group plugin skills in settings"] -->|low| J[applied ✅]
     style I fill:#90EE90,stroke:#333
-    K[3a0f1824<br>fix(cli): show skills in slash autocomplete] -->|low| L[applied ✅]
+    K["3a0f1824<br>fix(cli): show skills in slash autocomplete"] -->|low| L[applied ✅]
     style K fill:#90EE90,stroke:#333
-    M[4e56ed69<br>docs(cli): add supply-chain scan alerts sample] -->|high| N[applied ✅]
+    M["4e56ed69<br>docs(cli): add supply-chain scan alerts sample"] -->|high| N[applied ✅]
     style M fill:#90EE90,stroke:#333
-    O[6aef7f52<br>docs(cli): refine supply-chain scan alerts sample] -->|high| P[applied ✅]
+    O["6aef7f52<br>docs(cli): refine supply-chain scan alerts sample"] -->|high| P[applied ✅]
     style O fill:#90EE90,stroke:#333
-    Q[ae78fb42<br>docs(sdk): add custom model provider plugin example] -->|low| R[applied ✅]
+    Q["ae78fb42<br>docs(sdk): add custom model provider plugin example"] -->|low| R[applied ✅]
     style Q fill:#90EE90,stroke:#333
     S[220a21bd<br>Massive directory restructuring] -->|high| T[blocked ⛔]
     style S fill:#FF6347,stroke:#333
     S -->|needs-review ⚠️| U[needs-review ⚠️]
     style U fill:#FFA500,stroke:#333
+    A2[4139db41<br>feat: add MiniMax M3 model] -->|medium| B2[applied ✅]
+    style A2 fill:#90EE90,stroke:#333
+    C2[1a4bf98e<br>Update Sambanova Models] -->|medium| D2[applied ✅]
+    style C2 fill:#90EE90,stroke:#333
+    E2[af2454f8<br>chore: bump version and update changelog] -->|low| F2[applied ✅]
+    style E2 fill:#90EE90,stroke:#333
+    G2[b0590554<br>feat: add skills bundled with plugins] -->|high| H2[applied ✅]
+    style G2 fill:#90EE90,stroke:#333
+    I2["1f7adbd8<br>feat(cli): group plugin skills in settings"] -->|low| J2[applied ✅]
+    style I2 fill:#90EE90,stroke:#333
+    K2["3a0f1824<br>fix(cli): show skills in slash autocomplete"] -->|low| L2[applied ✅]
+    style K2 fill:#90EE90,stroke:#333
+    M2["4e56ed69<br>docs(cli): add supply-chain scan alerts sample"] -->|high| N2[applied ✅]
+    style M2 fill:#90EE90,stroke:#333
+    O2["6aef7f52<br>docs(cli): refine supply-chain scan alerts sample"] -->|high| P2[applied ✅]
+    style O2 fill:#90EE90,stroke:#333
+    Q2["ae78fb42<br>docs(sdk): add custom model provider plugin example"] -->|low| R2[applied ✅]
+    style Q2 fill:#90EE90,stroke:#333
+    S2[220a21bd<br>Massive directory restructuring] -->|high| T2[blocked ⛔]
+    style S2 fill:#FF6347,stroke:#333
+    S2 -->|needs-review ⚠️| U2[needs-review ⚠️]
+    style U2 fill:#FFA500,stroke:#333
 ```
 
 ---

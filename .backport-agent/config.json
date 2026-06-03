@@ -26,7 +26,11 @@
         "batchSize": 3,
         "dryRun": false,
         "createPullRequest": false,
-        "branchPrefix": "sync/upstream-"
+        "branchPrefix": "sync/upstream-",
+        "prNumberMatching": {
+            "enabled": true,
+            "minSubjectSimilarity": 0.4
+        }
     },
     "models": {
         "provider": "keypoollive",
