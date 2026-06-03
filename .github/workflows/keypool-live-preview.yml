@@ -170,6 +170,7 @@ jobs:
         run: |
             # Workaround protos error
             bun install @grpc/proto-loader nice-grpc-common jwt-decode @opentelemetry/api-logs@0.56.0
+            cd webview-ui && npm install && cd ..
             npm run rebuild:native
 
       - name: Package VSIX
