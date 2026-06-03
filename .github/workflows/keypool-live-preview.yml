@@ -170,8 +170,10 @@ jobs:
         run: |
             # Workaround protos error
             find . -name "node_modules" -type d -print0 | xargs -0 rm -rf
-            bun install --include=optional
-            bun install --include=optional @grpc/proto-loader nice-grpc-common jwt-decode @opentelemetry/api-logs@0.56.0 js-yaml@4.1.1 @anthropic-ai/sdk@0.37.0
+            # Remove workspaces in package.json for using npm
+            jq 'del(.workspaces)' package.json > package.json.tmp && mv package.json.tmp package.json
+            npm install --include=optional
+            npm install --include=optional @grpc/proto-loader nice-grpc-common jwt-decode @opentelemetry/api-logs@0.56.0 js-yaml@4.1.1 @anthropic-ai/sdk@0.37.0
             cd webview-ui && npm install --include=optional @grpc/proto-loader nice-grpc-common jwt-decode @opentelemetry/api-logs@0.56.0 js-yaml@4.1.1 @anthropic-ai/sdk@0.37.0 && cd ..
             npm run rebuild:native
 
