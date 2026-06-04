@@ -111,7 +111,7 @@ describe("migrateLegacyProviderSettings", () => {
 		);
 		expect(manager.getProviderSettings("anthropic")).toEqual({
 			provider: "anthropic",
-			model: "claude-opus-4-7",
+			model: "claude-opus-4-8",
 			apiKey: "legacy-key",
 		});
 		expect(manager.read().providers.openai?.tokenSource).toBe("manual");
@@ -175,6 +175,56 @@ describe("migrateLegacyProviderSettings", () => {
 		expect(manager.read().providers["openai-codex"]?.tokenSource).toBe(
 			"migration",
 		);
+	});
+
+	it("migrates legacy Cline OAuth account auth even without a clineApiKey", () => {
+		const tempDir = mkdtempSync(
+			path.join(os.tmpdir(), "core-legacy-provider-"),
+		);
+		tempDirs.push(tempDir);
+		const providersPath = path.join(tempDir, "provider-settings.json");
+		const manager = new ProviderSettingsManager({ filePath: providersPath });
+
+		writeFileSync(
+			path.join(tempDir, "globalState.json"),
+			JSON.stringify(
+				{
+					mode: "act",
+					actModeApiProvider: "anthropic",
+				},
+				null,
+				2,
+			),
+		);
+		writeFileSync(
+			path.join(tempDir, "secrets.json"),
+			JSON.stringify(
+				{
+					"cline:clineAccountId": makeClineAccountJson({
+						idToken: "legacy-cline-access",
+						refreshToken: "legacy-cline-refresh",
+						expiresAt: 1_750_000_000,
+						userId: "user-123",
+					}),
+				},
+				null,
+				2,
+			),
+		);
+
+		const result = migrateLegacyProviderSettings({
+			providerSettingsManager: manager,
+			dataDir: tempDir,
+		});
+
+		expect(result.migrated).toBe(true);
+		expect(manager.getProviderSettings("cline")?.auth).toEqual({
+			accessToken: "legacy-cline-access",
+			refreshToken: "legacy-cline-refresh",
+			expiresAt: 1_750_000_000_000,
+			accountId: "user-123",
+		});
+		expect(manager.read().providers.cline?.tokenSource).toBe("migration");
 	});
 
 	it("migrates legacy OpenAI-compatible config into the openai-compatible provider", () => {
@@ -522,12 +572,19 @@ describe("resolveLegacyClineAuth", () => {
 		expect(result?.accessToken).toBe("tok-abc");
 	});
 
-	it("preserves expiresAt as a number", () => {
+	it("preserves millisecond expiresAt values", () => {
 		const result = resolveLegacyClineAuth(
 			makeClineAccountJson({ expiresAt: 9999999999999 }),
 		);
 		expect(result?.expiresAt).toBe(9999999999999);
 		expect(typeof result?.expiresAt).toBe("number");
+	});
+
+	it("normalizes classic second-based expiresAt values to milliseconds", () => {
+		const result = resolveLegacyClineAuth(
+			makeClineAccountJson({ expiresAt: 1_750_000_000 }),
+		);
+		expect(result?.expiresAt).toBe(1_750_000_000_000);
 	});
 
 	it("maps userInfo.id to accountId", () => {
