@@ -171,18 +171,22 @@ jobs:
         run: bun install
         shell: bash
 
-      - name: Build VSCode extension
+      - name: Build VSCode protos
         working-directory: apps/vscode
         run: |
+          # Workaround for Windows: set correct path for ts-proto plugin
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            export TS_PROTO_PLUGIN="../node_modules/.bin/protoc-gen-ts_proto.cmd"
+          fi
           bun run protos
         shell: bash
 
-      - name: Build VSCode extension webview UI
+      - name: Install VSCode extension webview UI dependencies
         working-directory: apps/vscode/webview-ui
         run: npm install
         shell: bash
 
-      - name: Package VSIX
+      - name: Build and Package VSIX
         # vsce triggers vscode:prepublish → `npm run rebuild:native && npm run package`
         # rebuild:native reads VSCODE_ELECTRON_VERSION and TARGET_ARCH.
         env:
