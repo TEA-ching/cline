@@ -173,13 +173,7 @@ jobs:
 
       - name: Build VSCode protos
         working-directory: apps/vscode
-        run: |
-          # Workaround for Windows: set correct path for ts-proto plugin
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            export TS_PROTO_PLUGIN="../node_modules/.bin/protoc-gen-ts_proto.cmd"
-            bun install ts-proto@2.6.1
-          fi
-          bun run protos
+        run: bun run protos
         shell: bash
 
       - name: Install VSCode extension webview UI dependencies

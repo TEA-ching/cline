@@ -36,7 +36,7 @@
         "provider": "keypoollive",
         "apiKey": "auto",
         "fast": "mistral/devstral-latest",
-        "specialist": "mistral/mistral-large-latest",
+        "specialist": "mistral/mistral-medium-latest",
         "powerful": "openai/gpt-5.5"
     },
     "ai": {
