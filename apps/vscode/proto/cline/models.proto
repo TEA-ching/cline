@@ -53,7 +53,6 @@ service ModelsService {
   rpc getAihubmixModels(EmptyRequest) returns (OpenRouterCompatibleModelInfo);
   // Refreshes and returns Vercel AI Gateway models
   rpc refreshVercelAiGatewayModelsRpc(EmptyRequest) returns (OpenRouterCompatibleModelInfo);
-<<<<<<< HEAD
   // KeypoolLive: get available vault models
   rpc keypoolGetVaultModels(EmptyRequest) returns (KeypoolVaultModelsResponse);
   // KeypoolLive: rotate the active key for the current session
@@ -74,7 +73,6 @@ service ModelsService {
   rpc keypoolCheckUpdate(EmptyRequest) returns (KeypoolCheckUpdateResponse);
   // KeypoolLive: download and install a VSIX release from GitHub
   rpc keypoolInstallUpdate(KeypoolInstallUpdateRequest) returns (KeypoolInstallUpdateResponse);
-=======
   // Lists providers available from the unified SDK-backed catalog
   rpc listProviders(Empty) returns (ProviderListingsResponse);
   // Resolves model metadata for a provider through the unified SDK-backed catalog
@@ -87,7 +85,6 @@ service ModelsService {
   rpc writeProviderConfig(WriteProviderConfigRequest) returns (ProviderConfigResponse);
   // Commits a mode-specific model selection atomically with its model metadata
   rpc commitModelSelection(CommitModelSelectionRequest) returns (Empty);
->>>>>>> 94f5a47a5 (sdk migration: squashed pre-2026-06-02 work)
 }
 
 // List of VS Code LM models
@@ -232,7 +229,7 @@ message CommittedModelSelection {
 
 message ProviderReasoningPatch {
   optional bool enabled = 1;
-  optional string effort = 2;   // "none" | "low" | "medium" | "high" | "xhigh"
+  optional string effort = 2; // "none" | "low" | "medium" | "high" | "xhigh"
   optional int32 budget_tokens = 3;
 }
 
