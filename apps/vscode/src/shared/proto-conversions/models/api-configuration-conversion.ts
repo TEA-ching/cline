@@ -330,6 +330,8 @@ function convertApiProviderToProto(provider: string | undefined): ProtoApiProvid
 			return ProtoApiProvider.OPENAI_CODEX
 		case "keypoollive":
 			return ProtoApiProvider.KEYPOOLLIVE
+		case "cohere":
+			return ProtoApiProvider.COHERE
 		default:
 			return ProtoApiProvider.ANTHROPIC
 	}
@@ -424,6 +426,8 @@ export function convertProtoToApiProvider(provider: ProtoApiProvider): ApiProvid
 			return "openai-codex"
 		case ProtoApiProvider.KEYPOOLLIVE:
 			return "keypoollive"
+		case ProtoApiProvider.COHERE:
+			return "cohere"
 		default:
 			return "anthropic"
 	}
@@ -487,6 +491,7 @@ export function convertApiConfigurationToProto(config: ApiConfiguration): ProtoA
 		huggingFaceApiKey: config.huggingFaceApiKey,
 		nebiusApiKey: config.nebiusApiKey,
 		wandbApiKey: config.wandbApiKey,
+		cohereApiKey: config.cohereApiKey,
 		keypoolliveVaultUrl: config.keypoolliveVaultUrl,
 		keypoolliveSecret: config.keypoolliveSecret,
 		keypoolliveGatewaySecret: config.keypoolliveGatewaySecret,
@@ -673,6 +678,7 @@ export function convertProtoToApiConfiguration(protoConfig: ProtoApiConfiguratio
 		huggingFaceApiKey: protoConfig.huggingFaceApiKey,
 		nebiusApiKey: protoConfig.nebiusApiKey,
 		wandbApiKey: protoConfig.wandbApiKey,
+		cohereApiKey: protoConfig.cohereApiKey,
 		keypoolliveVaultUrl: protoConfig.keypoolliveVaultUrl,
 		keypoolliveSecret: protoConfig.keypoolliveSecret,
 		keypoolliveGatewaySecret: protoConfig.keypoolliveGatewaySecret,

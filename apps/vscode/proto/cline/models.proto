@@ -209,6 +209,7 @@ message ModelsApiSecrets {
   optional string aihubmix_api_key = 39;
   optional string keypoollive_secret = 40;
   optional string keypoollive_gateway_secret = 41;
+  optional string cohere_api_key = 42;
 }
 
 // API configuration options (non-secret settings)
@@ -476,6 +477,7 @@ enum ApiProvider {
   OPENAI_CODEX = 40;
   WANDB = 41;
   KEYPOOLLIVE = 42;
+  COHERE = 43;
 }
 
 enum ApiFormat {
@@ -621,6 +623,7 @@ message ModelsApiConfiguration {
   optional bool keypoollive_use_gateway = 91;
   optional string keypoollive_gateway_id = 92;
   optional bool keypoollive_gateway_cache_skip = 93;
+  optional string cohere_api_key = 94;
 
   // Plan mode configurations
   optional ApiProvider plan_mode_api_provider = 100;

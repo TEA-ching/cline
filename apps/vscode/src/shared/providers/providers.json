@@ -17,6 +17,10 @@
 			"label": "OpenAI Compatible"
 		},
 		{
+			"value": "cohere",
+			"label": "Cohere"
+		},
+		{
 			"value": "anthropic",
 			"label": "Anthropic"
 		},

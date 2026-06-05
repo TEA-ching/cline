@@ -356,6 +356,7 @@ const SECRETS_KEYS = [
 	"mcpOAuthSecrets",
 	"openai-codex-oauth-credentials", // JSON blob containing OAuth tokens for OpenAI Codex (ChatGPT subscription)
 	"wandbApiKey",
+	"cohereApiKey",
 	"keypoolliveSecret",
 	"keypoolliveGatewaySecret",
 ] as const

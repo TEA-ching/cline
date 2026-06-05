@@ -67,6 +67,8 @@ import {
 	vertexModels,
 	wandbDefaultModelId,
 	wandbModels,
+	cohereDefaultModelId,
+	cohereModels,
 	xaiDefaultModelId,
 	xaiModels,
 } from "@shared/api"
@@ -123,6 +125,8 @@ export function getModelsForProvider(
 			return nebiusModels
 		case "wandb":
 			return wandbModels
+		case "cohere":
+			return cohereModels
 		case "keypoollive":
 			return undefined
 		case "sambanova":
@@ -382,6 +386,8 @@ export function normalizeApiConfiguration(
 			return getProviderData(nebiusModels, nebiusDefaultModelId)
 		case "wandb":
 			return getProviderData(wandbModels, wandbDefaultModelId)
+		case "cohere":
+			return getProviderData(cohereModels, cohereDefaultModelId)
 		case "sambanova":
 			return getProviderData(sambanovaModels, sambanovaDefaultModelId)
 		case "cerebras":
@@ -855,6 +861,7 @@ export async function syncModeConfigurations(
 		case "xai":
 		case "nebius":
 		case "wandb":
+		case "cohere":
 		case "sambanova":
 		case "cerebras":
 		case "sapaicore":
