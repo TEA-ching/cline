@@ -114,7 +114,14 @@ function periodCutoffMs(period: UsagePeriod): number {
 	}
 }
 
-/** Returns the directory containing both NDJSON files. */
+/** 
+ * Returns the directory containing both NDJSON files. 
+ * 
+ * Location:
+ * On Windows: C:\Users\<User>\AppData\Roaming\Code\User\globalStorage\<extension-id>
+ * On macOS: ~/Library/Application Support/Code/User/globalStorage/<extension-id>
+ * On Linux: ~/.config/Code/User/globalStorage/<extension-id>
+ * */
 function getDbDir(): string {
 	const storagePath = HostProvider.get().globalStorageFsPath
 	return path.join(storagePath, "keypoollive")
