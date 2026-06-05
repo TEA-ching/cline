@@ -111,10 +111,12 @@ export class CohereHandler implements ApiHandler {
 					break
 				}
 				case "message-end": {
-					const usage = event.delta?.usage?.tokens
-					if (usage) {
-						const inputTokens = usage.inputTokens ?? 0
-						const outputTokens = usage.outputTokens ?? 0
+					// command-a* models only populate billedUnits, not tokens
+					const usageData = event.delta?.usage
+					const tokenSource = usageData?.tokens ?? usageData?.billedUnits
+					if (tokenSource) {
+						const inputTokens = tokenSource.inputTokens ?? 0
+						const outputTokens = tokenSource.outputTokens ?? 0
 						const totalCost = calculateApiCostOpenAI(model.info, inputTokens, outputTokens)
 						yield {
 							type: "usage",
