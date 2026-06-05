@@ -117,15 +117,15 @@ let mockFetch: typeof globalThis.fetch | SinonStub<any[], any> | undefined;
 export const fetch: typeof globalThis.fetch = (() => {
 	// Note: Don't use Logger here; it may not be initialized.
 
-	let baseFetch: typeof globalThis.fetch = globalThis.fetch;
+	let baseFetch: typeof globalThis.fetch = globalThis.fetch
 	// Note: See esbuild.mjs, process.env.IS_STANDALONE is statically rewritten
 	// to "true" or "false" (as strings) in the JetBrains/CLI build.
 	// We must use explicit string comparison because "false" is truthy in JS.
 	if (process.env.IS_STANDALONE === "true") {
 		// Configure undici with ProxyAgent
-		const agent = new EnvHttpProxyAgent({});
-		setGlobalDispatcher(agent);
-		baseFetch = undiciFetch as any as typeof globalThis.fetch;
+		const agent = new EnvHttpProxyAgent({})
+		setGlobalDispatcher(agent)
+		baseFetch = undiciFetch as any as typeof globalThis.fetch
 	}
 
 	// Create a fetch function with the preconnect method
@@ -166,17 +166,17 @@ export function mockFetchForTesting<T>(
 	mockFetch = theFetch;
 	let willResetSync = true;
 	try {
-		const result = callback();
+		const result = callback()
 		if (result instanceof Promise) {
-			willResetSync = false;
+			willResetSync = false
 			return result.finally(() => {
-				mockFetch = originalMockFetch;
-			}) as typeof result;
+				mockFetch = originalMockFetch
+			}) as typeof result
 		}
-		return result;
+		return result
 	} finally {
 		if (willResetSync) {
-			mockFetch = originalMockFetch;
+			mockFetch = originalMockFetch
 		}
 	}
 }
@@ -198,17 +198,17 @@ export function mockFetchForTesting<T>(
  * ```
  */
 export function getAxiosSettings(): {
-	adapter?: any;
-	fetch?: typeof globalThis.fetch;
-	maxBodyLength?: number;
-	maxContentLength?: number;
+	adapter?: any
+	fetch?: typeof globalThis.fetch
+	maxBodyLength?: number
+	maxContentLength?: number
 } {
 	return {
 		adapter: "fetch" as any,
 		fetch, // Use our configured fetch
 		maxBodyLength: Number.POSITIVE_INFINITY,
 		maxContentLength: Number.POSITIVE_INFINITY,
-	};
+	}
 }
 
 /**

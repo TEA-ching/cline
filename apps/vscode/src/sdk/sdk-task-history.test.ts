@@ -2,6 +2,8 @@ import type { SessionHistoryRecord } from "@cline/core"
 import type { HistoryItem } from "@shared/HistoryItem"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { McpHub } from "@/services/mcp/McpHub"
+import type { TelemetryService } from "@/services/telemetry/TelemetryService"
+import { readApiConversationHistory, readTaskHistory } from "./legacy-state-reader"
 import { sdkMessagesToClineMessages } from "./message-translator"
 import type { SdkSessionLifecycle } from "./sdk-session-lifecycle"
 import { SdkTaskHistory, sessionHistoryRecordToHistoryItem } from "./sdk-task-history"
@@ -26,6 +28,13 @@ vi.mock("@/utils/fs", () => ({
 	fileExistsAtPath: vi.fn(() => Promise.resolve(false)),
 }))
 
+const legacyStateReaderMock = vi.hoisted(() => ({
+	taskHistory: [] as HistoryItem[],
+	taskHistoryByDataDir: new Map<string | undefined, HistoryItem[]>(),
+	apiConversationHistory: [] as unknown[],
+	apiConversationHistoryByDataDir: new Map<string | undefined, unknown[]>(),
+}))
+
 vi.mock("@/shared/services/Logger", () => ({
 	Logger: {
 		error: vi.fn(),
@@ -34,8 +43,31 @@ vi.mock("@/shared/services/Logger", () => ({
 	},
 }))
 
+vi.mock("./legacy-state-reader", () => ({
+	readTaskHistory: vi.fn(
+		(dataDir?: string) => legacyStateReaderMock.taskHistoryByDataDir.get(dataDir) ?? legacyStateReaderMock.taskHistory,
+	),
+	readApiConversationHistory: vi.fn(
+		(_taskId: string, dataDir?: string) =>
+			legacyStateReaderMock.apiConversationHistoryByDataDir.get(dataDir) ?? legacyStateReaderMock.apiConversationHistory,
+	),
+}))
+
+vi.mock("./cline-session-factory", async (importOriginal) => ({
+	...(await importOriginal<typeof import("./cline-session-factory")>()),
+	buildSessionConfig: vi.fn(async ({ cwd, workspaceRoot, mode }) => ({
+		cwd,
+		workspaceRoot,
+		mode,
+	})),
+}))
+
 describe("SdkTaskHistory", () => {
 	beforeEach(() => {
+		legacyStateReaderMock.taskHistory = []
+		legacyStateReaderMock.taskHistoryByDataDir.clear()
+		legacyStateReaderMock.apiConversationHistory = []
+		legacyStateReaderMock.apiConversationHistoryByDataDir.clear()
 		vi.clearAllMocks()
 	})
 
@@ -141,7 +173,14 @@ describe("SdkTaskHistory", () => {
 			},
 			{
 				role: "user",
-				content: [{ type: "tool_result", tool_use_id: "toolu_1", name: "editor", content: rawToolResult }],
+				content: [
+					{
+						type: "tool_result",
+						tool_use_id: "toolu_1",
+						name: "editor",
+						content: rawToolResult,
+					},
+				],
 			},
 			{ role: "assistant", content: [{ type: "text", text: "Done!" }] },
 		])
@@ -177,7 +216,10 @@ describe("SdkTaskHistory", () => {
 		const record = makeSessionRecord("task-1")
 		const { history } = makeHistory([record])
 
-		await expect(history.findHistoryItem("task-1")).resolves.toMatchObject({ id: "task-1", task: "task-1" })
+		await expect(history.findHistoryItem("task-1")).resolves.toMatchObject({
+			id: "task-1",
+			task: "task-1",
+		})
 	})
 
 	it("returns undefined when a task is missing from SDK history", async () => {
@@ -187,9 +229,15 @@ describe("SdkTaskHistory", () => {
 	})
 
 	it("updates SDK session metadata for task history changes", async () => {
-		const existing = makeSessionRecord("task-1", { metadata: { existing: true } })
+		const existing = makeSessionRecord("task-1", {
+			metadata: { existing: true },
+		})
 		const { history, getSession, listHistory, updateSession } = makeHistory([existing])
-		const updatedItem = makeHistoryItem("task-1", { task: "new title", tokensIn: 5, totalCost: 0.02 })
+		const updatedItem = makeHistoryItem("task-1", {
+			task: "new title",
+			tokensIn: 5,
+			totalCost: 0.02,
+		})
 
 		await history.updateTaskHistoryItem(updatedItem)
 
@@ -200,7 +248,12 @@ describe("SdkTaskHistory", () => {
 			expect.objectContaining({
 				prompt: "new title",
 				title: "new title",
-				metadata: expect.objectContaining({ existing: true, title: "new title", tokensIn: 5, totalCost: 0.02 }),
+				metadata: expect.objectContaining({
+					existing: true,
+					title: "new title",
+					tokensIn: 5,
+					totalCost: 0.02,
+				}),
 			}),
 		)
 	})
@@ -211,6 +264,128 @@ describe("SdkTaskHistory", () => {
 		await history.deleteTaskFromState("task-1")
 
 		expect(deleteSession).toHaveBeenCalledWith("task-1")
+	})
+
+	it("emits telemetry when migrating a legacy task to an SDK session", async () => {
+		vi.spyOn(Date, "now").mockReturnValue(123_456)
+		legacyStateReaderMock.taskHistory = [
+			makeHistoryItem("legacy-task", {
+				task: "legacy prompt",
+				isFavorited: true,
+				tokensIn: 10,
+				tokensOut: 20,
+				totalCost: 0.03,
+				cwdOnTaskInitialization: "/legacy/repo",
+			}),
+		]
+		legacyStateReaderMock.apiConversationHistory = [
+			{ role: "user", content: "legacy prompt" },
+			{ role: "assistant", content: "legacy answer" },
+		]
+		const telemetry = makeTelemetry()
+		const { history, startSession } = makeHistory([], telemetry)
+
+		await history.getClineMessages("legacy-task")
+
+		expect(startSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				config: expect.objectContaining({
+					sessionId: "legacy-task",
+					cwd: "/legacy/repo",
+				}),
+				initialMessages: expect.arrayContaining([
+					expect.objectContaining({ role: "user" }),
+					expect.objectContaining({ role: "assistant" }),
+				]),
+				sessionMetadata: expect.objectContaining({
+					migratedFromLegacyTask: true,
+					title: "legacy prompt",
+					isFavorited: true,
+				}),
+			}),
+		)
+		expect(telemetry.captureLegacyTaskMigration).toHaveBeenCalledWith(
+			expect.objectContaining({
+				taskId: "legacy-task",
+				outcome: "success",
+				reason: "migrated",
+				legacyApiHistoryLength: 2,
+				convertedMessageCount: 2,
+				hasFavorite: true,
+				hasCost: true,
+				hasTokenUsage: true,
+				hasCwd: true,
+			}),
+		)
+	})
+
+	it("emits backlog telemetry when legacy tasks are still pending migration", async () => {
+		legacyStateReaderMock.taskHistory = [makeHistoryItem("legacy-task", { task: "legacy prompt" })]
+		const telemetry = makeTelemetry()
+		const { history } = makeHistory(
+			[
+				makeSessionRecord("sdk-task"),
+				makeSessionRecord("migrated", {
+					metadata: { migratedFromLegacyTask: true },
+				}),
+			],
+			telemetry,
+		)
+
+		await history.listHistory({ hydrate: false })
+
+		expect(telemetry.captureLegacyTaskMigrationBacklog).toHaveBeenCalledWith({
+			pendingLegacyTaskCount: 1,
+			migratedSdkTaskCount: 1,
+			visibleSdkTaskCount: 2,
+			visibleTaskCount: 3,
+		})
+	})
+
+	it("includes legacy tasks from VS Code extension storage", async () => {
+		legacyStateReaderMock.taskHistory = [makeHistoryItem("cline-dir-task", { task: "~/.cline task" })]
+		legacyStateReaderMock.taskHistoryByDataDir.set("/legacy/globalStorage", [
+			makeHistoryItem("extension-storage-task", {
+				task: "extension storage task",
+			}),
+		])
+		const { history } = makeHistory([], undefined, "/legacy/globalStorage")
+
+		const result = await history.listHistory({ hydrate: false })
+
+		expect(readTaskHistory).toHaveBeenCalledWith(undefined)
+		expect(readTaskHistory).toHaveBeenCalledWith("/legacy/globalStorage")
+		expect(result.map((item) => item.sessionId)).toEqual(["cline-dir-task", "extension-storage-task"])
+	})
+
+	it("migrates legacy tasks using API history from VS Code extension storage", async () => {
+		legacyStateReaderMock.taskHistoryByDataDir.set("/legacy/globalStorage", [
+			makeHistoryItem("extension-storage-task", {
+				task: "extension storage prompt",
+				cwdOnTaskInitialization: "/legacy/repo",
+			}),
+		])
+		legacyStateReaderMock.apiConversationHistoryByDataDir.set("/legacy/globalStorage", [
+			{ role: "user", content: "extension storage prompt" },
+			{ role: "assistant", content: "extension storage answer" },
+		])
+		const { history, startSession } = makeHistory([], undefined, "/legacy/globalStorage")
+
+		await history.getClineMessages("extension-storage-task")
+
+		expect(readApiConversationHistory).toHaveBeenCalledWith("extension-storage-task", "/legacy/globalStorage")
+		expect(startSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				config: expect.objectContaining({
+					sessionId: "extension-storage-task",
+					cwd: "/legacy/repo",
+				}),
+				sessionMetadata: expect.objectContaining({
+					migratedFromLegacyTask: true,
+					title: "extension storage prompt",
+				}),
+			}),
+		)
 	})
 
 	it("updates usage for an existing SDK task", async () => {
@@ -234,7 +409,11 @@ describe("SdkTaskHistory", () => {
 		expect(updateSession).toHaveBeenCalledWith(
 			"task-1",
 			expect.objectContaining({
-				metadata: expect.objectContaining({ tokensIn: 110, tokensOut: 220, totalCost: 0.04 }),
+				metadata: expect.objectContaining({
+					tokensIn: 110,
+					tokensOut: 220,
+					totalCost: 0.04,
+				}),
 			}),
 		)
 	})
@@ -277,16 +456,32 @@ function makeSessionRecord(id: string, overrides: Partial<SessionHistoryRecord> 
 	}
 }
 
-function makeHistory(records: SessionHistoryRecord[]) {
+function makeTelemetry(): TelemetryService {
+	return {
+		safeCapture: vi.fn((fn: () => void) => fn()),
+		captureLegacyTaskMigration: vi.fn(),
+		captureLegacyTaskMigrationBacklog: vi.fn(),
+	} as unknown as TelemetryService
+}
+
+function makeHistory(records: SessionHistoryRecord[], telemetry?: TelemetryService, legacyExtensionStorageDir?: string) {
 	let currentRecords = records
 	const updateSession = vi.fn(
 		async (
 			sessionId: string,
-			updates: { prompt?: string | null; metadata?: Record<string, unknown> | null; title?: string | null },
+			updates: {
+				prompt?: string | null
+				metadata?: Record<string, unknown> | null
+				title?: string | null
+			},
 		) => {
 			currentRecords = currentRecords.map((record) =>
 				record.sessionId === sessionId
-					? { ...record, prompt: updates.prompt ?? record.prompt, metadata: updates.metadata ?? record.metadata }
+					? {
+							...record,
+							prompt: updates.prompt ?? record.prompt,
+							metadata: updates.metadata ?? record.metadata,
+						}
 					: record,
 			)
 			return { updated: true }
@@ -299,10 +494,15 @@ function makeHistory(records: SessionHistoryRecord[]) {
 	const getSession = vi.fn(async (sessionId: string) => currentRecords.find((record) => record.sessionId === sessionId))
 	const listHistory = vi.fn(async () => currentRecords)
 	const readMessages = vi.fn(async () => [])
+	const startSession = vi.fn(async (input: { config: { sessionId?: string } }) => {
+		currentRecords = [makeSessionRecord(input.config.sessionId ?? "started"), ...currentRecords]
+		return { sessionId: input.config.sessionId }
+	})
 	const host = {
 		get: getSession,
 		listHistory,
 		readMessages,
+		start: startSession,
 		update: updateSession,
 		delete: deleteSession,
 	} as unknown as VscodeSessionHost
@@ -312,7 +512,16 @@ function makeHistory(records: SessionHistoryRecord[]) {
 	const history = new SdkTaskHistory({
 		mcpHub: {} as McpHub,
 		sessions,
+		telemetry,
+		legacyExtensionStorageDir,
 	})
 
-	return { history, getSession, listHistory, updateSession, deleteSession }
+	return {
+		history,
+		getSession,
+		listHistory,
+		updateSession,
+		deleteSession,
+		startSession,
+	}
 }

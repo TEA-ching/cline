@@ -1,5 +1,7 @@
 import { Int64Request } from "@shared/proto/cline/common"
 import { CheckIcon } from "lucide-react"
+import { memo } from "react"
+import { cn } from "@/lib/utils"
 import { TaskServiceClient } from "@/services/grpc-client"
 import { CopyButton } from "../common/CopyButton"
 import SuccessButton from "../common/SuccessButton"
