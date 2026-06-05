@@ -1,8 +1,5 @@
 import { Int64Request } from "@shared/proto/cline/common"
 import { CheckIcon } from "lucide-react"
-import { memo } from "react"
-import { PLATFORM_CONFIG, PlatformType } from "@/config/platform.config"
-import { cn } from "@/lib/utils"
 import { TaskServiceClient } from "@/services/grpc-client"
 import { CopyButton } from "../common/CopyButton"
 import SuccessButton from "../common/SuccessButton"
@@ -18,8 +15,6 @@ interface CompletionOutputRowProps {
 	showActionRow?: boolean
 	seeNewChangesDisabled: boolean
 	setSeeNewChangesDisabled: (value: boolean) => void
-	explainChangesDisabled: boolean
-	setExplainChangesDisabled: (value: boolean) => void
 	messageTs: number
 }
 
@@ -31,8 +26,6 @@ export const CompletionOutputRow = memo(
 		showActionRow,
 		seeNewChangesDisabled,
 		setSeeNewChangesDisabled,
-		explainChangesDisabled,
-		setExplainChangesDisabled,
 		messageTs,
 		handleQuoteClick,
 	}: CompletionOutputRowProps) => {
@@ -60,10 +53,8 @@ export const CompletionOutputRow = memo(
 				{/* Action Buttons */}
 				{showActionRow && (
 					<CompletionOutputActionRow
-						explainChangesDisabled={explainChangesDisabled}
 						messageTs={messageTs}
 						seeNewChangesDisabled={seeNewChangesDisabled}
-						setExplainChangesDisabled={setExplainChangesDisabled}
 						setSeeNewChangesDisabled={setSeeNewChangesDisabled}
 					/>
 				)}
@@ -78,14 +69,10 @@ const CompletionOutputActionRow = memo(
 	({
 		seeNewChangesDisabled,
 		setSeeNewChangesDisabled,
-		explainChangesDisabled,
-		setExplainChangesDisabled,
 		messageTs,
 	}: {
 		seeNewChangesDisabled: boolean
 		setSeeNewChangesDisabled: (value: boolean) => void
-		explainChangesDisabled: boolean
-		setExplainChangesDisabled: (value: boolean) => void
 		messageTs: number
 	}) => {
 		return (
@@ -107,28 +94,6 @@ const CompletionOutputActionRow = memo(
 					<i className="codicon codicon-new-file" style={{ marginRight: 6 }} />
 					View Changes
 				</SuccessButton>
-
-				{PLATFORM_CONFIG.type === PlatformType.VSCODE && (
-					<SuccessButton
-						disabled={explainChangesDisabled}
-						onClick={() => {
-							setExplainChangesDisabled(true)
-							TaskServiceClient.explainChanges({
-								metadata: {},
-								messageTs,
-							}).catch((err) => {
-								console.error("Failed to explain changes:", err)
-								setExplainChangesDisabled(false)
-							})
-						}}
-						style={{
-							cursor: explainChangesDisabled ? "wait" : "pointer",
-							width: "100%",
-						}}>
-						<i className="codicon codicon-comment-discussion" style={{ marginRight: 6 }} />
-						{explainChangesDisabled ? "Explaining..." : "Explain Changes"}
-					</SuccessButton>
-				)}
 			</div>
 		)
 	},
