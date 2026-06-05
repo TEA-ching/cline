@@ -319,6 +319,18 @@
 				]
 			},
 			{
+				"tab": "Changelog",
+				"icon": "clock-rotate-left",
+				"groups": [
+					{
+						"group": "Changelog",
+						"pages": [
+							"changelog/overview"
+						]
+					}
+				]
+			},
+			{
 				"tab": "API",
 				"icon": "code",
 				"groups": [

@@ -1,0 +1,43 @@
+---
+title: "Changelog"
+sidebarTitle: "Changelog"
+description: "What's new in Cline. Product updates, improvements, and fixes."
+---
+
+<Update label="Week of June 1, 2026">
+
+## New features
+
+- **Cohere and Mistral AI protocol support.** You can now route Cline through Cohere and Mistral AI native protocols, including support for Cohere Command A. Configure them alongside your existing providers in [Models & Providers](/getting-started/authorizing-with-cline).
+- **Cline Hub dashboard bundled with the CLI.** Run `cline dashboard` to launch the Cline Hub dashboard locally — it's now bundled with the CLI, so there's no separate install step.
+- **Slack socket mode for connectors.** The CLI Slack connector now supports socket mode, making it easier to run Cline behind firewalls or without a public webhook URL. See [Connectors](/cli/connectors).
+- **`--allowed-user-id` flag for the Telegram connector.** Restrict who can talk to your Cline Telegram bot by passing one or more allowed user IDs when starting the connector.
+- **Plugin uninstall.** A new `cline plugin uninstall` command removes installed plugins cleanly. See [Plugins](/customization/plugins).
+- **Install official plugins by slug.** Install Cline's official plugins by short slug (for example, `cline plugin install <slug>`) instead of typing the full registry path.
+- **Skills bundled with plugins.** Plugins can now ship [skills](/customization/skills) alongside their tools and hooks, so installing a plugin can extend Cline's task-specific knowledge in one step.
+- **Custom registered model handlers in the agent runtime.** Custom model providers registered through the SDK now route through the agent runtime, making it simpler to plug in your own LLM backends. See [Model providers](/sdk/model-providers).
+
+## Updates
+
+- **Fireworks AI model registry refreshed** to match the current Fireworks platform offerings.
+- **Sambanova models updated** with the latest available models.
+- **`baseUrl` allowed on Anthropic-compatible providers.** Vendor-type providers that share the Anthropic schema now accept a custom `baseUrl`, useful for proxies and self-hosted gateways.
+- **Cline provider migration improved** for a smoother upgrade path when switching to the Cline provider.
+- **Plugin skills grouped in settings** so it's easier to see which skills come from which plugin.
+- **Skills appear in slash-command autocomplete**, so you can discover and trigger them from the prompt bar.
+- **Agent storage guidance updated** with clearer recommendations on where Cline keeps agent state.
+
+## Fixes
+
+- **Read-files tool input validation** is more permissive and accepts the documented input shapes without rejecting valid requests.
+- **MCP OAuth errors are now visible in the TUI** instead of failing silently, making OAuth setup easier to debug.
+- **Skills plugin capability** is recognized correctly when declared by a plugin.
+- **Stale interactive CLI sessions** now recover gracefully, and shutdown races during exit are suppressed.
+- **Abort indicator** in the CLI clears immediately when a task is canceled.
+- **Hub daemon stays alive** when an SDK runtime aborts, so subsequent sessions reconnect cleanly.
+- **Slack channel mentions** are normalized to the original post thread so replies land in the right place.
+- **CLI auto-updates** now use `npm update` for more reliable upgrades.
+- **Installed plugin wrappers** are named from their source, fixing collisions when multiple plugins share a command name.
+
+</Update>
+
