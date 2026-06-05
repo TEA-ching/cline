@@ -534,6 +534,7 @@
 		"chokidar": "^4.0.1",
 		"chrome-launcher": "^1.1.2",
 		"clone-deep": "^4.0.1",
+		"cohere-ai": "8.0.0",
 		"default-shell": "^2.2.0",
 		"diff": "8.0.4",
 		"exceljs": "^4.4.0",

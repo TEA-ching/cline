@@ -69,6 +69,8 @@ import {
 	wandbModels,
 	xaiDefaultModelId,
 	xaiModels,
+	cohereDefaultModelId,
+	cohereModels,
 } from "@shared/api"
 import { Mode } from "@shared/storage/types"
 import * as reasoningSupport from "@shared/utils/reasoning-support"
@@ -122,6 +124,8 @@ export function getModelsForProvider(
 			return nebiusModels
 		case "wandb":
 			return wandbModels
+		case "cohere":
+			return cohereModels
 		case "sambanova":
 			return sambanovaModels
 		case "cerebras":
@@ -379,6 +383,8 @@ export function normalizeApiConfiguration(
 			return getProviderData(nebiusModels, nebiusDefaultModelId)
 		case "wandb":
 			return getProviderData(wandbModels, wandbDefaultModelId)
+		case "cohere":
+			return getProviderData(cohereModels, cohereDefaultModelId)
 		case "sambanova":
 			return getProviderData(sambanovaModels, sambanovaDefaultModelId)
 		case "cerebras":
@@ -834,6 +840,7 @@ export async function syncModeConfigurations(
 		case "xai":
 		case "nebius":
 		case "wandb":
+		case "cohere":
 		case "sambanova":
 		case "cerebras":
 		case "sapaicore":

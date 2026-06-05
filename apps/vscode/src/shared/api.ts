@@ -44,6 +44,7 @@ export type ApiProvider =
 	| "hicap"
 	| "nousResearch"
 	| "wandb"
+	| "cohere"
 
 export const DEFAULT_API_PROVIDER = "openrouter" as ApiProvider
 
@@ -5273,5 +5274,41 @@ export const nousResearchModels = {
 		outputPrice: 0.2,
 		description:
 			"This incarnation of Hermes 4 balances scale and size. It handles complex reasoning tasks, while staying fast and cost effective. A versatile choice for many use cases.",
+	},
+} as const satisfies Record<string, ModelInfo>
+
+// https://docs.cohere.com/docs/models
+export type CohereModelId = keyof typeof cohereModels
+export const cohereDefaultModelId: CohereModelId = "command-a-03-2025"
+export const cohereModels = {
+	"command-a-plus-05-2026": {
+		maxTokens: 64_000,
+		contextWindow: 128_000,
+		supportsImages: true,
+		supportsPromptCache: false,
+		inputPrice: 2.5,
+		outputPrice: 10.0,
+		description:
+			"Cohere's most capable model optimised for complex tasks including reasoning, summarisation, and coding. Supports tool use.",
+	},
+	"command-a-reasoning-08-2025": {
+		maxTokens: 32_000,
+		contextWindow: 256_000,
+		supportsImages: false,
+		supportsPromptCache: false,
+		supportsReasoning: true,
+		inputPrice: 2.5,
+		outputPrice: 10.0,
+		description:
+			"Command A Reasoning is Cohere’s first reasoning model to date, excelling at real world enterprise tasks including tool use.",
+	},
+	"command-a-03-2025": {
+		maxTokens: 8_000,
+		contextWindow: 256_000,
+		supportsImages: false,
+		supportsPromptCache: false,
+		inputPrice: 2.5,
+		outputPrice: 10,
+		description: "Command A is Cohere’s most performant model to date, excelling at real world enterprise tasks including tool use.",
 	},
 } as const satisfies Record<string, ModelInfo>
