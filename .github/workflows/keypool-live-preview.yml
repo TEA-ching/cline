@@ -182,13 +182,16 @@ jobs:
         shell: bash
 
       - name: Build and Package VSIX
-        # vsce triggers vscode:prepublish → `npm run rebuild:native && npm run package`
-        # rebuild:native reads VSCODE_ELECTRON_VERSION and TARGET_ARCH.
+        # @electron/rebuild downloads the Electron headers for VSCODE_ELECTRON_VERSION
+        # and compiles native modules (better-sqlite3) against them.
+        # prebuild-install lacks a prebuilt for recent Electron releases; its node-gyp
+        # fallback compiles against the system Node.js (NMV 127) instead of Electron,
+        # causing a NODE_MODULE_VERSION mismatch at runtime.
         env:
           VSCODE_ELECTRON_VERSION: "42.2.0"
           TARGET_ARCH: ${{ matrix.native_arch }}
         run: |
-          node scripts/rebuild-native-for-vscode.mjs
+          npx --yes @electron/rebuild -f -v "$VSCODE_ELECTRON_VERSION" -a "$TARGET_ARCH"
           npx vsce package \
             --target ${{ matrix.platform }}-${{ matrix.arch }} \
             --allow-package-secrets sendgrid \
