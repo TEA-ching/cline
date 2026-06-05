@@ -185,9 +185,10 @@ jobs:
         # vsce triggers vscode:prepublish → `npm run rebuild:native && npm run package`
         # rebuild:native reads VSCODE_ELECTRON_VERSION and TARGET_ARCH.
         env:
-          VSCODE_ELECTRON_VERSION: "39.8.8"
+          VSCODE_ELECTRON_VERSION: "42.2.0"
           TARGET_ARCH: ${{ matrix.native_arch }}
         run: |
+          node scripts/rebuild-native-for-vscode.mjs
           npx vsce package \
             --target ${{ matrix.platform }}-${{ matrix.arch }} \
             --allow-package-secrets sendgrid \

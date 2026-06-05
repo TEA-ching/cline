@@ -318,7 +318,7 @@ The `rebuild:native` step automatically detects the Electron version from your
 installed VS Code (macOS / Windows / Linux). You can also override it explicitly:
 
 ```bash
-VSCODE_ELECTRON_VERSION=39.8.8 npm run package:vsix
+VSCODE_ELECTRON_VERSION=42.2.0 npm run package:vsix
 ```
 
 > **Note on `better-sqlite3`:** Key usage statistics are persisted to a local
