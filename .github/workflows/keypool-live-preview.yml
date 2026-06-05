@@ -181,12 +181,58 @@ jobs:
         run: npm install
         shell: bash
 
+      - name: Patch better-sqlite3 for Electron 42 V8 API (PR#1475)
+        # better-sqlite3 ≤12.10.0 uses deprecated v8::External API (no ExternalPointerTypeTag)
+        # that was removed in Electron 42 / V8 13.x. Apply the upstream fix from
+        # https://github.com/WiseLibs/better-sqlite3/pull/1475 until it lands in a release.
+        working-directory: apps/vscode/node_modules/better-sqlite3
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # 1. macros.cpp — add EXTERNAL_NEW/EXTERNAL_VALUE compat macros + update OnlyAddon
+          f = Path('src/util/macros.cpp')
+          text = f.read_text()
+          old = '#define OnlyAddon static_cast<Addon*>(info.Data().As<v8::External>()->Value())'
+          new = (
+              '#if defined(NODE_MODULE_VERSION) && NODE_MODULE_VERSION >= 146\n'
+              '#define EXTERNAL_NEW(isolate, value) v8::External::New((isolate), (value), 0)\n'
+              '#define EXTERNAL_VALUE(value) (value)->Value(0)\n'
+              '#else\n'
+              '#define EXTERNAL_NEW(isolate, value) v8::External::New((isolate), (value))\n'
+              '#define EXTERNAL_VALUE(value) (value)->Value()\n'
+              '#endif\n'
+              '#define OnlyAddon static_cast<Addon*>(EXTERNAL_VALUE(info.Data().As<v8::External>()))'
+          )
+          assert old in text, f'macros.cpp: expected string not found — patch may already be applied or source changed'
+          f.write_text(text.replace(old, new, 1))
+          print('  Patched src/util/macros.cpp')
+
+          # 2. better_sqlite3.cpp — use EXTERNAL_NEW instead of v8::External::New
+          f = Path('src/better_sqlite3.cpp')
+          text = f.read_text()
+          old = 'v8::Local<v8::External> data = v8::External::New(isolate, addon);'
+          new = 'v8::Local<v8::External> data = EXTERNAL_NEW(isolate, addon);'
+          assert old in text, f'better_sqlite3.cpp: expected string not found'
+          f.write_text(text.replace(old, new, 1))
+          print('  Patched src/better_sqlite3.cpp')
+
+          # 3. helpers.cpp — fix SetNativeDataProperty ambiguity (0 → nullptr as setter)
+          f = Path('src/util/helpers.cpp')
+          text = f.read_text()
+          old = '\t\t0,\n\t\tdata\n\t);\n}'
+          new = '\t\tnullptr,\n\t\tdata\n\t);\n}'
+          assert old in text, f'helpers.cpp: expected string not found'
+          f.write_text(text.replace(old, new, 1))
+          print('  Patched src/util/helpers.cpp')
+
+          print('better-sqlite3 source patched for Electron 42 V8 API.')
+          PY
+
       - name: Build and Package VSIX
-        # @electron/rebuild downloads the Electron headers for VSCODE_ELECTRON_VERSION
-        # and compiles native modules (better-sqlite3) against them.
-        # prebuild-install lacks a prebuilt for recent Electron releases; its node-gyp
-        # fallback compiles against the system Node.js (NMV 127) instead of Electron,
-        # causing a NODE_MODULE_VERSION mismatch at runtime.
+        # @electron/rebuild downloads Electron headers for VSCODE_ELECTRON_VERSION and
+        # compiles better-sqlite3 from the patched source against the correct ABI.
         env:
           VSCODE_ELECTRON_VERSION: "42.2.0"
           TARGET_ARCH: ${{ matrix.native_arch }}
