@@ -38,6 +38,7 @@ export type ProviderFamily =
 	| "vertex"
 	| "bedrock"
 	| "mistral"
+	| "cohere"
 	| "claude-code"
 	| "openai-codex"
 	| "opencode"
@@ -942,6 +943,50 @@ export const BUILTIN_SPECS: BuiltinSpec[] = [
 		apiKeyEnv: ["MISTRAL_API_KEY"],
 		modelsFactory: () => ({}),
 		defaults: { baseUrl: "https://api.mistral.ai/v1" },
+	},
+	{
+		id: "cohere",
+		name: "Cohere",
+		description:
+			"Cohere Command A models for enterprise tasks including tool use and reasoning",
+		family: "cohere",
+		capabilities: ["tools", "reasoning"],
+		defaultModelId: "command-a-03-2025",
+		apiKeyEnv: ["COHERE_API_KEY"],
+		docsUrl: "https://docs.cohere.com/docs/models",
+		modelsFactory: () => ({
+			"command-a-plus-05-2026": {
+				id: "command-a-plus-05-2026",
+				name: "Command A Plus",
+				maxTokens: 64_000,
+				contextWindow: 128_000,
+				supportsImages: true,
+				supportsPromptCache: false,
+				inputPrice: 2.5,
+				outputPrice: 10.0,
+			},
+			"command-a-reasoning-08-2025": {
+				id: "command-a-reasoning-08-2025",
+				name: "Command A Reasoning",
+				maxTokens: 32_000,
+				contextWindow: 256_000,
+				supportsImages: false,
+				supportsPromptCache: false,
+				supportsReasoning: true,
+				inputPrice: 2.5,
+				outputPrice: 10.0,
+			},
+			"command-a-03-2025": {
+				id: "command-a-03-2025",
+				name: "Command A",
+				maxTokens: 8_000,
+				contextWindow: 256_000,
+				supportsImages: false,
+				supportsPromptCache: false,
+				inputPrice: 2.5,
+				outputPrice: 10.0,
+			},
+		}),
 	},
 	{
 		id: "minimax",

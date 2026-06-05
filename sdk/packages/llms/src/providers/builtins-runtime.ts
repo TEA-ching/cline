@@ -47,6 +47,10 @@ async function loadFamilyFactory(
 				const module = await import("./ai-sdk");
 				return module.createMistralProvider;
 			}
+			case "cohere": {
+				const module = await import("./ai-sdk");
+				return module.createCohereProvider;
+			}
 			case "claude-code": {
 				const module = await import("./ai-sdk");
 				return module.createClaudeCodeProvider;
