@@ -13,6 +13,7 @@ export type AiSdkProviderOptionsTarget =
 	| "vertex"
 	| "bedrock"
 	| "mistral"
+	| "cohere"
 	| "claude-code"
 	| "openai-codex"
 	| "opencode"
