@@ -1,0 +1,55 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"lib": ["ES2022"],
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"paths": {
+			"@sctg/cline-agents": ["./packages/agents/src/index.ts"],
+			"@sctg/cline-agents/*": [
+				"./packages/agents/src/*",
+				"./packages/agents/src/*/index.ts"
+			],
+			"@sctg/cline-cline-hub": ["./apps/cline-hub/src/server.ts"],
+			"@sctg/cline-core": ["./packages/core/src/index.ts"],
+			"@sctg/cline-core/hub": ["./packages/core/src/hub/index.ts"],
+			"@sctg/cline-core/hub/daemon-entry": [
+				"./packages/core/src/hub/daemon/entry.ts"
+			],
+			"@sctg/cline-core/telemetry": [
+				"./packages/core/src/services/telemetry/index.ts"
+			],
+			"@sctg/cline-core/*": [
+				"./packages/core/src/*",
+				"./packages/core/src/*/index.ts"
+			],
+			"@sctg/cline-llms": ["./packages/llms/src/index.ts"],
+			"@sctg/cline-llms/browser": ["./packages/llms/src/index.browser.ts"],
+			"@sctg/cline-sdk": ["./packages/sdk/src/index.ts"],
+			"@sctg/cline-shared": ["./packages/shared/src/index.ts"],
+			"@sctg/cline-shared/automation": [
+				"./packages/shared/src/automation/index.ts"
+			],
+			"@sctg/cline-shared/browser": ["./packages/shared/src/index.browser.ts"],
+			"@sctg/cline-shared/db": ["./packages/shared/src/db/index.ts"],
+			"@sctg/cline-shared/storage": ["./packages/shared/src/storage/index.ts"],
+			"@sctg/cline-shared/types": ["./packages/shared/src/types/index.ts"],
+			"@sctg/cline-shared/*": [
+				"./packages/shared/src/*",
+				"./packages/shared/src/*/index.ts"
+			]
+		}
+	},
+	"include": ["**/*.ts", "**/*.tsx", "**/bun.mts", "../vitest.config.ts"],
+	"exclude": [
+		"node_modules",
+		"**/dist/**",
+		"**/.next/**",
+		"packages/gateway/**"
+	]
+}

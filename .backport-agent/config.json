@@ -1,0 +1,78 @@
+{
+    "command": "npx @sctg/backport-agent@latest --verbose --config .backport-agent/config.json --backport-customizations .backport-agent/customizations.yaml --keypool-vault-url $KEYPOOL_VAULT_URL --keypool-live-secret $KEYPOOL_LIVE_SECRET",
+    "report": {
+        "destination": ".backport-agent"
+    },
+    "auth": {
+        "sshKeyPath": "~/.ssh/id_ed25519_aeltorio"
+    },
+    "upstream": {
+        "url": "https://github.com/cline/cline.git",
+        "repo": "cline/cline.git",
+        "branch": "main",
+        "remote": "upstream"
+    },
+    "fork": {
+        "url": "git@github.com:TEA-ching/cline.git",
+        "repo": "TEA-ching/cline",
+        "branch": "keypool-live",
+        "remote": "origin"
+    },
+    "workingDir": "../tea-ching-cline",
+    "sync": {
+        "maxCommitsPerRun": 10,
+        "initialFetchDepth": 200,
+        "maxFetchDepth": 2000,
+        "batchSize": 3,
+        "dryRun": false,
+        "createPullRequest": false,
+        "branchPrefix": "sync/upstream-",
+        "prNumberMatching": {
+            "enabled": true,
+            "minSubjectSimilarity": 0.4
+        }
+    },
+    "models": {
+        "provider": "keypoollive",
+        "apiKey": "auto",
+        "fast": "mistral/devstral-latest",
+        "specialist": "mistral/mistral-medium-latest",
+        "powerful": "openai/gpt-5.5"
+    },
+    "ai": {
+        "_comment": "AI quality guardrails — all fields are optional (defaults shown). Remove this section to use defaults.",
+        "minAutoApplyConfidence": "medium",
+        "_comment_minAutoApplyConfidence": "Minimum AI confidence level to auto-apply a conflict resolution without human review. \"high\" = only apply when the AI is very certain.",
+        "requireReviewOnSemanticRisk": false,
+        "_comment_requireReviewOnSemanticRisk": "When true, any commit with semantic risk factors (e.g. API surface changes) is escalated to \"review-required\" by reconcile_ai_assessments.",
+        "enableConflictConsensus": false,
+        "_comment_enableConflictConsensus": "DISABLED BY DEFAULT. Set to true to run a second independent resolution using config.models.powerful and compare the two outputs. Consensus failures downgrade confidence to \"low\". This roughly doubles LLM cost per conflict.",
+        "conflictConsensusThreshold": 0.7,
+        "_comment_conflictConsensusThreshold": "Minimum Dice-coefficient line similarity (0..1) between the two consensus responses to consider them in agreement. Only used when enableConflictConsensus=true.",
+        "enrichCustomizationContext": true,
+        "_comment_enrichCustomizationContext": "When true, check_customization_compatibility reads up to 2 matching source files (2000 chars each) and injects their content into the AI prompt for richer context."
+    },
+    "resolve": {
+        "ours": [],
+        "theirs": []
+    },
+    "validation": {
+        "low": [
+            "pushd apps/vscode && bun install && npm run check-types ; popd",
+            "pushd sdk && bun install && npm run types ; popd"
+        ],
+        "medium": [
+            "pushd apps/vscode && bun install && npm run check-types ; popd",
+            "pushd apps/vscode && bun install && npm run test:unit ; popd",
+            "pushd sdk && bun install && npm run types ; popd",
+            "pushd sdk && bun install && npm run test:unit ; popd"
+        ],
+        "high": [
+            "pushd apps/vscode && bun install && npm run check-types ; popd",
+            "pushd apps/vscode && bun install && npm run check-types ; popd",
+            "pushd apps/vscode && bun install && npm run test:unit ; popd",
+            "pushd apps/vscode && bun install && npm run compile ; popd",
+            "pushd apps/vscode && bun install && npm run package:vsix ; popd"
+        ]
+    }
+}
