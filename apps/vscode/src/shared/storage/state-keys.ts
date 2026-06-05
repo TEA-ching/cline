@@ -244,6 +244,7 @@ const API_HANDLER_SETTINGS_FIELDS = {
 	keypoolliveUseGateway: { default: false as boolean },
 	keypoolliveGatewayId: { default: undefined as string | undefined },
 	keypoolliveGatewayCacheSkip: { default: false as boolean },
+	keypoolliveMaxDbSizeMb: { default: 50 as number },
 } satisfies FieldDefinitions
 
 const USER_SETTINGS_FIELDS = {

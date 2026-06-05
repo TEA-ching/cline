@@ -11,6 +11,7 @@
  * © 2026 Ronan LE MEILLAT — MIT License
  */
 
+import { EmptyRequest } from "@shared/proto/cline/common"
 import { KeypoolErrorStat, KeypoolStatsRequest, KeypoolUsageStat } from "@shared/proto/cline/models"
 import { VSCodeButton } from "@vscode/webview-ui-toolkit/react"
 import React, { useCallback, useEffect, useRef, useState } from "react"
@@ -196,6 +197,7 @@ const KeypoolLiveDashboard: React.FC = () => {
 	const [usageStats, setUsageStats] = useState<KeypoolUsageStat[]>([])
 	const [errorStats, setErrorStats] = useState<KeypoolErrorStat[]>([])
 	const [loading, setLoading] = useState(false)
+	const [purging, setPurging] = useState(false)
 
 	// UI Refs and layout state
 	const buttonRef = useRef<HTMLDivElement>(null)
@@ -231,6 +233,21 @@ const KeypoolLiveDashboard: React.FC = () => {
 		},
 		[isVisible],
 	)
+
+	/** Purges all statistics and refreshes the view. */
+	const handlePurge = useCallback(() => {
+		if (!window.confirm("Purge all KeypoolLive statistics? This cannot be undone.")) return
+		setPurging(true)
+		ModelsServiceClient.keypoolPurgeStats(EmptyRequest.create())
+			.then(() => {
+				setUsageStats([])
+				setErrorStats([])
+			})
+			.catch((err) => {
+				console.error("Failed to purge stats:", err)
+			})
+			.finally(() => setPurging(false))
+	}, [])
 
 	// Fetch data whenever the dashboard is opened or the period changes
 	useEffect(() => {
@@ -299,6 +316,19 @@ const KeypoolLiveDashboard: React.FC = () => {
 								<VSCodeButton appearance="icon" onClick={() => fetchStats(period)} title="Refresh">
 									<i className="codicon codicon-refresh" style={{ fontSize: "10px" }} />
 								</VSCodeButton>
+								{/* Purge */}
+								<Tooltip>
+									<TooltipContent>Purge all statistics</TooltipContent>
+									<TooltipTrigger>
+										<VSCodeButton
+											appearance="icon"
+											disabled={purging}
+											onClick={handlePurge}
+											title="Purge statistics">
+											<i className="codicon codicon-trash" style={{ fontSize: "10px" }} />
+										</VSCodeButton>
+									</TooltipTrigger>
+								</Tooltip>
 							</div>
 						</div>
 

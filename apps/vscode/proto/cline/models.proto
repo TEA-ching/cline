@@ -63,6 +63,8 @@ service ModelsService {
   rpc keypoolGetUsageStats(KeypoolStatsRequest) returns (KeypoolUsageStatsResponse);
   // KeypoolLive: get per-key error statistics
   rpc keypoolGetErrorStats(KeypoolStatsRequest) returns (KeypoolErrorStatsResponse);
+  // KeypoolLive: purge all usage and error statistics
+  rpc keypoolPurgeStats(EmptyRequest) returns (KeypoolPurgeStatsResponse);
 }
 
 // List of VS Code LM models
@@ -263,6 +265,7 @@ message ModelsApiOptions {
   optional bool keypoollive_use_gateway = 46;
   optional string keypoollive_gateway_id = 47;
   optional bool keypoollive_gateway_cache_skip = 48;
+  optional int32 keypoollive_max_db_size_mb = 49;
 
   // Plan mode configurations
   optional ApiProvider plan_mode_api_provider = 100;
@@ -624,6 +627,7 @@ message ModelsApiConfiguration {
   optional string keypoollive_gateway_id = 92;
   optional bool keypoollive_gateway_cache_skip = 93;
   optional string cohere_api_key = 94;
+  optional int32 keypoollive_max_db_size_mb = 95;
 
   // Plan mode configurations
   optional ApiProvider plan_mode_api_provider = 100;
@@ -784,4 +788,10 @@ message KeypoolErrorStat {
 // Response for keypoolGetErrorStats
 message KeypoolErrorStatsResponse {
   repeated KeypoolErrorStat stats = 1;
+}
+
+// Response for keypoolPurgeStats
+message KeypoolPurgeStatsResponse {
+  bool success = 1;
+  optional string error = 2;
 }

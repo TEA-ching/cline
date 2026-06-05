@@ -1,7 +1,8 @@
 // KeypoolLiveProvider — Settings component for the keypoollive provider
 // © 2026 Ronan LE MEILLAT — MIT License
 
-import { UpdateApiConfigurationRequestNew } from "@shared/proto/index.cline"
+import { useState } from "react"
+import { UpdateApiConfigurationRequestNew, EmptyRequest } from "@shared/proto/index.cline"
 import { Mode } from "@shared/storage/types"
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import { ModelsServiceClient } from "@/services/grpc-client"
@@ -16,6 +17,21 @@ interface KeypoolLiveProviderProps {
 export const KeypoolLiveProvider = ({ isPopup: _isPopup, currentMode: _currentMode }: KeypoolLiveProviderProps) => {
 	const { apiConfiguration } = useExtensionState()
 	const { handleFieldChange } = useApiConfigurationHandlers()
+	const [purging, setPurging] = useState(false)
+	const [purgeResult, setPurgeResult] = useState<string | null>(null)
+
+	const handlePurge = async () => {
+		setPurging(true)
+		setPurgeResult(null)
+		try {
+			const res = await ModelsServiceClient.keypoolPurgeStats(EmptyRequest.create({}))
+			setPurgeResult(res.success ? "Statistics purged." : `Purge failed: ${res.error ?? "unknown error"}`)
+		} catch (e) {
+			setPurgeResult(`Purge failed: ${e instanceof Error ? e.message : String(e)}`)
+		} finally {
+			setPurging(false)
+		}
+	}
 
 	return (
 		<div>
@@ -77,6 +93,50 @@ export const KeypoolLiveProvider = ({ isPopup: _isPopup, currentMode: _currentMo
 			<p style={{ fontSize: 11, margin: "2px 0 12px 0", color: "var(--vscode-descriptionForeground)" }}>
 				Format: <code>providerName/modelId</code> (e.g. <code>openai/gpt-4o</code>). Provider names come from the vault.
 			</p>
+
+			{/* Stats DB max size */}
+			<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+				<label htmlFor="keypoollive-max-db-size" style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap" }}>
+					Stats DB max size (MB)
+				</label>
+				<input
+					id="keypoollive-max-db-size"
+					min={1}
+					max={500}
+					onChange={(e) => {
+						const v = parseInt(e.target.value, 10)
+						if (!isNaN(v) && v >= 1) {
+							handleFieldChange("keypoolliveMaxDbSizeMb", v)
+						}
+					}}
+					style={{ width: 72 }}
+					type="number"
+					value={apiConfiguration?.keypoolliveMaxDbSizeMb ?? 50}
+				/>
+				<span style={{ fontSize: 11, color: "var(--vscode-descriptionForeground)" }}>
+					Combined size limit for usage and error NDJSON files.
+				</span>
+			</div>
+
+			{/* Purge statistics */}
+			<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+				<button
+					disabled={purging}
+					onClick={handlePurge}
+					style={{
+						background: "var(--vscode-button-secondaryBackground)",
+						border: "none",
+						color: "var(--vscode-button-secondaryForeground)",
+						cursor: purging ? "not-allowed" : "pointer",
+						fontSize: 12,
+						padding: "4px 10px",
+					}}>
+					{purging ? "Purging…" : "Purge statistics"}
+				</button>
+				{purgeResult && (
+					<span style={{ fontSize: 11, color: "var(--vscode-descriptionForeground)" }}>{purgeResult}</span>
+				)}
+			</div>
 
 			{/* Optional: Cloudflare AI Gateway */}
 			<details style={{ marginBottom: 8 }}>

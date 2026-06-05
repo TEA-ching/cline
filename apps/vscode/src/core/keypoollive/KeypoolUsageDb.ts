@@ -1,12 +1,7 @@
-// KeypoolLive — KeypoolUsageDb: SQLite persistence for per-key usage + errors
+// KeypoolLive — KeypoolUsageDb: NDJSON persistence for per-key usage + errors
 // © 2026 Ronan LE MEILLAT — MIT License
 
-// Type-only import: erased at compile time, generates no require() call.
-// The actual module is loaded lazily at runtime so the extension can
-// still activate even if better-sqlite3 is unavailable (e.g. wrong
-// Electron ABI or missing node_modules in a packaged VSIX).
-import type Database from "better-sqlite3"
-import { mkdirSync } from "fs"
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "fs"
 import path from "path"
 import { HostProvider } from "@/hosts/host-provider"
 import { Logger } from "@/shared/services/Logger"
@@ -65,42 +60,45 @@ export interface KeyErrorStat {
 	lastErrorCode: number | null
 }
 
-/**
- * Maps a UsagePeriod to its corresponding SQLite strftime format string.
- * Used for grouping stats by time intervals.
- *
- * @param period - The usage period.
- * @returns A strftime-compatible format string.
- */
-function periodFormat(period: UsagePeriod): string {
+// ─── Internal record shapes written to NDJSON files ──────────────────────────
+
+interface UsageRecord extends KeyUsageEntry {
+	ts: number
+}
+
+interface ErrorRecord extends KeyErrorEntry {
+	ts: number
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function pad2(n: number): string {
+	return n.toString().padStart(2, "0")
+}
+
+/** Returns a UTC week number (0–53) matching SQLite's %W. */
+function utcWeek(d: Date): number {
+	const jan1 = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+	return Math.floor((d.getTime() - jan1.getTime()) / 86_400_000 / 7)
+}
+
+/** Formats a timestamp into the period label that matches the old SQLite strftime output. */
+function formatPeriodLabel(ts: number, period: UsagePeriod): string {
+	const d = new Date(ts)
 	switch (period) {
 		case "hour":
-			return "%Y-%m-%dT%H:00"
+			return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}T${pad2(d.getUTCHours())}:00`
 		case "day":
-			return "%Y-%m-%d"
+			return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`
 		case "week":
-			return "%Y-W%W"
+			return `${d.getUTCFullYear()}-W${pad2(utcWeek(d))}`
 		case "month":
-			return "%Y-%m"
-	}
-}
-
-/** Returns the better-sqlite3 constructor, or null if the native module cannot be loaded. */
-function tryLoadBetterSqlite3(): typeof Database | null {
-	try {
-		// eslint-disable-next-line @typescript-eslint/no-require-imports
-		return require("better-sqlite3")
-	} catch {
-		return null
+			return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`
 	}
 }
 
 /**
- * Calculates the cutoff timestamp (in milliseconds) for a given usage period
- * relative to the current time. Used to filter recent history.
- *
- * @param period - The usage period.
- * @returns The cutoff timestamp.
+ * Returns the cutoff timestamp (ms) for the given period relative to now.
  */
 function periodCutoffMs(period: UsagePeriod): number {
 	const now = Date.now()
@@ -116,184 +114,201 @@ function periodCutoffMs(period: UsagePeriod): number {
 	}
 }
 
-/**
- * Determines the file path for the SQLite database within the extension's
- * global storage directory.
- *
- * @returns The absolute path to usage.db.
- */
-function getUsageDbPath(): string {
+/** Returns the directory containing both NDJSON files. */
+function getDbDir(): string {
 	const storagePath = HostProvider.get().globalStorageFsPath
-	return path.join(storagePath, "keypoollive", "usage.db")
+	return path.join(storagePath, "keypoollive")
 }
 
+// ─── KeypoolUsageDb ───────────────────────────────────────────────────────────
+
 /**
- * Handles persistent storage of API key usage and error history using SQLite.
+ * Handles persistent storage of API key usage and error history using
+ * newline-delimited JSON (NDJSON) files. Each line in the file is one
+ * JSON object with a `ts` (millisecond timestamp) field. This avoids the
+ * native module dependency on better-sqlite3, which is incompatible with
+ * recent Electron ABI versions.
  *
- * NOTE: This class uses lazy-loading for 'better-sqlite3' to ensure the extension
- * can still boot even if the native module is missing or incompatible with the current environment.
+ * Two files are maintained:
+ *   - `usage.ndjson`  — one line per successful request
+ *   - `errors.ndjson` — one line per error event
+ *
+ * When the combined size of both files exceeds `maxSizeMb`, the oldest 25 %
+ * of lines are trimmed from each file before the next write.
  */
 export class KeypoolUsageDb {
-	/** Singleton database connection instance. */
-	private static db: Database.Database | null = null
+	/** Default maximum combined size of both NDJSON files (bytes). */
+	private static maxSizeBytes: number = 50 * 1024 * 1024
 
 	/**
-	 * Set to true if the 'better-sqlite3' module fails to load.
-	 * This prevents repeated expensive attempts to require() a missing module.
+	 * Override the maximum combined file size.  Called by the extension host
+	 * whenever the `keypoolliveMaxDbSizeMb` setting changes.
 	 */
-	private static dbUnavailable = false
+	static setMaxSizeMb(mb: number): void {
+		KeypoolUsageDb.maxSizeBytes = Math.max(1, mb) * 1024 * 1024
+	}
 
-	/**
-	 * Returns the open SQLite database, or null if better-sqlite3 is unavailable.
-	 * Logs a one-time warning on first unavailability.
-	 */
-	private static getDb(): Database.Database | null {
-		if (KeypoolUsageDb.dbUnavailable) return null
-		if (!KeypoolUsageDb.db) {
-			const BetterSqlite3 = tryLoadBetterSqlite3()
-			if (!BetterSqlite3) {
-				KeypoolUsageDb.dbUnavailable = true
-				Logger.warn(
-					"[KeypoolUsageDb] better-sqlite3 native module unavailable — key usage stats will not be persisted.",
-					"Install the module and rebuild the extension to enable persistence.",
-				)
-				return null
-			}
-			const dbPath = getUsageDbPath()
-			const dbDir = path.dirname(dbPath)
-			try {
-				mkdirSync(dbDir, { recursive: true })
-			} catch (e) {
-				Logger.error("[KeypoolUsageDb] Failed to create DB directory:", e)
-				return null
-			}
-			KeypoolUsageDb.db = new BetterSqlite3(dbPath)
-			KeypoolUsageDb.initSchema(KeypoolUsageDb.db)
+	/** Absolute path to usage.ndjson. */
+	private static usagePath(): string {
+		return path.join(getDbDir(), "usage.ndjson")
+	}
+
+	/** Absolute path to errors.ndjson. */
+	private static errorsPath(): string {
+		return path.join(getDbDir(), "errors.ndjson")
+	}
+
+	/** Ensures the storage directory exists. Returns false on failure. */
+	private static ensureDir(): boolean {
+		try {
+			mkdirSync(getDbDir(), { recursive: true })
+			return true
+		} catch (e) {
+			Logger.error("[KeypoolUsageDb] Failed to create directory:", e)
+			return false
 		}
-		return KeypoolUsageDb.db
+	}
+
+	/** Returns the size in bytes of a file, or 0 if it does not exist. */
+	private static fileSize(filePath: string): number {
+		try {
+			return existsSync(filePath) ? statSync(filePath).size : 0
+		} catch {
+			return 0
+		}
+	}
+
+	/** Returns the combined size of both NDJSON files in bytes. */
+	static getFileSizeBytes(): number {
+		return KeypoolUsageDb.fileSize(KeypoolUsageDb.usagePath()) + KeypoolUsageDb.fileSize(KeypoolUsageDb.errorsPath())
 	}
 
 	/**
-	 * Creates the necessary tables and indexes if they don't already exist.
-	 *
-	 * @param db - The SQLite database instance.
+	 * Reads all valid JSON lines from an NDJSON file.
+	 * Silently skips blank or malformed lines.
 	 */
-	private static initSchema(db: Database.Database): void {
-		db.exec(`
-			/* 
-			   The 'key_usage' table tracks every successful request. 
-			   We store timestamps as integers (milliseconds) for easy sorting and filtering. 
-			*/
-			CREATE TABLE IF NOT EXISTS key_usage (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				ts INTEGER NOT NULL,
-				provider TEXT NOT NULL,
-				model_id TEXT NOT NULL,
-				key_owner TEXT NOT NULL,
-				key_hint TEXT NOT NULL,
-				prompt_tokens INTEGER NOT NULL DEFAULT 0,
-				completion_tokens INTEGER NOT NULL DEFAULT 0
-			);
-			/* Index on timestamp for fast time-range queries (e.g., last 24h). */
-			CREATE INDEX IF NOT EXISTS idx_key_usage_ts ON key_usage(ts);
-			/* Compound index for grouping stats by provider and owner. */
-			CREATE INDEX IF NOT EXISTS idx_key_usage_provider ON key_usage(provider, key_owner, key_hint);
-
-			/* 
-			   The 'key_errors' table tracks API failures. 
-			   By keeping errors separate from usage, we can easily calculate error rates via joins. 
-			*/
-			CREATE TABLE IF NOT EXISTS key_errors (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				ts INTEGER NOT NULL,
-				provider TEXT NOT NULL,
-				model_id TEXT NOT NULL,
-				key_owner TEXT NOT NULL,
-				key_hint TEXT NOT NULL,
-				error_code INTEGER
-			);
-			CREATE INDEX IF NOT EXISTS idx_key_errors_ts ON key_errors(ts);
-			CREATE INDEX IF NOT EXISTS idx_key_errors_provider ON key_errors(provider, key_owner, key_hint);
-		`)
+	private static readLines<T>(filePath: string): T[] {
+		if (!existsSync(filePath)) return []
+		try {
+			const content = readFileSync(filePath, "utf8")
+			const results: T[] = []
+			for (const line of content.split("\n")) {
+				const trimmed = line.trim()
+				if (!trimmed) continue
+				try {
+					results.push(JSON.parse(trimmed) as T)
+				} catch {
+					// skip malformed line
+				}
+			}
+			return results
+		} catch (e) {
+			Logger.error("[KeypoolUsageDb] Failed to read file:", filePath, e)
+			return []
+		}
 	}
 
 	/**
-	 * Persists a new usage entry to the database.
-	 *
-	 * @param entry - The usage details (tokens, model, etc.).
+	 * Trims the oldest `fraction` of lines from a file (by line order, which
+	 * equals insertion/time order since records are always appended).
+	 */
+	private static trimFile(filePath: string, fraction: number): void {
+		if (!existsSync(filePath)) return
+		try {
+			const content = readFileSync(filePath, "utf8")
+			const lines = content.split("\n").filter((l) => l.trim())
+			if (lines.length === 0) return
+			const keep = lines.slice(Math.floor(lines.length * fraction))
+			writeFileSync(filePath, keep.join("\n") + (keep.length > 0 ? "\n" : ""), "utf8")
+		} catch (e) {
+			Logger.error("[KeypoolUsageDb] Failed to trim file:", filePath, e)
+		}
+	}
+
+	/**
+	 * Checks combined file size and trims the oldest 25 % of each file if the
+	 * combined size exceeds the configured maximum.
+	 */
+	private static trimIfNeeded(): void {
+		if (KeypoolUsageDb.getFileSizeBytes() <= KeypoolUsageDb.maxSizeBytes) return
+		Logger.warn("[KeypoolUsageDb] DB size exceeded limit — trimming oldest 25% of records.")
+		KeypoolUsageDb.trimFile(KeypoolUsageDb.usagePath(), 0.25)
+		KeypoolUsageDb.trimFile(KeypoolUsageDb.errorsPath(), 0.25)
+	}
+
+	/**
+	 * Appends a single JSON record as one NDJSON line.
+	 */
+	private static appendLine(filePath: string, record: object): void {
+		if (!KeypoolUsageDb.ensureDir()) return
+		KeypoolUsageDb.trimIfNeeded()
+		try {
+			appendFileSync(filePath, JSON.stringify(record) + "\n", "utf8")
+		} catch (e) {
+			Logger.error("[KeypoolUsageDb] Failed to append record:", e)
+		}
+	}
+
+	// ─── Public API ────────────────────────────────────────────────────────────
+
+	/**
+	 * Persists a new usage entry.
 	 */
 	static recordUsage(entry: KeyUsageEntry): void {
-		try {
-			const db = KeypoolUsageDb.getDb()
-			if (!db) return
-			const stmt = db.prepare(`
-				INSERT INTO key_usage (ts, provider, model_id, key_owner, key_hint, prompt_tokens, completion_tokens)
-				VALUES (?, ?, ?, ?, ?, ?, ?)
-			`)
-			stmt.run(
-				Date.now(),
-				entry.provider,
-				entry.modelId,
-				entry.keyOwner,
-				entry.keyHint,
-				entry.promptTokens,
-				entry.completionTokens,
-			)
-		} catch (e) {
-			Logger.error("[KeypoolUsageDb] Failed to record usage:", e)
-		}
+		const record: UsageRecord = { ts: Date.now(), ...entry }
+		KeypoolUsageDb.appendLine(KeypoolUsageDb.usagePath(), record)
 	}
 
 	/**
-	 * Persists a new error entry to the database.
-	 *
-	 * @param entry - The error details (error code, model, etc.).
+	 * Persists a new error entry.
 	 */
 	static recordError(entry: KeyErrorEntry): void {
-		try {
-			const db = KeypoolUsageDb.getDb()
-			if (!db) return
-			const stmt = db.prepare(`
-				INSERT INTO key_errors (ts, provider, model_id, key_owner, key_hint, error_code)
-				VALUES (?, ?, ?, ?, ?, ?)
-			`)
-			stmt.run(Date.now(), entry.provider, entry.modelId, entry.keyOwner, entry.keyHint, entry.errorCode)
-		} catch (e) {
-			Logger.error("[KeypoolUsageDb] Failed to record error:", e)
-		}
+		const record: ErrorRecord = { ts: Date.now(), ...entry }
+		KeypoolUsageDb.appendLine(KeypoolUsageDb.errorsPath(), record)
 	}
 
 	/**
 	 * Retrieves aggregated usage statistics for the specified period.
-	 *
-	 * @param period - The time interval to group by (hour, day, etc.).
-	 * @returns An array of usage statistics.
 	 */
 	static getUsageStats(period: UsagePeriod): KeyUsageStat[] {
 		try {
-			const db = KeypoolUsageDb.getDb()
-			if (!db) return []
-
-			// Determine the grouping format (e.g., hourly, daily) and the time window.
-			const fmt = periodFormat(period)
 			const cutoff = periodCutoffMs(period)
+			const records = KeypoolUsageDb.readLines<UsageRecord>(KeypoolUsageDb.usagePath()).filter((r) => r.ts >= cutoff)
 
-			const stmt = db.prepare(`
-				SELECT
-					/* SQLite strftime expects seconds, so we divide our millisecond timestamp by 1000. */
-					strftime('${fmt}', ts / 1000, 'unixepoch') AS period,
-					provider,
-					key_owner AS keyOwner,
-					key_hint AS keyHint,
-					SUM(prompt_tokens) AS promptTokens,
-					SUM(completion_tokens) AS completionTokens,
-					COUNT(*) AS requestCount
-				FROM key_usage
-				WHERE ts >= ?
-				GROUP BY period, provider, key_owner, key_hint
-				ORDER BY period DESC, provider, key_owner, key_hint
-			`)
-			return stmt.all(cutoff) as KeyUsageStat[]
+			// Group by period-label + provider + keyOwner + keyHint
+			const map = new Map<
+				string,
+				{ period: string; provider: string; keyOwner: string; keyHint: string; promptTokens: number; completionTokens: number; requestCount: number }
+			>()
+
+			for (const r of records) {
+				const label = formatPeriodLabel(r.ts, period)
+				const key = `${label}\x00${r.provider}\x00${r.keyOwner}\x00${r.keyHint}`
+				const existing = map.get(key)
+				if (existing) {
+					existing.promptTokens += r.promptTokens
+					existing.completionTokens += r.completionTokens
+					existing.requestCount++
+				} else {
+					map.set(key, {
+						period: label,
+						provider: r.provider,
+						keyOwner: r.keyOwner,
+						keyHint: r.keyHint,
+						promptTokens: r.promptTokens,
+						completionTokens: r.completionTokens,
+						requestCount: 1,
+					})
+				}
+			}
+
+			// Sort: period DESC, provider, keyOwner, keyHint (mirrors old SQL ORDER BY)
+			return Array.from(map.values()).sort((a, b) => {
+				if (b.period !== a.period) return b.period.localeCompare(a.period)
+				if (a.provider !== b.provider) return a.provider.localeCompare(b.provider)
+				if (a.keyOwner !== b.keyOwner) return a.keyOwner.localeCompare(b.keyOwner)
+				return a.keyHint.localeCompare(b.keyHint)
+			})
 		} catch (e) {
 			Logger.error("[KeypoolUsageDb] Failed to get usage stats:", e)
 			return []
@@ -301,37 +316,60 @@ export class KeypoolUsageDb {
 	}
 
 	/**
-	 * Retrieves aggregated error statistics for all keys, calculated from both
-	 * the error and usage tables to derive error rates.
-	 *
-	 * @returns An array of error statistics sorted by descending error rate.
+	 * Retrieves aggregated error statistics for all keys (full history, no time
+	 * filter — mirrors the original SQL query that had no WHERE clause on ts).
 	 */
 	static getErrorStats(): KeyErrorStat[] {
 		try {
-			const db = KeypoolUsageDb.getDb()
-			if (!db) return []
+			const errorRecords = KeypoolUsageDb.readLines<ErrorRecord>(KeypoolUsageDb.errorsPath())
+			const usageRecords = KeypoolUsageDb.readLines<UsageRecord>(KeypoolUsageDb.usagePath())
 
-			const stmt = db.prepare(`
-				SELECT
-					e.provider,
-					e.key_owner AS keyOwner,
-					e.key_hint AS keyHint,
-					u.total_requests AS totalRequests,
-					COUNT(e.id) AS errorCount,
-					/* Calculate error rate. We use MAX(..., 1) to avoid division by zero if usage is somehow missing. */
-					CAST(COUNT(e.id) AS REAL) / MAX(u.total_requests, 1) AS errorRate,
-					MAX(e.error_code) AS lastErrorCode
-				FROM key_errors e
-				/* Join with the usage table to get the total number of successful requests for comparison. */
-				LEFT JOIN (
-					SELECT provider, key_owner, key_hint, COUNT(*) AS total_requests
-					FROM key_usage
-					GROUP BY provider, key_owner, key_hint
-				) u ON e.provider = u.provider AND e.key_owner = u.key_owner AND e.key_hint = u.key_hint
-				GROUP BY e.provider, e.key_owner, e.key_hint
-				ORDER BY errorRate DESC
-			`)
-			return stmt.all() as KeyErrorStat[]
+			// Accumulate usage counts per key
+			const usageMap = new Map<string, number>()
+			for (const r of usageRecords) {
+				const key = `${r.provider}\x00${r.keyOwner}\x00${r.keyHint}`
+				usageMap.set(key, (usageMap.get(key) ?? 0) + 1)
+			}
+
+			// Accumulate error counts per key
+			const errorMap = new Map<
+				string,
+				{ provider: string; keyOwner: string; keyHint: string; errorCount: number; lastErrorCode: number | null }
+			>()
+			for (const r of errorRecords) {
+				const key = `${r.provider}\x00${r.keyOwner}\x00${r.keyHint}`
+				const existing = errorMap.get(key)
+				if (existing) {
+					existing.errorCount++
+					if (r.errorCode !== null) existing.lastErrorCode = r.errorCode
+				} else {
+					errorMap.set(key, {
+						provider: r.provider,
+						keyOwner: r.keyOwner,
+						keyHint: r.keyHint,
+						errorCount: 1,
+						lastErrorCode: r.errorCode,
+					})
+				}
+			}
+
+			const result: KeyErrorStat[] = []
+			for (const [key, e] of errorMap) {
+				const totalRequests = usageMap.get(key) ?? 0
+				result.push({
+					provider: e.provider,
+					keyOwner: e.keyOwner,
+					keyHint: e.keyHint,
+					totalRequests,
+					errorCount: e.errorCount,
+					// Avoid division by zero — mirror: MAX(total_requests, 1)
+					errorRate: e.errorCount / Math.max(totalRequests, 1),
+					lastErrorCode: e.lastErrorCode,
+				})
+			}
+
+			// Sort by descending error rate (mirrors old SQL ORDER BY errorRate DESC)
+			return result.sort((a, b) => b.errorRate - a.errorRate)
 		} catch (e) {
 			Logger.error("[KeypoolUsageDb] Failed to get error stats:", e)
 			return []
@@ -339,13 +377,26 @@ export class KeypoolUsageDb {
 	}
 
 	/**
-	 * Safely closes the database connection.
-	 * Should be called when the extension is deactivated.
+	 * Deletes both NDJSON files, effectively purging all statistics.
+	 * Returns the total number of bytes freed.
 	 */
-	static close(): void {
-		if (KeypoolUsageDb.db) {
-			KeypoolUsageDb.db.close()
-			KeypoolUsageDb.db = null
+	static purge(): number {
+		let freed = 0
+		for (const filePath of [KeypoolUsageDb.usagePath(), KeypoolUsageDb.errorsPath()]) {
+			try {
+				if (existsSync(filePath)) {
+					freed += statSync(filePath).size
+					unlinkSync(filePath)
+				}
+			} catch (e) {
+				Logger.error("[KeypoolUsageDb] Failed to delete file:", filePath, e)
+			}
 		}
+		return freed
+	}
+
+	/** No-op: kept for API compatibility with the former SQLite implementation. */
+	static close(): void {
+		// NDJSON files do not hold open file handles
 	}
 }

@@ -77,6 +77,7 @@ interface KeypoolLiveHandlerOptions extends CommonApiHandlerOptions {
 	keypoolliveUseGateway?: boolean;
 	keypoolliveGatewayId?: string;
 	keypoolliveGatewayCacheSkip?: boolean;
+	keypoolliveMaxDbSizeMb?: number;
 	/** Format: "providerName/modelId" e.g. "openai/gpt-4o" */
 	apiModelId?: string;
 	ulid?: string;
@@ -97,6 +98,10 @@ export class KeypoolLiveHandler implements ApiHandler {
 			// Preload vault so getCachedVaultModel() works synchronously in getModel()
 			// before the first createMessage() call (e.g. for the model picker UI).
 			loadAiVault(options.keypoolliveVaultUrl).catch(() => {});
+		}
+		// Apply the user-configured DB size limit (default 50 MB if not set)
+		if (options.keypoolliveMaxDbSizeMb !== undefined) {
+			KeypoolUsageDb.setMaxSizeMb(options.keypoolliveMaxDbSizeMb);
 		}
 	}
 
