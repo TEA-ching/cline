@@ -36,7 +36,7 @@ import type {
 /**
  * Supported AI protocols that the vault can handle
  */
-type AiProtocol = "openai" | "anthropic" | "gemini";
+type AiProtocol = "openai" | "anthropic" | "gemini" | "mistral" | "cohere";
 
 /**
  * Key tier classification for prioritization and usage tracking
@@ -749,6 +749,16 @@ async function createSubProvider(
 		case "gemini": {
 			const { createGoogleProvider } = await import("../ai-sdk");
 			factory = createGoogleProvider;
+			break;
+		}
+		case "cohere": {
+			const { createCohereProvider } = await import("../ai-sdk");
+			factory = createCohereProvider;
+			break;
+		}
+		case "mistral": {
+			const { createMistralProvider } = await import("../ai-sdk");
+			factory = createMistralProvider;
 			break;
 		}
 		default: {

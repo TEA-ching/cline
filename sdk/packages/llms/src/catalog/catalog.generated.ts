@@ -14,7 +14,7 @@ export const GENERATED_PROVIDER_MODELS: {
 	version: number;
 	providers: Record<string, Record<string, ModelInfo>>;
 } = {
-	version: 1780604226366,
+	version: 1780663038793,
 	providers: {
 		aihubmix: {
 			"glm-5v-turbo": {
@@ -1790,6 +1790,29 @@ export const GENERATED_PROVIDER_MODELS: {
 				releaseDate: "2026-05-28",
 				family: "claude-opus",
 			},
+			"openai.gpt-5.5": {
+				id: "openai.gpt-5.5",
+				name: "GPT-5.5",
+				contextWindow: 272000,
+				maxInputTokens: 272000,
+				maxTokens: 128000,
+				capabilities: [
+					"images",
+					"files",
+					"tools",
+					"reasoning",
+					"structured_output",
+					"prompt-cache",
+				],
+				pricing: {
+					input: 5.5,
+					output: 33,
+					cacheRead: 0.55,
+					cacheWrite: 0,
+				},
+				releaseDate: "2026-04-23",
+				family: "gpt",
+			},
 			"anthropic.claude-opus-4-7": {
 				id: "anthropic.claude-opus-4-7",
 				name: "Claude Opus 4.7",
@@ -1927,6 +1950,29 @@ export const GENERATED_PROVIDER_MODELS: {
 				},
 				releaseDate: "2026-03-11",
 				family: "nemotron",
+			},
+			"openai.gpt-5.4": {
+				id: "openai.gpt-5.4",
+				name: "GPT-5.4",
+				contextWindow: 272000,
+				maxInputTokens: 272000,
+				maxTokens: 128000,
+				capabilities: [
+					"images",
+					"files",
+					"tools",
+					"reasoning",
+					"structured_output",
+					"prompt-cache",
+				],
+				pricing: {
+					input: 2.75,
+					output: 16.5,
+					cacheRead: 0.275,
+					cacheWrite: 0,
+				},
+				releaseDate: "2026-03-05",
+				family: "gpt",
 			},
 			"anthropic.claude-sonnet-4-6": {
 				id: "anthropic.claude-sonnet-4-6",
@@ -2979,6 +3025,22 @@ export const GENERATED_PROVIDER_MODELS: {
 				releaseDate: "2025-08-05",
 				family: "claude-opus",
 			},
+			"openai.gpt-oss-120b": {
+				id: "openai.gpt-oss-120b",
+				name: "gpt-oss-120b",
+				contextWindow: 128000,
+				maxInputTokens: 128000,
+				maxTokens: 16384,
+				capabilities: ["tools", "structured_output", "temperature"],
+				pricing: {
+					input: 0.15,
+					output: 0.6,
+					cacheRead: 0,
+					cacheWrite: 0,
+				},
+				releaseDate: "2025-08-05",
+				family: "gpt-oss",
+			},
 			"openai.gpt-oss-120b-1:0": {
 				id: "openai.gpt-oss-120b-1:0",
 				name: "gpt-oss-120b",
@@ -2989,6 +3051,22 @@ export const GENERATED_PROVIDER_MODELS: {
 				pricing: {
 					input: 0.15,
 					output: 0.6,
+					cacheRead: 0,
+					cacheWrite: 0,
+				},
+				releaseDate: "2025-08-05",
+				family: "gpt-oss",
+			},
+			"openai.gpt-oss-20b": {
+				id: "openai.gpt-oss-20b",
+				name: "gpt-oss-20b",
+				contextWindow: 128000,
+				maxInputTokens: 128000,
+				maxTokens: 16384,
+				capabilities: ["tools", "structured_output", "temperature"],
+				pricing: {
+					input: 0.07,
+					output: 0.3,
 					cacheRead: 0,
 					cacheWrite: 0,
 				},
@@ -11910,7 +11988,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5.5",
 				name: "GPT-5.5",
 				contextWindow: 1050000,
-				maxInputTokens: 1050000,
+				maxInputTokens: 922000,
 				maxTokens: 128000,
 				capabilities: [
 					"images",
@@ -11933,7 +12011,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5.5-pro",
 				name: "GPT-5.5 Pro",
 				contextWindow: 1050000,
-				maxInputTokens: 1050000,
+				maxInputTokens: 922000,
 				maxTokens: 128000,
 				capabilities: [
 					"images",
@@ -12438,7 +12516,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5.4-mini",
 				name: "GPT-5.4 mini",
 				contextWindow: 400000,
-				maxInputTokens: 400000,
+				maxInputTokens: 272000,
 				maxTokens: 128000,
 				capabilities: [
 					"images",
@@ -12461,7 +12539,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5.4-nano",
 				name: "GPT-5.4 nano",
 				contextWindow: 400000,
-				maxInputTokens: 400000,
+				maxInputTokens: 272000,
 				maxTokens: 128000,
 				capabilities: [
 					"images",
@@ -12604,7 +12682,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5.4",
 				name: "GPT-5.4",
 				contextWindow: 1050000,
-				maxInputTokens: 1050000,
+				maxInputTokens: 922000,
 				maxTokens: 128000,
 				capabilities: [
 					"images",
@@ -13032,7 +13110,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5.3-codex",
 				name: "GPT-5.3 Codex",
 				contextWindow: 400000,
-				maxInputTokens: 400000,
+				maxInputTokens: 272000,
 				maxTokens: 128000,
 				capabilities: [
 					"images",
@@ -13372,7 +13450,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5.2",
 				name: "GPT-5.2",
 				contextWindow: 400000,
-				maxInputTokens: 400000,
+				maxInputTokens: 272000,
 				maxTokens: 128000,
 				capabilities: [
 					"images",
@@ -13395,7 +13473,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5.2-codex",
 				name: "GPT-5.2 Codex",
 				contextWindow: 400000,
-				maxInputTokens: 400000,
+				maxInputTokens: 272000,
 				maxTokens: 128000,
 				capabilities: [
 					"images",
@@ -13417,7 +13495,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5.2-pro",
 				name: "GPT-5.2 Pro",
 				contextWindow: 400000,
-				maxInputTokens: 400000,
+				maxInputTokens: 272000,
 				maxTokens: 128000,
 				capabilities: [
 					"images",
@@ -13715,7 +13793,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5.1",
 				name: "GPT-5.1",
 				contextWindow: 400000,
-				maxInputTokens: 400000,
+				maxInputTokens: 272000,
 				maxTokens: 128000,
 				capabilities: [
 					"images",
@@ -13760,7 +13838,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5.1-codex",
 				name: "GPT-5.1 Codex",
 				contextWindow: 400000,
-				maxInputTokens: 400000,
+				maxInputTokens: 272000,
 				maxTokens: 128000,
 				capabilities: [
 					"images",
@@ -13782,7 +13860,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5.1-codex-max",
 				name: "GPT-5.1 Codex Max",
 				contextWindow: 400000,
-				maxInputTokens: 400000,
+				maxInputTokens: 272000,
 				maxTokens: 128000,
 				capabilities: [
 					"images",
@@ -13804,7 +13882,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5.1-codex-mini",
 				name: "GPT-5.1 Codex mini",
 				contextWindow: 400000,
-				maxInputTokens: 400000,
+				maxInputTokens: 272000,
 				maxTokens: 100000,
 				capabilities: [
 					"images",
@@ -14033,7 +14111,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5-pro",
 				name: "GPT-5 Pro",
 				contextWindow: 400000,
-				maxInputTokens: 400000,
+				maxInputTokens: 272000,
 				maxTokens: 128000,
 				capabilities: [
 					"images",
@@ -14297,7 +14375,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5-codex",
 				name: "GPT-5-Codex",
 				contextWindow: 400000,
-				maxInputTokens: 400000,
+				maxInputTokens: 272000,
 				maxTokens: 128000,
 				capabilities: [
 					"images",
@@ -14584,7 +14662,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5",
 				name: "GPT-5",
 				contextWindow: 400000,
-				maxInputTokens: 400000,
+				maxInputTokens: 272000,
 				maxTokens: 128000,
 				capabilities: [
 					"images",
@@ -14607,7 +14685,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5-mini",
 				name: "GPT-5 Mini",
 				contextWindow: 400000,
-				maxInputTokens: 400000,
+				maxInputTokens: 272000,
 				maxTokens: 128000,
 				capabilities: [
 					"images",
@@ -14630,7 +14708,7 @@ export const GENERATED_PROVIDER_MODELS: {
 				id: "openai/gpt-5-nano",
 				name: "GPT-5 Nano",
 				contextWindow: 400000,
-				maxInputTokens: 400000,
+				maxInputTokens: 272000,
 				maxTokens: 128000,
 				capabilities: [
 					"images",
@@ -20765,22 +20843,6 @@ export const GENERATED_PROVIDER_MODELS: {
 				},
 				releaseDate: "2025-03-13",
 				family: "command",
-			},
-			"inception/mercury-coder-small": {
-				id: "inception/mercury-coder-small",
-				name: "Mercury Coder Small Beta",
-				contextWindow: 32000,
-				maxInputTokens: 32000,
-				maxTokens: 16384,
-				capabilities: ["tools", "temperature"],
-				pricing: {
-					input: 0.25,
-					output: 1,
-					cacheRead: 0,
-					cacheWrite: 0,
-				},
-				releaseDate: "2025-02-26",
-				family: "mercury",
 			},
 			"perplexity/sonar": {
 				id: "perplexity/sonar",
