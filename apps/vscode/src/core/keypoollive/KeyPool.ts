@@ -416,6 +416,7 @@ function mapToClineProvider(providerName: string, protocol: string): string | nu
 		groq: "groq",
 		openrouter: "openrouter",
 		sambanova: "sambanova",
+		cohere: "cohere",
 	}
 	return mapping[providerName.toLowerCase()] ?? (protocol === "openai" ? "openai" : null)
 }
