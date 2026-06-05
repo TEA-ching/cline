@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/icons/icon.png" width="80" alt="Cline" />
+  <img src="assets/icons/icon.png" width="80" alt="ClinePool" />
 </p>
 
-<h1 align="center">Cline</h1>
+<h1 align="center">ClinePool</h1>
 
 <p align="center">
 The open source coding agent in your IDE and terminal.
@@ -43,13 +43,11 @@ The open source coding agent in your IDE and terminal.
 
 ### CLI
 
-Run Cline in your terminal.
+Run ClinePool in your terminal.
 Interactive chat or fully headless
-for CI/CD and scripting.
+for CI/CD and scripting.  
+Download the binary from our releases page.
 
-```
-npm i -g cline
-```
 
 <a href="./apps/cli/README.md">Learn more</a>
 <br><br>
@@ -81,7 +79,7 @@ AI coding assistant in your editor.
 Create files, run commands, browse the web,
 and use tools with human-in-the-loop approval.
 
-<a href="https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev">Install from VS Marketplace</a>
+Download from our releases page.
 <br><br>
 
 </td>
@@ -111,10 +109,10 @@ the JetBrains family.
 Build your own AI agents and integrations powered by the same engine that runs the CLI, Kanban, VS Code extension, and JetBrains plugin. Custom tools, multi-agent teams, connectors, scheduled automations, and more.
 
 ```
-npm install @cline/sdk
+npm install @sctg/cline-sdk
 ```
 
-<a href="https://docs.cline.bot/cline-sdk/overview">Documentation</a>
+<a href="https://docs.ai-ml.pp.ua/cline-overview">Documentation</a>
 <br><br>
 
 </td>
@@ -167,13 +165,14 @@ Cline is not locked to a single AI provider. Use whichever model fits your workf
 | Cerebras / Groq | Fast inference models |
 | Ollama / LM Studio | Run local models on your machine |
 | Any OpenAI-compatible API | Self-hosted or third-party endpoints |
+| Cohere | Command-A |
 
 ## Extend With Plugins or MCP Servers
 
 Extend Cline's capabilities with plugins. Using the SDK, register tools and lifecycle hooks programmatically through the plugin system for logging, auditing, policy enforcement, or adding domain-specific capabilities. Simple plugin example below.
 
 ```typescript
-import { Agent, createTool } from "@cline/sdk"
+import { Agent, createTool } from "@sctg/cline-sdk"
 
 const deployTool = createTool({
   name: "deploy",
@@ -302,23 +301,29 @@ In the Cline settings panel, select **KeypoolLive** as the API provider and fill
 ### Building the Fork
 
 ```bash
-npm install
-npm run compile        # TypeScript + esbuild
+bun install
+bun run build
+bun run build:models
+bun run build:sdk
 
 # Package the VSIX (includes better-sqlite3 compiled for VS Code's Electron):
-npm run package:vsix
-# This is equivalent to:
-#   npm run rebuild:native   ← recompiles better-sqlite3 for VS Code's bundled Electron
-#   npx @vscode/vsce package --allow-package-secrets sendgrid --out cline.vsix
+cd apps/vscode
+bun install
+bun run protos
+cd webview-ui && npm install && cd ..
+node scripts/rebuild-native-for-vscode.mjs
+bunx vsce package \
+            --allow-package-secrets sendgrid \
+            --out cline.vsix  
 
 code --install-extension cline.vsix
 ```
 
-The `rebuild:native` step automatically detects the Electron version from your
+The `node scripts/rebuild-native-for-vscode.mjs` step automatically detects the Electron version from your
 installed VS Code (macOS / Windows / Linux). You can also override it explicitly:
 
 ```bash
-VSCODE_ELECTRON_VERSION=42.2.0 npm run package:vsix
+VSCODE_ELECTRON_VERSION=42.2.0 node scripts/rebuild-native-for-vscode.mjs
 ```
 
 > **Note on `better-sqlite3`:** Key usage statistics are persisted to a local
