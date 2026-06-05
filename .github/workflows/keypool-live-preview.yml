@@ -78,7 +78,7 @@ jobs:
             # No musl prebuilt for better-sqlite3; linux-x64 glibc binary is used.
             # The extension degrades gracefully when the native module fails to load.
             native_arch: x64
-          - os: macos-latest
+          - os: macos-26-intel
             platform: darwin
             arch: x64
             native_arch: x64
