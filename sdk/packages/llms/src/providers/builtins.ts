@@ -984,8 +984,13 @@ export const BUILTIN_SPECS: BuiltinSpec[] = [
 				contextWindow: 128_000,
 				supportsImages: true,
 				supportsPromptCache: false,
+				supportsReasoning: true,
 				inputPrice: 2.5,
 				outputPrice: 10.0,
+				thinkingConfig: {
+					maxBudget: 32_000,
+					outputPrice: 10.0,
+				},
 			},
 			"command-a-reasoning-08-2025": {
 				id: "command-a-reasoning-08-2025",
@@ -997,6 +1002,10 @@ export const BUILTIN_SPECS: BuiltinSpec[] = [
 				supportsReasoning: true,
 				inputPrice: 2.5,
 				outputPrice: 10.0,
+				thinkingConfig: {
+					maxBudget: 16_000,
+					outputPrice: 10.0,
+				},
 			},
 			"command-a-03-2025": {
 				id: "command-a-03-2025",
@@ -1064,8 +1073,8 @@ function toModelCollection(spec: BuiltinSpec): ModelCollection {
 			? sourceModels
 			: spec.defaultModelId
 				? {
-						[spec.defaultModelId]: fallbackModelInfo(spec.defaultModelId, spec),
-					}
+					[spec.defaultModelId]: fallbackModelInfo(spec.defaultModelId, spec),
+				}
 				: {};
 	const modelIds = Object.keys(models);
 	const defaultModelId = spec.defaultModelId || modelIds[0] || "default";
@@ -1100,13 +1109,13 @@ export function toManifest(spec: BuiltinSpec): GatewayProviderManifest {
 		models.length > 0
 			? models
 			: [
-					{
-						id: collection.provider.defaultModelId || "default",
-						name: collection.provider.defaultModelId || "Default",
-						providerId: spec.id,
-						capabilities: ["text"] as GatewayModelCapability[],
-					},
-				];
+				{
+					id: collection.provider.defaultModelId || "default",
+					name: collection.provider.defaultModelId || "Default",
+					providerId: spec.id,
+					capabilities: ["text"] as GatewayModelCapability[],
+				},
+			];
 
 	return {
 		id: spec.id,

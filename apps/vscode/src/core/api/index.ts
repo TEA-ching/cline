@@ -469,6 +469,7 @@ function createHandlerForProvider(
 				onRetryAttempt: options.onRetryAttempt,
 				cohereApiKey: options.cohereApiKey,
 				apiModelId: mode === "plan" ? options.planModeApiModelId : options.actModeApiModelId,
+
 			})
 		case "keypoollive":
 			return new KeypoolLiveHandler({

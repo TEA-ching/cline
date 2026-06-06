@@ -5324,17 +5324,26 @@ export const cohereModels = {
 		contextWindow: 128_000,
 		supportsImages: true,
 		supportsPromptCache: false,
+		supportsReasoning: true,
+		thinkingConfig: {
+			maxBudget: 32_000,
+			outputPrice: 10.0,
+		},
 		inputPrice: 2.5,
 		outputPrice: 10.0,
 		description:
 			"Cohere's most capable model optimised for complex tasks including reasoning, summarisation, and coding. Supports tool use.",
 	},
 	"command-a-reasoning-08-2025": {
-		maxTokens: 32_000,
+		maxTokens: 16_000,
 		contextWindow: 256_000,
 		supportsImages: false,
 		supportsPromptCache: false,
 		supportsReasoning: true,
+		thinkingConfig: {
+			maxBudget: 32_000,
+			outputPrice: 10.0,
+		},
 		inputPrice: 2.5,
 		outputPrice: 10.0,
 		description:

@@ -34,6 +34,7 @@ import type { ApiStream } from "../transform/stream";
 
 // Configuration options specific to Cohere API integration
 interface CohereHandlerOptions extends CommonApiHandlerOptions {
+	cohereBaseUrl?: string;
 	cohereApiKey?: string;
 	apiModelId?: string;
 }
@@ -64,6 +65,7 @@ export class CohereHandler implements ApiHandler {
 			try {
 				this.client = new CohereClientV2({
 					token: this.options.cohereApiKey,
+					baseUrl: this.options.cohereBaseUrl,
 					headers: buildExternalBasicHeaders(),
 					fetch, // Use configured fetch with proxy support
 				});

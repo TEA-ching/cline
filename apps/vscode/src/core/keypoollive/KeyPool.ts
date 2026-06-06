@@ -365,6 +365,9 @@ function selectNextKey(
 	if (keysWithUsage.length === 0) {
 		// All keys have 0 requests, choose randomly
 		const randomIdx = Math.floor(Math.random() * usable.length);
+		Logger.debug(
+			`[KeypoolLive] All keys for ${providerName} have 0 requests in the last 24h, selecting randomly key ...${usable[randomIdx].key.slice(-8)} owner ${usable[randomIdx].owner}`,
+		);
 		return usable[randomIdx];
 	}
 
@@ -381,7 +384,9 @@ function selectNextKey(
 			selectedKey = key;
 		}
 	}
-
+	Logger.debug(
+		`[KeypoolLive] Selected key with least requests for ${providerName}: ...${selectedKey.key.slice(-8)} (requests in last 24h: ${minRequests})`,
+	);
 	return selectedKey;
 }
 

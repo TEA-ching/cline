@@ -4,18 +4,19 @@
 import type { ModelInfo } from "@shared/api";
 import { getCachedVaultModel, loadAiVault } from "@/core/keypoollive/AiVault";
 import { KeypoolUsageDb } from "@/core/keypoollive/KeypoolUsageDb";
+import { markKeyAsUsed } from "@/core/keypoollive/KeyPool";
 import {
-	configureSessionKeyManager,
-	getSessionApiConfig,
-	rotateSessionKey,
+    configureSessionKeyManager,
+    getSessionApiConfig,
+    rotateSessionKey,
 } from "@/core/keypoollive/SessionKeyManager";
 import type { AiProtocol, ResolvedApiConfig } from "@/core/keypoollive/types";
 import type { ClineStorageMessage } from "@/shared/messages/content";
 import { Logger } from "@/shared/services/Logger";
 import type {
-	ApiHandler,
-	ApiHandlerModel,
-	CommonApiHandlerOptions,
+    ApiHandler,
+    ApiHandlerModel,
+    CommonApiHandlerOptions,
 } from "../index";
 import type { ApiStream } from "../transform/stream";
 import { AnthropicHandler } from "./anthropic";
@@ -146,6 +147,7 @@ export class KeypoolLiveHandler implements ApiHandler {
 				});
 			case "cohere":
 				return new CohereHandler({
+					cohereBaseUrl: baseUrl,
 					cohereApiKey: apiKey,
 					apiModelId: model.id,
 					onRetryAttempt: this.options.onRetryAttempt,
@@ -234,6 +236,7 @@ export class KeypoolLiveHandler implements ApiHandler {
 				}
 
 				// Record usage on success
+				await markKeyAsUsed(vaultProviderName, config.apiKey);
 				KeypoolUsageDb.recordUsage({
 					provider: vaultProviderName,
 					modelId: vaultModelId || config.model.id,
