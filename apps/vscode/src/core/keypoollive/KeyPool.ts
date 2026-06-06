@@ -2,20 +2,20 @@
  * KeypoolLive — KeyPool: round-robin selection, health tracking, model descriptions
  * © 2026 Ronan LE MEILLAT — MIT License
  *
- * KeyPool est le composant central de KeypoolLive qui gère la sélection et la santé des clés API.
+ * KeyPool is the central component of KeypoolLive that manages API key selection and health tracking.
  *
- * Fonctionnalités principales :
- *   • Sélection round-robin : distribue les requêtes de manière équitable entre les clés d'un même fournisseur.
- *   • Suivi de la santé des clés : enregistre les échecs consécutifs et place les clés en cooldown après un seuil.
- *   • Gestion des cooldowns : les clés ayant trop échoué sont temporairement évitées (15 minutes par défaut).
- *   • Persistance d'état : sauvegarde les index round-robin et les statuts des clés dans un fichier JSON.
- *   • Résolution de configuration : sélectionne la meilleure clé disponible et résout la configuration API complète.
- *   • Génération de descriptions de modèles : construit une liste lisible pour l'interface utilisateur avec les détails des modèles.
- *   • Routage via gateway : supporte l'utilisation d'un AI Gateway (ex. Cloudflare) pour le trafic sortant.
- *   • Réinitialisation : permet de vider l'état interne lors de rechargements de configuration.
+ * Main Features:
+ *   • Round-robin selection: distributes requests evenly among keys from the same provider.
+ *   • Key health tracking: records consecutive failures and places keys on cooldown after a threshold.
+ *   • Cooldown management: keys that have failed too many times are temporarily avoided (default 15 minutes).
+ *   • State persistence: saves round-robin indexes and key statuses in a JSON file.
+ *   • Configuration resolution: selects the best available key and resolves the complete API configuration.
+ *   • Model description generation: builds a readable list for the user interface with model details.
+ *   • Gateway routing: supports the use of an AI Gateway (e.g., Cloudflare) for outgoing traffic.
+ *   • Reset: allows clearing the internal state during configuration reloads.
  *
- * Le module assure une haute disponibilité en évitant les clés défaillantes tout en maintenant une distribution équilibrée
- * des charges entre les clés valides, et fournit des métadonnées complètes pour l'affichage des modèles dans l'UI.
+ * The module ensures high availability by avoiding failed keys while maintaining balanced load distribution
+ * of loads among valid keys, and provides complete metadata for displaying models in the UI.
  */
 
 import { homedir } from "os";
