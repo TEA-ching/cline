@@ -39,6 +39,10 @@ interface KeyStatus {
 	cooledDownAt?: number;
 	/** Number of consecutive failures observed for this key. */
 	failureCount: number;
+	/** Timestamp (ms) of the last successful request for this key. */
+	lastUsedAt?: number;
+	/** Number of requests made with this key in the last 24 hours. */
+	requestCount24h?: number;
 }
 
 /**
@@ -49,6 +53,8 @@ interface PersistedKeyStatus {
 	keySuffix: string;
 	cooledDownAt?: number;
 	failureCount: number;
+	lastUsedAt?: number;
+	requestCount24h?: number;
 }
 
 /**
@@ -201,6 +207,14 @@ export async function loadPersistentStateOnce(): Promise<void> {
 						typeof status.cooledDownAt === "number"
 							? status.cooledDownAt
 							: undefined,
+					lastUsedAt:
+						typeof status.lastUsedAt === "number"
+							? status.lastUsedAt
+							: undefined,
+					requestCount24h:
+						typeof status.requestCount24h === "number"
+							? Math.max(0, Math.trunc(status.requestCount24h))
+							: undefined,
 				});
 			}
 		} catch {
@@ -235,6 +249,8 @@ function persistStateSoon(): void {
 							keySuffix: sep >= 0 ? id.slice(sep + 1) : status.key.slice(-8),
 							cooledDownAt: status.cooledDownAt,
 							failureCount: status.failureCount,
+							lastUsedAt: status.lastUsedAt,
+							requestCount24h: status.requestCount24h,
 						};
 					}),
 				};
@@ -306,6 +322,8 @@ export async function markKeyAsFailed(
 		failureCount,
 		cooledDownAt:
 			failureCount >= MAX_FAILURE_COUNT ? Date.now() : existing?.cooledDownAt,
+		lastUsedAt: existing?.lastUsedAt,
+		requestCount24h: existing?.requestCount24h,
 	});
 	Logger.warn(
 		`[KeypoolLive] Key ...${keyValue.slice(-8)} for ${providerName} failed (count: ${failureCount})`,
@@ -314,9 +332,9 @@ export async function markKeyAsFailed(
 }
 
 /**
- * Picks the next available key for a provider using a round-robin strategy.
- * It prioritizes keys that aren't on cooldown. If all keys are on cooldown,
- * it falls back to picking any non-expired key.
+ * Picks the next available key for a provider using a balanced strategy.
+ * It prioritizes keys that aren't on cooldown and have the least recent usage.
+ * If all keys are on cooldown, it falls back to picking any non-expired key.
  *
  * @param providerName - The AI provider.
  * @param keys - List of available keys from the vault.
@@ -338,10 +356,33 @@ function selectNextKey(
 		return eligible[idx];
 	}
 
-	const idx = (roundRobinIndexes.get(providerName) ?? 0) % usable.length;
-	roundRobinIndexes.set(providerName, (idx + 1) % usable.length);
-	persistStateSoon();
-	return usable[idx];
+	// If all usable keys have 0 requests in the last 24h, choose randomly
+	const keysWithUsage = usable.filter((key) => {
+		const status = keyStatuses.get(getKeyStatusId(providerName, key.key));
+		return status?.requestCount24h && status.requestCount24h > 0;
+	});
+
+	if (keysWithUsage.length === 0) {
+		// All keys have 0 requests, choose randomly
+		const randomIdx = Math.floor(Math.random() * usable.length);
+		return usable[randomIdx];
+	}
+
+	// Find the key with the least requests in the last 24h
+	let selectedKey = usable[0];
+	let minRequests = Infinity;
+
+	for (const key of usable) {
+		const status = keyStatuses.get(getKeyStatusId(providerName, key.key));
+		const requests = status?.requestCount24h ?? 0;
+
+		if (requests < minRequests) {
+			minRequests = requests;
+			selectedKey = key;
+		}
+	}
+
+	return selectedKey;
 }
 
 /**
@@ -495,5 +536,47 @@ function mapToClineProvider(
 export function resetKeyPool(): void {
 	roundRobinIndexes.clear();
 	keyStatuses.clear();
+	persistStateSoon();
+}
+
+/**
+ * Records a successful request for a specific API key.
+ * Updates the last used timestamp and request count for the last 24 hours.
+ *
+ * @param providerName - The AI provider.
+ * @param keyValue - The API key string.
+ */
+export async function markKeyAsUsed(
+	providerName: string,
+	keyValue: string,
+): Promise<void> {
+	// Ensure persistent state is loaded
+	if (!persistentStateLoaded) {
+		await loadPersistentStateOnce();
+	}
+
+	const id = getKeyStatusId(providerName, keyValue);
+	const existing = keyStatuses.get(id);
+	const now = Date.now();
+
+	// Reset request count if it's from a different day
+	let requestCount24h = 1;
+	if (existing?.lastUsedAt) {
+		// If last used was more than 24 hours ago, reset count
+		if (now - existing.lastUsedAt > 24 * 60 * 60 * 1000) {
+			requestCount24h = 1;
+		} else {
+			requestCount24h = (existing.requestCount24h ?? 0) + 1;
+		}
+	}
+
+	keyStatuses.set(id, {
+		key: keyValue,
+		failureCount: existing?.failureCount ?? 0,
+		cooledDownAt: existing?.cooledDownAt,
+		lastUsedAt: now,
+		requestCount24h: requestCount24h,
+	});
+
 	persistStateSoon();
 }
