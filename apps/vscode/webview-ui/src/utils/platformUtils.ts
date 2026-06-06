@@ -1,8 +1,3 @@
-export interface NavigatorUAData {
-	platform: string
-	brands: { brand: string; version: string }[]
-}
-
 export const unknown = "Unknown"
 
 const platforms = {
@@ -38,7 +33,7 @@ export const detectMetaKeyChar = (platform: string) => {
 
 const userAgent = navigator?.userAgent || ""
 
-export const isChrome = userAgent.indexOf("Chrome") >= 0
+const isChrome = userAgent.indexOf("Chrome") >= 0
 
 export const isSafari = !isChrome && userAgent.indexOf("Safari") >= 0
 

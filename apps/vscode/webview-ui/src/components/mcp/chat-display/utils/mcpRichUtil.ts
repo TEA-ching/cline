@@ -22,7 +22,7 @@ export interface DisplaySegment {
  * Truncates a single data URI to show prefix + first 20 chars
  * e.g. "data:image/png;base64,iVBORw0KGgo..." becomes "[IMAGE] data:image/png;base64,iVBORw0KGgoAAAANS..."
  */
-export const truncateSingleDataUri = (dataUri: string): string => {
+const truncateSingleDataUri = (dataUri: string): string => {
 	const commaIndex = dataUri.indexOf(",")
 	if (commaIndex === -1) {
 		return dataUri
@@ -42,7 +42,7 @@ export const truncateDataUris = (text: string): string => {
 }
 
 // Safely create a URL object with error handling and ensure HTTPS
-export const safeCreateUrl = (url: string): URL | null => {
+const safeCreateUrl = (url: string): URL | null => {
 	try {
 		// Convert HTTP to HTTPS for security
 		if (url.startsWith("http://")) {
@@ -66,7 +66,7 @@ export const safeCreateUrl = (url: string): URL | null => {
 }
 
 // Check if a string is a valid URL
-export const isUrl = (str: string): boolean => {
+const isUrl = (str: string): boolean => {
 	return safeCreateUrl(str) !== null
 }
 
@@ -81,7 +81,7 @@ export const getSafeHostname = (url: string): string => {
 }
 
 // Check if a URL is a localhost URL by examining the hostname
-export const isLocalhostUrl = (url: string): boolean => {
+const isLocalhostUrl = (url: string): boolean => {
 	try {
 		const hostname = getSafeHostname(url)
 		return (
@@ -215,7 +215,7 @@ export const checkIfImageUrl = async (url: string): Promise<boolean> => {
  * @param maxUrls - Maximum number of URLs to extract (default: 50)
  * @returns Array of URL matches sorted by position in text
  */
-export const extractUrlsFromText = (text: string, maxUrls = 50): UrlMatch[] => {
+const extractUrlsFromText = (text: string, maxUrls = 50): UrlMatch[] => {
 	const matches: UrlMatch[] = []
 	const urlRegex = /(?:https?:\/\/|data:image)[^\s<>"']+/g
 	let urlMatch: RegExpExecArray | null
@@ -259,7 +259,7 @@ export const extractUrlsFromText = (text: string, maxUrls = 50): UrlMatch[] => {
  * @param cancellationToken - Object to check if processing should be cancelled
  * @returns Promise that resolves when processing is complete
  */
-export const processUrlTypes = async (
+const processUrlTypes = async (
 	matches: UrlMatch[],
 	onProgress: (updatedMatches: UrlMatch[]) => void,
 	cancellationToken: { cancelled: boolean },

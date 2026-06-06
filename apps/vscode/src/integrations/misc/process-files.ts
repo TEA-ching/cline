@@ -102,7 +102,7 @@ export async function selectFiles(imagesAllowed: boolean): Promise<{ images: str
 	return { images, files }
 }
 
-export function getMimeType(filePath: string): string {
+function getMimeType(filePath: string): string {
 	const ext = path.extname(filePath).toLowerCase()
 	switch (ext) {
 		case ".png":

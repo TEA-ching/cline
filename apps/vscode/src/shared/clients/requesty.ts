@@ -18,7 +18,3 @@ export const toRequestyServiceUrl = (baseUrl?: string, service: URLType = "route
 		return undefined
 	}
 }
-
-export const toRequestyServiceStringUrl = (baseUrl?: string, service: URLType = "router"): string | undefined => {
-	return toRequestyServiceUrl(baseUrl, service)?.toString()
-}

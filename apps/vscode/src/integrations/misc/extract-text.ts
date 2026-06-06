@@ -42,7 +42,7 @@ export async function extractTextFromFile(filePath: string): Promise<string> {
  * Expects the fs.access call to have already been performed prior to calling.
  * Content is automatically truncated if it exceeds 400KB to prevent context overflow.
  */
-export async function callTextExtractionFunctions(filePath: string): Promise<string> {
+async function callTextExtractionFunctions(filePath: string): Promise<string> {
 	const fileExtension = path.extname(filePath).toLowerCase()
 
 	let content: string
