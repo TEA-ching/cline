@@ -26,6 +26,7 @@ import type {
 	GatewayResolvedProviderConfig,
 	GatewayStreamRequest,
 } from "@cline/shared";
+import type { CrawlerKeyResolver, ResolvedCrawlerConfig } from "@cline/shared";
 
 // ─── Vault types ─────────────────────────────────────────────────────────────
 /**
@@ -37,6 +38,29 @@ import type {
  * Supported AI protocols that the vault can handle
  */
 type AiProtocol = "openai" | "anthropic" | "gemini" | "mistral" | "cohere";
+
+/**
+ * Supported crawler protocols that the vault can handle
+ */
+type CrawlerProtocol = 'firecrawl' | 'exa' | 'scrapegraphai';
+
+/**
+ * Represents a crawler API key in the vault
+ */
+interface CrawlerKey {
+  key: string;
+  owner?: string;
+  type?: AiKeyTier;
+}
+
+/**
+ * Represents a crawler service configuration in the vault
+ */
+interface VaultCrawler {
+  protocol: CrawlerProtocol;
+  endpoint: string;
+  keys: CrawlerKey[];
+}
 
 /**
  * Key tier classification for prioritization and usage tracking
@@ -83,6 +107,7 @@ interface VaultProvider {
 interface AiVaultConfig {
 	version: number;
 	providers: Record<string, VaultProvider>;
+	crawlers?: Record<string, VaultCrawler>;
 }
 
 // Internal raw format from the JSON file
@@ -126,6 +151,15 @@ interface RawAiProvider {
 interface RawAiConfig {
 	version: number;
 	providers: Record<string, RawAiProvider>;
+	crawlers?: Record<string, {
+		protocol: CrawlerProtocol;
+		endpoint: string;
+		keys: Array<{
+			key: string;
+			owner?: string;
+			type?: AiKeyTier;
+		}>;
+	}>;
 }
 
 // ─── AiVault (decryption + caching) ──────────────────────────────────────────
@@ -224,7 +258,12 @@ async function decryptAiConfig(
  * @returns Transformed vault configuration with defaults applied
  */
 function transformRawConfig(raw: RawAiConfig): AiVaultConfig {
-	const vault: AiVaultConfig = { version: raw.version, providers: {} };
+	const vault: AiVaultConfig = {
+		version: raw.version,
+		providers: {},
+	};
+
+	// Transform providers
 	for (const [name, p] of Object.entries(raw.providers)) {
 		vault.providers[name] = {
 			protocol: p.protocol,
@@ -237,6 +276,26 @@ function transformRawConfig(raw: RawAiConfig): AiVaultConfig {
 			models: p.models.map((m) => ({ ...m })),
 		};
 	}
+
+	// Transform crawlers if present in the raw config
+	if ('crawlers' in raw) {
+		const rawCrawlers = raw as RawAiConfig & { crawlers?: Record<string, any> };
+		if (rawCrawlers.crawlers) {
+			vault.crawlers = {};
+			for (const [name, c] of Object.entries(rawCrawlers.crawlers)) {
+				vault.crawlers[name] = {
+					protocol: c.protocol,
+					endpoint: c.endpoint,
+					keys: c.keys.map((k: any) => ({
+						key: k.key,
+						owner: k.owner,
+						type: k.type,
+					})),
+				};
+			}
+		}
+	}
+
 	return vault;
 }
 
@@ -304,6 +363,120 @@ function clearVaultCache(): void {
  * Key rotation and health tracking system.
  * Implements round-robin key selection with failure tracking and cooldown periods.
  */
+
+// ---- Crawler-specific state tracking ----
+
+/**
+ * Tracks the current round-robin index for each crawler
+ */
+const crawlerRoundRobinIndexes = new Map<string, number>();
+
+/**
+ * Tracks health status for each crawler key
+ */
+const crawlerKeyStatuses = new Map<string, KeyStatus>();
+
+/**
+ * Generates a unique identifier for a crawler key
+ */
+function getCrawlerKeyId(crawlerName: string, keyValue: string): string {
+  return `${crawlerName}:${keyValue.slice(-8)}`;
+}
+
+/**
+ * Checks if a crawler key is currently usable
+ */
+function isCrawlerKeyUsable(crawlerName: string, keyValue: string): boolean {
+  const status = crawlerKeyStatuses.get(getCrawlerKeyId(crawlerName, keyValue));
+  if (!status) return true;
+
+  if (status.failureCount >= MAX_FAILURE_COUNT) {
+    if (status.cooledDownAt && Date.now() - status.cooledDownAt >= KEY_COOLDOWN_MS) {
+      crawlerKeyStatuses.delete(getCrawlerKeyId(crawlerName, keyValue));
+      persistStateSoon();
+      return true;
+    }
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Marks a crawler key as failed
+ */
+export function markCrawlerKeyAsFailed(crawlerName: string, keyValue: string): void {
+  const id = getCrawlerKeyId(crawlerName, keyValue);
+  const existing = crawlerKeyStatuses.get(id);
+  const failureCount = (existing?.failureCount ?? 0) + 1;
+
+  crawlerKeyStatuses.set(id, {
+    key: keyValue,
+    failureCount,
+    cooledDownAt: failureCount >= MAX_FAILURE_COUNT ? Date.now() : existing?.cooledDownAt,
+  });
+  persistStateSoon();
+}
+
+/**
+ * Selects the next crawler key to use
+ */
+function selectNextCrawlerKey(
+  crawlerName: string,
+  keys: CrawlerKey[],
+): CrawlerKey | null {
+  const eligible = keys.filter(k => k.type !== 'expired');
+  if (!eligible.length) return null;
+
+  const usable = eligible.filter(k => isCrawlerKeyUsable(crawlerName, k.key));
+  const pool = usable.length ? usable : eligible;
+
+  const idx = (crawlerRoundRobinIndexes.get(crawlerName) ?? 0) % pool.length;
+  crawlerRoundRobinIndexes.set(crawlerName, (idx + 1) % pool.length);
+  return pool[idx];
+}
+
+// ---- Implémentation de CrawlerKeyResolver ----
+
+/**
+ * KeypoolCrawlerResolver - implements CrawlerKeyResolver for KeypoolLive
+ */
+export class KeypoolCrawlerResolver implements CrawlerKeyResolver {
+  constructor(private readonly vaultUrl: string) {}
+
+  async resolve(): Promise<ResolvedCrawlerConfig | null> {
+    const vault = await loadAiVault(this.vaultUrl);
+
+    // Access crawlers in the vault
+    const crawlers = vault.crawlers;
+    if (!crawlers) return null;
+
+    const entries = Object.entries(crawlers);
+    if (!entries.length) return null;
+
+    // Find the first crawler with a usable key
+    for (const [crawlerName, crawler] of entries) {
+      const key = selectNextCrawlerKey(crawlerName, crawler.keys);
+      if (!key) continue;
+
+      return {
+        crawlerName,
+        protocol: crawler.protocol,
+        endpoint: crawler.endpoint,
+        apiKey: key.key,
+        keyOwner: key.owner,
+      };
+    }
+
+    return null;
+  }
+}
+
+/**
+ * Creates a CrawlerKeyResolver based on the KeypoolLive vault
+ */
+export function createKeypoolCrawlerResolver(vaultUrl: string): CrawlerKeyResolver {
+  return new KeypoolCrawlerResolver(vaultUrl);
+}
 
 /**
  * Tracks the health and usage status of individual API keys

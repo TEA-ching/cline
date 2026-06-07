@@ -6,10 +6,9 @@
 
 import type { AgentToolContext } from "@cline/shared";
 import type { WebFetchExecutor } from "../types";
+import type { CrawlerKeyResolver } from './crawler/types';
+import { createSmartWebFetchExecutor } from './crawler/index';
 
-/**
- * Options for the web fetch executor
- */
 export interface WebFetchExecutorOptions {
 	/**
 	 * Timeout for fetch requests in milliseconds
@@ -45,6 +44,13 @@ export interface WebFetchExecutorOptions {
 	 * @default 5
 	 */
 	maxRedirects?: number;
+
+	/**
+	 * Optional crawler key resolver.
+	 * If provided, fetch_web_content will use the crawler as a priority
+	 * and fall back to native fetch if the crawler fails or no key is available.
+	 */
+	crawlerResolver?: CrawlerKeyResolver;
 }
 
 /**
@@ -95,6 +101,7 @@ function htmlToText(html: string): string {
  * )
  * ```
  */
+
 export function createWebFetchExecutor(
 	options: WebFetchExecutorOptions = {},
 ): WebFetchExecutor {
@@ -104,7 +111,35 @@ export function createWebFetchExecutor(
 		userAgent = "Mozilla/5.0 (compatible; AgentBot/1.0)",
 		headers = {},
 		followRedirects = true,
+		crawlerResolver,
 		// maxRedirects is available in options but native fetch handles it automatically
+	} = options;
+
+	// Always create the nativeExecutor (fallback guaranteed)
+	const nativeExecutor = createNativeWebFetchExecutor({
+		timeoutMs,
+		maxResponseBytes,
+		userAgent,
+		headers,
+		followRedirects,
+	});
+
+	// If a resolver is provided, wrap in the smart executor
+	if (crawlerResolver) {
+		return createSmartWebFetchExecutor(crawlerResolver, nativeExecutor, timeoutMs);
+	}
+
+	return nativeExecutor;
+}
+
+// Renamed the implementation to createNativeWebFetchExecutor (private function)
+function createNativeWebFetchExecutor(options: Omit<WebFetchExecutorOptions, 'crawlerResolver'>): WebFetchExecutor {
+	const {
+		timeoutMs = 30000,
+		maxResponseBytes = 5_000_000,
+		userAgent = "Mozilla/5.0 (compatible; AgentBot/1.0)",
+		headers = {},
+		followRedirects = true,
 	} = options;
 
 	return async (
@@ -237,7 +272,7 @@ export function createWebFetchExecutor(
 				);
 			}
 
-			outputLines.push(``, `--- Analysis Request ---`, `Prompt: ${prompt}`);
+			outputLines.push(``, `--- Analysis Request with Fetch ---`, `Prompt: ${prompt}`);
 
 			return outputLines.join("\n");
 		} catch (error) {

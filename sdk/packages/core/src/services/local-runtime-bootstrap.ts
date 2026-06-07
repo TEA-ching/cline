@@ -39,6 +39,9 @@ import {
 	type ProviderSettings,
 	toProviderConfig,
 } from "../types/provider-settings";
+import { createKeypoolCrawlerResolver } from "@cline/llms";
+import { createWebFetchExecutor } from "../extensions/tools/executors";
+import type { ToolExecutors } from "../extensions/tools";
 import { resolveWorkspacePath } from "./config";
 import { filterExtensionToolRegistrations } from "./global-settings";
 import { hasRuntimeHooks, mergeAgentExtensions } from "./session-data";
@@ -46,6 +49,18 @@ import type { ProviderSettingsManager } from "./storage/provider-settings-manage
 import { InMemoryWorkspaceManager } from "./workspace/workspace-manager";
 import { buildWorkspaceMetadataWithInfo } from "./workspace/workspace-manifest";
 import { emitWorkspaceLifecycleTelemetry } from "./workspace/workspace-telemetry";
+
+function augmentWithKeypoolWebFetch(
+	executors?: Partial<ToolExecutors>,
+): Partial<ToolExecutors> | undefined {
+	if (executors?.webFetch) return executors;
+	const vaultUrl = process.env.KEYPOOL_VAULT_URL;
+	if (!vaultUrl) return executors;
+	console.log('[Bootstrap] KEYPOOL_VAULT_URL found, injecting SmartWebFetch executor');
+	const resolver = createKeypoolCrawlerResolver(vaultUrl);
+	const webFetch = createWebFetchExecutor({ crawlerResolver: resolver });
+	return { ...executors, webFetch };
+}
 
 function formatPluginFailure(failure: PluginInitializationFailure): string {
 	const label = failure.pluginName ?? failure.pluginPath;
@@ -432,7 +447,7 @@ export async function prepareLocalRuntimeBootstrap(
 		input.capabilities,
 	);
 	const requestToolApproval = capabilities?.requestToolApproval;
-	const effectiveToolExecutors = capabilities?.toolExecutors;
+	const effectiveToolExecutors = augmentWithKeypoolWebFetch(capabilities?.toolExecutors);
 	const workspaceManager = new InMemoryWorkspaceManager({
 		currentWorkspacePath: workspaceInfo.rootPath,
 		workspaces: {

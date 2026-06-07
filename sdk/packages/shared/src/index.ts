@@ -393,6 +393,7 @@ export type { RuntimeEnv } from "./session/runtime-env";
 export * from "./session/workspace";
 export * from "./team";
 export { createTool } from "./tools/create";
+export type { CrawlerKeyResolver, CrawlerProtocol, ResolvedCrawlerConfig } from "./tools/crawler";
 export * from "./types";
 export type { OAuthProviderId } from "./types/auth";
 export {

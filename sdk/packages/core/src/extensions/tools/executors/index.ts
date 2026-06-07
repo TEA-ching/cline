@@ -42,6 +42,12 @@ export {
 	createWebFetchExecutor,
 	type WebFetchExecutorOptions,
 } from "./web-fetch";
+export {
+	createSmartWebFetchExecutor,
+	type CrawlerKeyResolver,
+	type CrawlerProtocol,
+	type ResolvedCrawlerConfig,
+} from "./crawler/index";
 
 /**
  * Options for creating default executors

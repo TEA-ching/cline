@@ -72,3 +72,9 @@ export type * from "./providers/gateway";
 export { createGateway, DefaultGateway } from "./providers/gateway";
 export { resolveProviderModelCatalogKeys } from "./providers/provider-keys";
 export { disposeLangfuseTelemetry } from "./services/langfuse-telemetry";
+
+// KeypoolLive crawler integration
+export {
+	createKeypoolCrawlerResolver,
+	markCrawlerKeyAsFailed,
+} from "./providers/vendors/keypoollive";
