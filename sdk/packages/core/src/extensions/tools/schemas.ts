@@ -167,6 +167,44 @@ export const StructuredCommandsInputUnionSchema = z.union([
 ]);
 
 /**
+ * Schema for a single web search request
+ */
+export const WebSearchRequestSchema = z.object({
+	url: z
+		.string()
+		.url()
+		.optional()
+		.describe("The URL to search or specific webpage to analyze"),
+	query: z
+		.string()
+		.min(3)
+		.optional()
+		.describe("Optional search query to use for web search"),
+	prompt: z
+		.string()
+		.min(2)
+		.describe("Analysis prompt for the search results or webpage content"),
+});
+
+/**
+ * Schema for search_web tool input
+ */
+export const SearchWebInputSchema = z.object({
+	requests: z
+		.array(WebSearchRequestSchema)
+		.describe("Array of web search requests to execute"),
+});
+
+/**
+ * Union schema for search_web tool input, allowing either a single object, an array of objects, or the full object schema
+ */
+export const SearchWebInputUnionSchema = z.union([
+	SearchWebInputSchema,
+	z.array(WebSearchRequestSchema),
+	WebSearchRequestSchema,
+]);
+
+/**
  * Schema for a single web fetch request
  */
 export const WebFetchRequestSchema = z.object({
@@ -313,6 +351,11 @@ export type StructuredCommandInput = z.infer<
  * Web fetch request parameters
  */
 export type WebFetchRequest = z.infer<typeof WebFetchRequestSchema>;
+
+/**
+ * Input for the search_web tool
+ */
+export type SearchWebInput = z.infer<typeof SearchWebInputSchema>;
 
 /**
  * Input for the fetch_web_content tool

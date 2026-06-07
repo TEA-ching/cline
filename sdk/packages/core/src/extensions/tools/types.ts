@@ -97,6 +97,18 @@ export type WebFetchExecutor = (
 ) => Promise<string>;
 
 /**
+ * Executor for searching the web
+ *
+ * @param request - Web search request with optional URL or query, and analysis prompt
+ * @param context - Tool execution context
+ * @returns Searched/extracted content
+ */
+export type WebSearchExecutor = (
+	request: { url?: string; query?: string; prompt: string },
+	context: AgentToolContext,
+) => Promise<string>;
+
+/**
  * Executor for editing files
  *
  * @param input - Editor command input
@@ -204,6 +216,8 @@ export interface ToolExecutors {
 	bash?: BashExecutor;
 	/** Web content fetching implementation */
 	webFetch?: WebFetchExecutor;
+	/** Web search implementation */
+	webSearch?: WebSearchExecutor;
 	/** Filesystem editor implementation */
 	editor?: EditorExecutor;
 	/** Apply patch implementation */
@@ -228,6 +242,7 @@ export type DefaultToolName =
 	| "search_codebase"
 	| "run_commands"
 	| "fetch_web_content"
+	| "search_web"
 	| "apply_patch"
 	| "editor"
 	| "skills"
@@ -261,6 +276,12 @@ export interface DefaultToolsConfig {
 	 * @default true
 	 */
 	enableWebFetch?: boolean;
+
+	/**
+	 * Enable the search_web tool
+	 * @default true
+	 */
+	enableWebSearch?: boolean;
 
 	/**
 	 * Enable the apply_patch tool
@@ -316,6 +337,12 @@ export interface DefaultToolsConfig {
 	webFetchTimeoutMs?: number;
 
 	/**
+	 * Timeout for web search operations in milliseconds
+	 * @default 30000
+	 */
+	webSearchTimeoutMs?: number;
+
+	/**
 	 * Timeout for search operations in milliseconds
 	 * @default 30000
 	 */
@@ -356,3 +383,4 @@ export interface CreateDefaultToolsOptions extends DefaultToolsConfig {
 	 */
 	executors: ToolExecutors;
 }
+

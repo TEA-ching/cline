@@ -44,6 +44,7 @@ export {
 } from "./web-fetch";
 export {
 	createSmartWebFetchExecutor,
+	createWebSearchExecutor,
 	type CrawlerKeyResolver,
 	type CrawlerProtocol,
 	type ResolvedCrawlerConfig,

@@ -18,6 +18,7 @@
  * of loads among valid keys, and provides complete metadata for displaying models in the UI.
  */
 
+import { accessSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import path from "path";
 import { Logger } from "@/shared/services/Logger";
@@ -95,9 +96,9 @@ const keyStatuses = new Map<string, KeyStatus>();
 let persistentStateLoaded = false;
 
 /**
- * Tracks pending write operations to avoid overlapping file operations.
+ * Cached path to the persistent state file, set after loadPersistentStateOnce resolves it.
  */
-let persistentStateWriteChain: Promise<void> = Promise.resolve();
+let cachedStatePath: string | null = null;
 
 /**
  * Environment variable name for custom state file path.
@@ -128,14 +129,11 @@ function getKeyStatusId(providerName: string, keyValue: string): string {
  *
  * @returns Path to the state file
  */
-async function getPersistentStatePath(): Promise<string> {
+function getPersistentStatePath(): string {
 	if (process.env[KEYPOOL_STATE_FILE_ENV]) {
 		return process.env[KEYPOOL_STATE_FILE_ENV] as string;
 	}
-
-	// Default to ~/.cline/data/keypoollive-state.json if not specified
-	const homeDir = homedir();
-	return path.join(homeDir, ".cline", "data", DEFAULT_KEYPOOL_STATE_FILE);
+	return path.join(homedir(), ".cline", "data", DEFAULT_KEYPOOL_STATE_FILE);
 }
 
 /**
@@ -149,19 +147,22 @@ export async function loadPersistentStateOnce(): Promise<void> {
 	persistentStateLoaded = true;
 
 	try {
-		const statePath = await getPersistentStatePath();
-		const fs = await import("fs");
-		const path = await import("path");
+		const statePath = getPersistentStatePath();
+		cachedStatePath = statePath;
 
-		// Create the directory if it doesn't exist
-		await fs.promises.mkdir(path.dirname(statePath), { recursive: true });
+		mkdirSync(path.dirname(statePath), { recursive: true });
 
 		// Create an empty state file if it doesn't exist
+		let fileExists = false;
 		try {
-			await fs.promises.access(statePath);
+			accessSync(statePath);
+			fileExists = true;
 		} catch {
-			// File doesn't exist, create an empty one
-			await fs.promises.writeFile(
+			// File doesn't exist
+		}
+
+		if (!fileExists) {
+			writeFileSync(
 				statePath,
 				JSON.stringify(
 					{
@@ -177,7 +178,7 @@ export async function loadPersistentStateOnce(): Promise<void> {
 
 		// Load existing state if available
 		try {
-			const raw = await fs.promises.readFile(statePath, "utf8");
+			const raw = readFileSync(statePath, "utf8");
 			const parsed = JSON.parse(raw) as PersistedRoundRobinState;
 
 			if (parsed.version !== 1) {
@@ -226,49 +227,37 @@ export async function loadPersistentStateOnce(): Promise<void> {
 }
 
 /**
- * Schedules a write of the current state to disk.
- * Uses a promise chain to avoid overlapping writes.
+ * Writes the current state to disk synchronously.
+ * Synchronous I/O guarantees the state survives process exit, matching the
+ * behaviour of KeypoolUsageDb.recordUsage() which also uses appendFileSync.
  */
 function persistStateSoon(): void {
-	persistentStateWriteChain = persistentStateWriteChain
-		.then(async () => {
-			try {
-				const statePath = await getPersistentStatePath();
-				const fs = await import("fs");
-				const path = await import("path");
+	try {
+		const statePath = cachedStatePath ?? getPersistentStatePath();
+		mkdirSync(path.dirname(statePath), { recursive: true });
 
-				await fs.promises.mkdir(path.dirname(statePath), { recursive: true });
-
-				const persisted: PersistedRoundRobinState = {
-					version: 1,
-					roundRobinIndexes: Object.fromEntries(roundRobinIndexes.entries()),
-					keyStatuses: Array.from(keyStatuses.entries()).map(([id, status]) => {
-						const sep = id.indexOf(":");
-						return {
-							providerName: sep >= 0 ? id.slice(0, sep) : "unknown",
-							keySuffix: sep >= 0 ? id.slice(sep + 1) : status.key.slice(-8),
-							cooledDownAt: status.cooledDownAt,
-							failureCount: status.failureCount,
-							lastUsedAt: status.lastUsedAt,
-							requestCount24h: status.requestCount24h,
-						};
-					}),
+		const persisted: PersistedRoundRobinState = {
+			version: 1,
+			roundRobinIndexes: Object.fromEntries(roundRobinIndexes.entries()),
+			keyStatuses: Array.from(keyStatuses.entries()).map(([id, status]) => {
+				const sep = id.indexOf(":");
+				return {
+					providerName: sep >= 0 ? id.slice(0, sep) : "unknown",
+					keySuffix: sep >= 0 ? id.slice(sep + 1) : status.key.slice(-8),
+					cooledDownAt: status.cooledDownAt,
+					failureCount: status.failureCount,
+					lastUsedAt: status.lastUsedAt,
+					requestCount24h: status.requestCount24h,
 				};
+			}),
+		};
 
-				const tmpPath = `${statePath}.tmp`;
-				await fs.promises.writeFile(
-					tmpPath,
-					`${JSON.stringify(persisted)}\n`,
-					"utf8",
-				);
-				await fs.promises.rename(tmpPath, statePath);
-			} catch {
-				// Ignore write failures: in-memory rotation still works.
-			}
-		})
-		.catch(() => {
-			// Ignore write failures: in-memory rotation still works.
-		});
+		const tmpPath = `${statePath}.tmp`;
+		writeFileSync(tmpPath, `${JSON.stringify(persisted)}\n`, "utf8");
+		renameSync(tmpPath, statePath);
+	} catch {
+		// Ignore write failures: in-memory rotation still works.
+	}
 }
 
 /**

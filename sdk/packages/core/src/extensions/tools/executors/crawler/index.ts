@@ -11,9 +11,9 @@
  */
 
 import type { AgentToolContext } from '@cline/shared';
-import type { WebFetchExecutor } from '../../types';
+import type { WebFetchExecutor, WebSearchExecutor } from '../../types';
 import { fetchWithExa } from './exa';
-import { fetchWithFirecrawl } from './firecrawl';
+import { fetchWithFirecrawl, searchWithFirecrawl } from './firecrawl';
 import type { CrawlerKeyResolver } from './types';
 
 export type { CrawlerKeyResolver, CrawlerProtocol, ResolvedCrawlerConfig } from './types';
@@ -24,7 +24,6 @@ export function createSmartWebFetchExecutor(
   timeoutMs = 30000,
 ): WebFetchExecutor {
   return async (url: string, prompt: string, context: AgentToolContext): Promise<string> => {
-
     // 1. Ask the resolver for a key (cache handled by resolver implementation)
     let config;
     try {
@@ -66,6 +65,58 @@ export function createSmartWebFetchExecutor(
         crawlerError instanceof Error ? crawlerError.message : String(crawlerError),
       );
       return nativeExecutor(url, prompt, context);
+    }
+  };
+}
+
+/**
+ * Create a web search executor using Firecrawl
+ *
+ * @param resolver - Crawler key resolver
+ * @param timeoutMs - Timeout in milliseconds
+ * @returns WebSearchExecutor that uses Firecrawl for web searches
+ */
+export function createWebSearchExecutor(
+  resolver: CrawlerKeyResolver,
+  timeoutMs = 30000,
+): WebSearchExecutor {
+  return async (request: { url?: string; query?: string; prompt: string }, _context: AgentToolContext): Promise<string> => {
+    // 1. Ask the resolver for a key
+    let config;
+    try {
+      config = await resolver.resolve();
+    } catch (resolverErr) {
+      console.warn('[WebSearch] Resolver threw:', resolverErr instanceof Error ? resolverErr.message : String(resolverErr));
+      throw new Error('No crawler key available for web search');
+    }
+
+    if (!config) {
+      console.warn('[WebSearch] Resolver returned null (no crawler key available)');
+      throw new Error('No crawler key available for web search');
+    }
+
+    // 2. Use Firecrawl for web search
+    try {
+      if (config.protocol === 'firecrawl') {
+        console.log(`[WebSearch] Using Firecrawl (${config.crawlerName}) for ${request.query || request.url}`);
+
+        if (request.url) {
+          return await fetchWithFirecrawl(request.url, request.prompt, config, timeoutMs);
+        } else if (request.query) {
+          return await searchWithFirecrawl(request.query, request.prompt, config, timeoutMs);
+        } else {
+          throw new Error('Either url or query must be provided for web search');
+        }
+      } else {
+        throw new Error(`Unsupported protocol for web search: ${String(config.protocol)}`);
+      }
+    } catch (crawlerError) {
+      const hint = config.apiKey.slice(-6);
+      console.warn(
+        `[WebSearch] ${config.protocol}/${config.crawlerName} (...${hint}) failed:`,
+        crawlerError instanceof Error ? crawlerError.message : String(crawlerError),
+      );
+      throw new Error(`Web search failed: ${crawlerError instanceof Error ? crawlerError.message : String(crawlerError)}`);
     }
   };
 }

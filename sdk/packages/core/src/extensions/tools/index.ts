@@ -20,6 +20,7 @@ export {
 	createSkillsTool,
 	createSubmitAndExitTool,
 	createWebFetchTool,
+	createWebSearchTool,
 	createWindowsShellTool,
 } from "./definitions";
 // Built-in Executors
@@ -34,6 +35,7 @@ export {
 	createSearchExecutor,
 	createWebFetchExecutor,
 	createSmartWebFetchExecutor,
+	createWebSearchExecutor,
 	type CrawlerKeyResolver,
 	type CrawlerProtocol,
 	type ResolvedCrawlerConfig,
@@ -90,6 +92,9 @@ export {
 	SubmitInputSchema,
 	type WebFetchRequest,
 	WebFetchRequestSchema,
+	type SearchWebInput,
+	SearchWebInputSchema,
+	WebSearchRequestSchema,
 } from "./schemas";
 export { TEAM_TOOL_NAMES } from "./team/team-tools";
 // Types
@@ -110,6 +115,7 @@ export type {
 	ToolOperationResult,
 	VerifySubmitExecutor,
 	WebFetchExecutor,
+	WebSearchExecutor,
 } from "./types";
 
 // =============================================================================

@@ -40,7 +40,7 @@ import {
 	toProviderConfig,
 } from "../types/provider-settings";
 import { createKeypoolCrawlerResolver } from "@cline/llms";
-import { createWebFetchExecutor } from "../extensions/tools/executors";
+import { createWebFetchExecutor, createWebSearchExecutor } from "../extensions/tools/executors";
 import type { ToolExecutors } from "../extensions/tools";
 import { resolveWorkspacePath } from "./config";
 import { filterExtensionToolRegistrations } from "./global-settings";
@@ -53,13 +53,19 @@ import { emitWorkspaceLifecycleTelemetry } from "./workspace/workspace-telemetry
 function augmentWithKeypoolWebFetch(
 	executors?: Partial<ToolExecutors>,
 ): Partial<ToolExecutors> | undefined {
-	if (executors?.webFetch) return executors;
 	const vaultUrl = process.env.KEYPOOL_VAULT_URL;
 	if (!vaultUrl) return executors;
-	console.log('[Bootstrap] KEYPOOL_VAULT_URL found, injecting SmartWebFetch executor');
 	const resolver = createKeypoolCrawlerResolver(vaultUrl);
-	const webFetch = createWebFetchExecutor({ crawlerResolver: resolver });
-	return { ...executors, webFetch };
+	const result = { ...executors };
+	if (!result.webFetch) {
+		console.log('[Bootstrap] KEYPOOL_VAULT_URL found, injecting SmartWebFetch executor');
+		result.webFetch = createWebFetchExecutor({ crawlerResolver: resolver });
+	}
+	if (!result.webSearch) {
+		console.log('[Bootstrap] KEYPOOL_VAULT_URL found, injecting WebSearch executor');
+		result.webSearch = createWebSearchExecutor(resolver);
+	}
+	return result;
 }
 
 function formatPluginFailure(failure: PluginInitializationFailure): string {

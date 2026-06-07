@@ -43,12 +43,15 @@ import {
 	type SearchCodebaseInput,
 	SearchCodebaseInputSchema,
 	SearchCodebaseUnionInputSchema,
+	type SearchWebInput,
+	SearchWebInputSchema,
+	SearchWebInputUnionSchema,
 	type SkillsInput,
 	SkillsInputSchema,
 	type StructuredCommandInput,
 	StructuredCommandsInputSchema,
 	type SubmitInput,
-	SubmitInputSchema,
+	SubmitInputSchema
 } from "./schemas";
 import type {
 	ApplyPatchExecutor,
@@ -63,6 +66,7 @@ import type {
 	ToolOperationResult,
 	VerifySubmitExecutor,
 	WebFetchExecutor,
+	WebSearchExecutor
 } from "./types";
 
 // =============================================================================
@@ -411,6 +415,67 @@ export function createWindowsShellTool(
 }
 
 /**
+ * Create the search_web tool
+ *
+ * Searches the web using and analyzes results with provided prompts.
+ */
+export function createWebSearchTool(
+	executor: WebSearchExecutor,
+	config: Pick<DefaultToolsConfig, "webSearchTimeoutMs"> = {},
+): AgentTool<SearchWebInput, ToolOperationResult[]> {
+	const timeoutMs = config.webSearchTimeoutMs ?? 30000;
+
+	return createTool<SearchWebInput, ToolOperationResult[]>({
+		name: "search_web",
+		description:
+			"Search the web to find information, documentation, or specific content. " +
+			"Provide either a URL to analyze a specific webpage or a search query to perform a web search. " +
+			"Each request includes a prompt describing what information to extract or analyze from the results. " +
+			"Use for researching topics, finding documentation, or gathering information from the web.",
+		inputSchema: zodToJsonSchema(SearchWebInputSchema),
+		timeoutMs: timeoutMs * 2,
+		retryable: true,
+		maxRetries: 2,
+		execute: async (input, context) => {
+			// Validate input with Zod schema
+			const validatedInput = validateWithZod(SearchWebInputUnionSchema, input);
+			const requests = Array.isArray(validatedInput)
+				? validatedInput
+				: "requests" in validatedInput
+					? validatedInput.requests
+					: [validatedInput];
+
+			return Promise.all(
+				requests.map(
+					async (request: { url?: string; query?: string; prompt: string }): Promise<ToolOperationResult> => {
+						try {
+							const content = await withTimeout(
+								executor(request, context),
+								timeoutMs,
+								`Web search timed out after ${timeoutMs}ms`,
+							);
+							return {
+								query: request.query || request.url || "web search",
+								result: content,
+								success: true,
+							};
+						} catch (error) {
+							const msg = formatError(error);
+							return {
+								query: request.query || request.url || "web search",
+								result: "",
+								error: `Error searching web: ${msg}`,
+								success: false,
+							};
+						}
+					},
+				),
+			);
+		},
+	});
+}
+
+/**
  * Create the fetch_web_content tool
  *
  * Fetches content from URLs and analyzes them using provided prompts.
@@ -419,6 +484,7 @@ export function createWebFetchTool(
 	executor: WebFetchExecutor,
 	config: Pick<DefaultToolsConfig, "webFetchTimeoutMs"> = {},
 ): AgentTool<FetchWebContentInput, ToolOperationResult[]> {
+
 	const timeoutMs = config.webFetchTimeoutMs ?? 30000;
 
 	return createTool<FetchWebContentInput, ToolOperationResult[]>({
@@ -781,6 +847,7 @@ export function createDefaultTools(
 		enableSearch = true,
 		enableBash = true,
 		enableWebFetch = true,
+		enableWebSearch = true,
 		enableApplyPatch = false,
 		enableEditor = true,
 		enableSkills = true,
@@ -813,6 +880,11 @@ export function createDefaultTools(
 	// Add fetch_web_content tool if enabled and executor provided
 	if (enableWebFetch && executors.webFetch) {
 		tools.push(createWebFetchTool(executors.webFetch, config));
+	}
+
+	// Add search_web tool if enabled and executor provided
+	if (enableWebSearch && executors.webSearch) {
+		tools.push(createWebSearchTool(executors.webSearch, config));
 	}
 
 	// Add editor tool if enabled and executor provided,
