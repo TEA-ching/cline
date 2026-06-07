@@ -49,6 +49,7 @@ export interface VaultProvider {
 export interface AiVaultConfig {
 	version: number;
 	providers: Record<string, VaultProvider>;
+	crawlers?: Record<string, VaultCrawler>;
 }
 
 /**
@@ -77,6 +78,33 @@ export type AiProtocol =
 	| "cohere"
 	| "mistral";
 export type AiKeyTier = "expired" | "free" | "paid" | "premium" | "unlimited";
+
+// ─── Crawler types ────────────────────────────────────────────────────────────
+
+export type CrawlerProtocol = "firecrawl" | "exa" | "scrapegraphai";
+
+export interface VaultCrawlerKey {
+	key: string;
+	owner?: string;
+	type?: AiKeyTier;
+}
+
+export interface VaultCrawler {
+	protocol: CrawlerProtocol;
+	endpoint: string;
+	keys: VaultCrawlerKey[];
+}
+
+/**
+ * Fully resolved crawler configuration ready for use by crawler adapters.
+ */
+export interface ResolvedCrawlerConfig {
+	crawlerName: string;
+	protocol: CrawlerProtocol;
+	endpoint: string;
+	apiKey: string;
+	keyOwner?: string;
+}
 
 // Internal AiConfig format (mirrors the raw vault JSON)
 export interface AiKey {
@@ -108,6 +136,11 @@ export interface AiProvider {
 export interface AiConfig {
 	version: number;
 	providers: Record<string, AiProvider>;
+	crawlers?: Record<string, {
+		protocol: CrawlerProtocol;
+		endpoint: string;
+		keys: Array<{ key: string; owner?: string; type?: AiKeyTier }>;
+	}>;
 }
 
 /**

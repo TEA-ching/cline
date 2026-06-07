@@ -19,7 +19,7 @@
  */
 
 import { fetch } from "@/shared/net";
-import type { AiConfig, AiVaultConfig } from "./types";
+import type { AiConfig, AiVaultConfig, VaultCrawler } from "./types";
 
 /**
  * In-memory cache structure for the AI Vault configuration.
@@ -177,6 +177,22 @@ function transformAiConfigToVaultConfig(aiConfig: AiConfig): AiVaultConfig {
 			})),
 		};
 	}
+	if (aiConfig.crawlers) {
+		const crawlers: Record<string, VaultCrawler> = {};
+		for (const [name, crawler] of Object.entries(aiConfig.crawlers)) {
+			crawlers[name] = {
+				protocol: crawler.protocol,
+				endpoint: crawler.endpoint,
+				keys: crawler.keys.map((k) => ({
+					key: k.key,
+					owner: k.owner,
+					type: k.type,
+				})),
+			};
+		}
+		vaultConfig.crawlers = crawlers;
+	}
+
 	return vaultConfig;
 }
 

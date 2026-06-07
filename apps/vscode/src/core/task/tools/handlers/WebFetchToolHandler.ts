@@ -2,11 +2,13 @@ import { ClineAsk, ClineSayTool } from "@shared/ExtensionMessage"
 import { ClineDefaultTool } from "@shared/tools"
 import axios from "axios"
 import { ClineEnv } from "@/config"
+import { createVaultCrawlerResolver } from "@core/keypoollive/CrawlerKeyResolver"
 import { AuthService } from "@/services/auth/AuthService"
 import { buildClineExtraHeaders } from "@/services/EnvUtils"
 import { featureFlagsService } from "@/services/feature-flags"
 import { telemetryService } from "@/services/telemetry"
 import { CLINE_ACCOUNT_AUTH_ERROR_MESSAGE } from "@/shared/ClineAccount"
+import { fetchWithFirecrawl } from "@/shared/crawlerFetch"
 import { getAxiosSettings } from "@/shared/net"
 import { ToolUse } from "../../../assistant-message"
 import { formatResponse } from "../../../prompts/responses"
@@ -51,12 +53,9 @@ export class WebFetchToolHandler implements IFullyManagedTool {
 			const currentMode = config.services.stateManager.getGlobalSettingsKey("mode")
 			const provider = (currentMode === "plan" ? apiConfig.planModeApiProvider : apiConfig.actModeApiProvider) as string
 
-			// Check if Cline web tools are enabled (both user setting and feature flag)
+			// Gather Cline-backend gate values (used later in execution fallback)
 			const clineWebToolsEnabled = config.services.stateManager.getGlobalSettingsKey("clineWebToolsEnabled")
 			const featureFlagEnabled = featureFlagsService.getWebtoolsEnabled()
-			if (provider !== "cline" || !clineWebToolsEnabled || !featureFlagEnabled) {
-				return formatResponse.toolError("Cline web tools are currently disabled.")
-			}
 
 			// Validate required parameters
 			if (!url) {
@@ -138,7 +137,21 @@ export class WebFetchToolHandler implements IFullyManagedTool {
 				throw error
 			}
 
-			// Execute the actual fetch
+			// Try vault-based Firecrawl executor first (works with any provider)
+			const crawlerResolver = createVaultCrawlerResolver()
+			if (crawlerResolver) {
+				const crawlerConfig = await crawlerResolver.resolve()
+				if (crawlerConfig?.protocol === "firecrawl") {
+					const result = await fetchWithFirecrawl(url, prompt, crawlerConfig, 30000)
+					return formatResponse.toolResult(result)
+				}
+			}
+
+			// Fall back to Cline backend (requires cline provider + feature flag)
+			if (provider !== "cline" || !clineWebToolsEnabled || !featureFlagEnabled) {
+				return formatResponse.toolError("Cline web tools are currently disabled and no crawler key is configured.")
+			}
+
 			const baseUrl = ClineEnv.config().apiBaseUrl
 			const authToken = await AuthService.getInstance().getAuthToken()
 
@@ -164,8 +177,6 @@ export class WebFetchToolHandler implements IFullyManagedTool {
 				},
 			)
 
-			// Parse response
-			// Axios will throw on non-200 status, so no need to check fetchStatus
 			const result = response.data.data.result
 
 			return formatResponse.toolResult(result)
