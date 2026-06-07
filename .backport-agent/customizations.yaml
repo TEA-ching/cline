@@ -64,7 +64,56 @@ customizations:
       - "cd apps/vscode && npm run test:unit -- --timeout 10000 --grep 'KeypoolLive|keypool|Keypool'"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 2. Dashboard et sélecteur de modèle KeypoolLive dans la webview
+  # 3. Intégration Smart Web Crawling
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: smart-web-crawling-integration
+    description: >
+      Ajoute un système de récupération web intelligent avec support pour les crawlers
+      spécialisés (Firecrawl, Exa). Le système permet une extraction de contenu
+      améliorée par rapport à un fetch natif, avec :
+      - Détection automatique des crawlers disponibles via un resolver de clés
+      - Basculement transparent vers le fetch natif si aucun crawler n'est disponible
+      - Gestion des erreurs et réessais automatiques
+      - Intégration avec le système de vault pour la gestion des clés des crawlers
+      - Formatage structuré des résultats (markdown + métadonnées)
+
+      L'implémentation suit le pattern :
+      1. Résolution de la configuration du crawler (via CrawlerKeyResolver)
+      2. Sélection du protocole (firecrawl/exa)
+      3. Appel à l'API du crawler avec gestion des erreurs
+      4. Basculement vers fetch natif si nécessaire
+      5. Formatage unifié du résultat
+
+      Les crawlers sont intégrés dans :
+      - Le système d'outils (web-fetch)
+      - Le fournisseur KeypoolLive (pour la gestion des clés)
+      - Le SDK pour une utilisation programmatique
+    paths:
+      - "sdk/packages/core/src/extensions/tools/executors/crawler/**"
+      - "sdk/packages/core/src/extensions/tools/executors/web-fetch.ts"
+      - "sdk/packages/core/src/extensions/tools/executors/index.ts"
+      - "sdk/packages/llms/src/providers/vendors/keypoollive.ts"
+      - "sdk/packages/core/src/extensions/tools/executors/crawler/smart-web-fetch.test.ts"
+      - "sdk/packages/core/src/integration/smart-web-fetch.live.test.ts"
+    related_files:
+      # Fichiers qui référencent ou utilisent le système de crawling
+      - "sdk/packages/core/src/extensions/tools/definitions.ts"  # Définition des outils
+      - "sdk/packages/core/src/extensions/tools/executors/index.ts"  # Export des exécutants
+      - "sdk/packages/llms/src/index.ts"  # Export des fonctionnalités crawler
+    invariants:
+      - "Les types CrawlerProtocol, ResolvedCrawlerConfig et CrawlerKeyResolver doivent rester dans crawler/types.ts."
+      - "Les adaptateurs firecrawl.ts et exa.ts doivent rester synchronisés avec les APIs respectives."
+      - "createSmartWebFetchExecutor doit toujours accepter un CrawlerKeyResolver et un fallback executor."
+      - "Le système doit toujours basculer silencieusement vers le fetch natif en cas d'échec."
+      - "Les clés de configuration des crawlers (FIRECRAWL_API_KEY, EXA_API_KEY) doivent être supportées dans l'EnvCrawlerResolver."
+      - "L'intégration avec KeypoolLive pour la gestion des clés crawler doit rester fonctionnelle."
+      - "Les tests unitaires et d'intégration doivent couvrir les cas de fallback et de succès."
+    tests:
+      - "cd sdk/packages/core && bun test --grep 'smart-web-fetch|crawler'"
+      - "cd sdk/packages/core && bun test --grep 'SmartWebFetchIntegration'"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 4. Dashboard et sélecteur de modèle KeypoolLive dans la webview
   # ──────────────────────────────────────────────────────────────────────────
   - id: keypoollive-webview-ui
     description: >
@@ -89,7 +138,7 @@ customizations:
       - "cd apps/vscode && npm run test:unit -- --timeout 10000 --grep 'KeypoolLive|keypool|Keypool'"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 3. Renommage @cline/* → @sctg/cline-* pour la publication npm
+  # 5. Renommage @cline/* → @sctg/cline-* pour la publication npm
   # ──────────────────────────────────────────────────────────────────────────
   - id: sctg-package-publishing
     description: >
@@ -122,7 +171,7 @@ customizations:
       - "! grep -rq '@sctg/cline-' sdk/packages --include='*.ts' 2>/dev/null"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 4. Branding ClinePool / SCTG
+  # 6. Branding ClinePool / SCTG
   # ──────────────────────────────────────────────────────────────────────────
   - id: sctg-branding
     description: >
@@ -140,12 +189,12 @@ customizations:
     invariants:
       - "Le champ displayName dans apps/vscode/package.json doit rester 'ClinePool'."
       - "Les icônes du fork (icon.png, robot_panel_*.png, cline-bot.woff) ne doivent pas être remplacées par les icônes upstream lors d'un merge."
-      - "Le publisher doit rester 'saoudrizwan' (compte de publication du fork)."
+      - "Le publisher doit rester 'saoudrizwan' (le publisher est modifié par .github/workflows/keypool-live-preview.yml)."
     tests:
       - "node -e \"const p=require('./apps/vscode/package.json'); console.assert(p.displayName==='ClinePool','displayName must be ClinePool')\""
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 5. Workflow de release preview keypool-live
+  # 7. Workflow de release preview keypool-live
   # ──────────────────────────────────────────────────────────────────────────
   - id: keypoollive-release-workflow
     description: >
@@ -170,7 +219,7 @@ customizations:
       - "yamllint -d relaxed .github/workflows/keypool-live-preview.yml"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 6. Agent de backport et infrastructure d'analyse
+  # 8. Agent de backport et infrastructure d'analyse
   # ──────────────────────────────────────────────────────────────────────────
   - id: backport-agent-infra
     description: >
@@ -193,7 +242,7 @@ customizations:
       - "test -f .clinerules/general.md && echo '.clinerules/general.md exists'"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 7. Documentation Mintlify / sdk/model-providers
+  # 9. Documentation Mintlify / sdk/model-providers
   # ──────────────────────────────────────────────────────────────────────────
   - id: sctg-documentation
     description: >
@@ -214,7 +263,7 @@ customizations:
     tests:
       - "grep -qiE 'keypoollive|keypool' docs/sdk/model-providers.mdx && echo 'OK'"
   # ──────────────────────────────────────────────────────────────────────────
-  # 8. Visuels et assets
+  # 10. Visuels et assets
   # ──────────────────────────────────────────────────────────────────────────
   - id: sctg-assets
     description: >

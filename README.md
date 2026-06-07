@@ -5,12 +5,13 @@
   <a href="https://github.com/sctg-development/ai-proxy-cloudflare"><img src="https://img.shields.io/badge/Free%20Tier-Optimized-brightgreen" alt="Free Tier Optimized"></a>
   <a href="https://github.com/sctg-development/ai-proxy-cloudflare"><img src="https://img.shields.io/badge/API%20Keys-Multi--Provider-orange" alt="Multi-Provider API Keys"></a>
   <a href="https://github.com/sctg-development/ai-proxy-cloudflare"><img src="https://img.shields.io/badge/Key%20Rotation-Automatic-yellow" alt="Automatic Key Rotation"></a>
+  <a href="https://github.com/sctg-development/ai-proxy-cloudflare"><img src="https://img.shields.io/badge/Web%20Crawling-Smart%20Fetch-purple" alt="Smart Web Crawling"></a>
 </p>
 
 <h1 align="center">ClinePool: Multi-Provider AI Agent with Shared Key Vault</h1>
 
 <p align="center">
-The open-source coding agent with <strong>smart API key management</strong> - optimize free tiers from Mistral AI, Google Gemini, Cohere and more while maintaining security through encrypted vaults and automatic key rotation.
+The open-source coding agent with <strong>smart API key management</strong> and <strong>intelligent web crawling</strong> - optimize free tiers from Mistral AI, Google Gemini, Cohere and more while maintaining security through encrypted vaults and automatic key rotation.
 </p>
 
 <div align="center">
@@ -71,6 +72,41 @@ Leverage **free offerings** from Mistral AI, Google Gemini, Cohere and others. M
 ✅ **Cost savings** up to 100%
 ✅ **Multi-provider support**
 ✅ **Tiered key management**
+
+</td>
+</tr>
+<tr>
+<td align="center" width="33%">
+
+### 🕷️ Smart Web Crawling
+
+**Intelligent web fetching** with automatic fallback to specialized crawlers (Firecrawl, Exa) when available, providing better content extraction than standard fetch.
+
+✅ **Better content extraction** from complex pages
+✅ **Automatic fallback** to native fetch
+✅ **Multi-crawler support** (Firecrawl, Exa)
+
+</td>
+<td align="center" width="33%">
+
+### 🔍 Enhanced Content Extraction
+
+**Structured data extraction** from web pages with metadata preservation, markdown formatting, and source attribution.
+
+✅ **Clean markdown output**
+✅ **Metadata preservation**
+✅ **Source attribution**
+
+</td>
+<td align="center" width="33%">
+
+### 🔄 Crawler Key Management
+
+**Key rotation for crawlers** integrated with the main key vault system, ensuring reliable access to crawling services.
+
+✅ **Automatic crawler key rotation**
+✅ **Key vault integration**
+✅ **Multi-crawler support**
 
 </td>
 </tr>
@@ -169,6 +205,7 @@ const agent = new Agent({ provider })
 ✅ **Same vault system** as CLI/VSCode
 ✅ **Automatic key rotation**
 ✅ **Multi-provider support**
+✅ **Smart web crawling**
 
 ```
 npm install @sctg/cline-sdk
@@ -193,8 +230,9 @@ npm install @sctg/cline-sdk
 | **Cloudflare Proxy** | [ai-proxy-cloudflare](https://github.com/sctg-development/ai-proxy-cloudflare) | KV storage, UI for key management, free tier hosting |
 | **SDK** | Programmatic agent API with vault support | TypeScript/Node.js, same vault system as other components |
 | **Core Agent** | Shared agent logic from upstream Cline | All original features preserved plus key vault integration |
+| **Smart Web Crawling** | Intelligent web content extraction | Firecrawl/Exa integration, automatic fallback, structured data |
 
-> **Note**: This fork maintains **100% compatibility** with upstream Cline while adding the key vault system. All original features (file editing, command execution, plan/act mode, etc.) work unchanged.
+> **Note**: This fork maintains **100% compatibility** with upstream Cline while adding the key vault system and smart web crawling. All original features (file editing, command execution, plan/act mode, etc.) work unchanged.
 
 ---
 
@@ -209,6 +247,8 @@ npm install @sctg/cline-sdk
 | Cost Optimization | Basic | **Advanced** with usage tracking and smart rotation |
 | Cloud Storage | Not available | **Cloudflare KV integration** (free tier) |
 | Team Collaboration | Shared config files | **Shared encrypted vault** with access control |
+| Web Crawling | Basic fetch | **Smart crawler integration** with Firecrawl/Exa |
+| Content Extraction | Raw HTML | **Structured markdown with metadata** |
 
 ## 🔧 Quick Setup
 
@@ -232,6 +272,18 @@ npm install @sctg/cline-sdk
         {"key": "your-gemini-key", "owner": "team", "type": "free"}
       ],
       "models": [{"id": "gemini-1.5-flash", "name": "Gemini 1.5 Flash"}]
+    }
+  },
+  "crawlers": {
+    "firecrawl": {
+      "keys": [
+        {"key": "your-firecrawl-key", "owner": "team"}
+      ]
+    },
+    "exa": {
+      "keys": [
+        {"key": "your-exa-key", "owner": "team"}
+      ]
     }
   }
 }
@@ -293,7 +345,33 @@ graph TD
 | OpenAI | `openai` | ❌ No | ✅ Automatic | Paid-only |
 | AWS Bedrock | `bedrock` | ❌ No | ✅ Automatic | Enterprise focus |
 
-> **Pro Tip**: Combine free tier keys from multiple team members in a single vault for maximum cost savings!
+## 🕷️ Smart Web Crawling Architecture
+
+```mermaid
+graph TD
+    A[Web Fetch Request] --> B{Use Crawler?}
+    B -->|No| C[Native Fetch]
+    B -->|Yes| D[Resolve Crawler Key]
+    D --> E{Key Available?}
+    E -->|No| C
+    E -->|Yes| F[Select Crawler]
+    F --> G[Firecrawl/Exa API]
+    G --> H{Success?}
+    H -->|Yes| I[Return Structured Data]
+    H -->|No| C
+    I --> J[Cache Result]
+    C --> K[Return Raw Content]
+```
+
+### Crawler Features
+
+| Feature | Description |
+|---------|-------------|
+| **Automatic Fallback** | Seamlessly falls back to native fetch if crawler fails |
+| **Multi-Crawler Support** | Supports Firecrawl and Exa with extensible architecture |
+| **Structured Output** | Returns clean markdown with metadata |
+| **Key Management** | Integrated with the main key vault system |
+| **Error Resilience** | Automatic retry and fallback mechanisms |
 
 ## 🛠️ Building from Source
 
@@ -325,13 +403,15 @@ bunx vsce package --out cline-keypool.vsix
 
 ## 🤝 Contributing
 
-We welcome contributions to enhance the key vault system! Priority areas:
+We welcome contributions to enhance the key vault system and smart web crawling! Priority areas:
 
 1. **New provider integrations** (add support for more AI APIs)
 2. **Usage analytics dashboard** (visualize key consumption)
 3. **Access control** (team-based vault sharing)
 4. **Key health monitoring** (proactive rotation before limits)
 5. **Cloud storage adapters** (S3, Azure Blob, etc.)
+6. **Additional crawler integrations** (expand web crawling capabilities)
+7. **Content extraction improvements** (better markdown formatting, metadata extraction)
 
 Check our [contribution guide](CONTRIBUTING.md) and join the [`#keypool-dev`](https://discord.gg/cline) channel on Discord.
 
@@ -341,11 +421,12 @@ Check our [contribution guide](CONTRIBUTING.md) and join the [`#keypool-dev`](ht
 
 ### How It Works
 
-1. **Encrypted Vault**: A JSON file (`ai.json`) declares providers, models, and API keys with metadata (owner, type)
+1. **Encrypted Vault**: A JSON file (`ai.json`) declares providers, models, API keys with metadata (owner, type)
 2. **Cloud Storage**: The vault is encrypted with AES-256-CBC and stored in Cloudflare KV (or any HTTPS endpoint)
 3. **Runtime Decryption**: Cline fetches and decrypts the vault using a shared secret stored locally
 4. **Smart Distribution**: Keys are assigned per session with automatic rotation on errors
 5. **Usage Tracking**: SQLite database tracks key usage statistics (success/failure counts)
+6. **Smart Web Crawling**: Intelligent content extraction with crawler integration
 
 ### Vault Format Example
 
@@ -368,20 +449,20 @@ Check our [contribution guide](CONTRIBUTING.md) and join the [`#keypool-dev`](ht
         "rpm": 10,    // Requests per minute
         "rpd": 1000   // Requests per day (free tier)
       }
-    },
-    "gemini": {
-      "protocol": "gemini",
-      "endpoint": "https://generativelanguage.googleapis.com/v1beta",
+    }
+  },
+  "crawlers": {
+    "firecrawl": {
+      "endpoint": "https://api.firecrawl.dev",
       "keys": [
-        {"key": "gemini-key-1", "owner": "team", "type": "free"}
-      ],
-      "models": [
-        {"id": "gemini-1.5-flash", "name": "Gemini 1.5 Flash", "maxTokens": 1000000}
-      ],
-      "rateLimits": {
-        "rpm": 60,
-        "rpd": 1500
-      }
+        {"key": "firecrawl-key-1", "owner": "team"}
+      ]
+    },
+    "exa": {
+      "endpoint": "https://api.exa.ai",
+      "keys": [
+        {"key": "exa-key-1", "owner": "team"}
+      ]
     }
   }
 }
@@ -442,107 +523,6 @@ Estimate your savings by combining free tier keys:
 > *Based on $0.005/request average cost for paid tiers
 
 ---
-## 🚀 Getting Started with Cloudflare
-
-### 1. Set Up Cloudflare Workers
-
-```bash
-# Install Wrangler CLI
-npm install -g wrangler
-
-# Authenticate
-wrangler login
-
-# Create new project
-wrangler init keypool-proxy
-cd keypool-proxy
-```
-
-### 2. Configure `wrangler.toml`
-
-```toml
-name = "keypool-proxy"
-main = "src/index.ts"
-compatibility_date = "2024-01-01"
-
-[kv_namespaces]
-binding = "VAULT"
-id = "your-kv-id"  # Get this from `wrangler kv:namespace create VAULT`
-```
-
-### 3. Worker Code (`src/index.ts`)
-
-```typescript
-import { getAssetFromKV } from '@cloudflare/kv-asset-handler'
-
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    // Serve the encrypted vault
-    return await getAssetFromKV({
-      request,
-      assetManifest: { "vault": [] }
-    }, {
-      mapRequestToAsset: () => new Request(
-        `https://${env.VAULT.id}.workers.kv.storage.your-account.workers.dev/vault`,
-        request
-      )
-    })
-  }
-}
-```
-
-### 4. Deploy Your Vault
-
-```bash
-# Upload encrypted vault
-wrangler kv:key put --binding=VAULT "vault" --path=ai.json.enc
-
-# Deploy worker
-wrangler deploy
-```
-
-### 5. Configure Cline
-
-In VS Code settings or environment variables:
-
-```json
-{
-  "cline.provider": "keypoollive",
-  "cline.keypoollive.vaultUrl": "https://keypool-proxy.your-subdomain.workers.dev/vault",
-  "cline.keypoollive.vaultSecret": "your-decryption-password",
-  "cline.keypoollive.model": "mistral/mistral-tiny"
-}
-```
-
----
-## 🛡️ Security Best Practices
-
-1. **Vault Encryption**
-   - Use strong passwords (20+ chars, mixed case, numbers, symbols)
-   - Consider using a password manager to generate/store the secret
-   - Rotate the encryption password periodically
-
-2. **Access Control**
-   - Restrict Cloudflare KV namespace access to specific team members
-   - Use Cloudflare API tokens with least privilege
-   - Enable Workers script protection
-
-3. **Key Management**
-   - Never commit plaintext API keys to version control
-   - Use separate keys for different environments (dev/staging/prod)
-   - Rotate keys regularly (even if not compromised)
-
-4. **Audit Logging**
-   - Enable Cloudflare Workers logs for vault access
-   - Monitor key usage statistics in the SQLite database
-   - Set up alerts for unusual activity patterns
-
-5. **Network Security**
-   - Use Cloudflare's firewall rules to restrict access by IP/geo
-   - Enable rate limiting on your Workers endpoint
-   - Consider adding basic auth for additional protection
-
----
 ## 🆚 Comparison: Standard vs KeypoolLive
 
 | Feature | Standard Cline | KeypoolLive Fork | Benefit |
@@ -555,6 +535,8 @@ In VS Code settings or environment variables:
 | **Provider Switching** | Manual config changes | Single vault with all providers | ✅ **Seamless switching** between models |
 | **Usage Analytics** | None | SQLite tracking | ✅ **Data-driven optimization** |
 | **Team Collaboration** | Shared config files | Shared encrypted vault | ✅ **Secure sharing** without exposing keys |
+| **Web Crawling** | Basic fetch | Smart crawler integration | ✅ **Better content extraction** |
+| **Content Extraction** | Raw HTML | Structured markdown with metadata | ✅ **Cleaner, more useful output** |
 | **Setup Complexity** | Simple | Moderate (encryption setup) | ✅ **One-time setup**, long-term benefits |
 | **Security** | Basic | AES-256 encryption + local decryption | ✅ **Enterprise-grade security** |
 
@@ -578,12 +560,14 @@ In VS Code settings or environment variables:
   - Ability to add paid keys seamlessly when needed
   - Shared access without exposing individual keys
   - Cloudflare CDN for low-latency access
+  - Smart web crawling for better content extraction
 
 **Result:**
 - **30% fewer rate limit incidents** (automatic rotation)
 - **2 hours/month saved** on key management
 - **Ability to scale** by adding more keys without config changes
 - **Visibility** into team usage patterns
+- **Better content extraction** from web sources
 
 ---
 ## 🏆 Why Choose KeypoolLive?
@@ -597,7 +581,8 @@ In VS Code settings or environment variables:
 7. **Cloudflare Powered**: Global CDN for fast, reliable access to your vault
 8. **Open Source**: Full transparency and community-driven development
 9. **Backward Compatible**: All original Cline features preserved
-10. **Cost Effective**: Potentially **100% free** for light usage
+10. **Smart Web Crawling**: Intelligent content extraction with crawler integration
+11. **Cost Effective**: Potentially **100% free** for light usage
 
 ---
 ## 📄 License
@@ -613,4 +598,6 @@ In VS Code settings or environment variables:
 - [Mistral AI](https://mistral.ai/) for their developer-friendly free offering
 - [Google Gemini](https://deepmind.google/technologies/gemini/) for accessible AI models
 - [Cohere](https://cohere.com/) for their free tier program
+- [Firecrawl](https://firecrawl.dev/) for their web crawling API
+- [Exa](https://exa.ai/) for their search and crawling capabilities
 - All open-source contributors who make projects like this possible
