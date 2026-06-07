@@ -105,7 +105,7 @@ customizations:
       - "Les adaptateurs firecrawl.ts et exa.ts doivent rester synchronisés avec les APIs respectives."
       - "createSmartWebFetchExecutor doit toujours accepter un CrawlerKeyResolver et un fallback executor."
       - "Le système doit toujours basculer silencieusement vers le fetch natif en cas d'échec."
-      - "Les clés de configuration des crawlers (FIRECRAWL_API_KEY, EXA_API_KEY) doivent être supportées dans l'EnvCrawlerResolver."
+      - "Les clés de configuration des crawlers (FIRECRAWL_API_KEY, EXA_API_KEY) doivent être déclarées pour les tests."
       - "L'intégration avec KeypoolLive pour la gestion des clés crawler doit rester fonctionnelle."
       - "Les tests unitaires et d'intégration doivent couvrir les cas de fallback et de succès."
     tests:
