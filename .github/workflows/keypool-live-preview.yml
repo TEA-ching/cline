@@ -155,7 +155,10 @@ jobs:
       # workflow tested with `rm -rf cline && git clone https://github.com/cline/cline.git && cd cline && bun install && bun run build && bun run build:models && bun run build:sdk && cd apps/vscode && bun install && bun run protos && cd webview-ui && npm install && cd .. && npx vcse package & cd ../..`
       - name: Install root dependencies
         working-directory: .
-        run: bun install --include=optional
+        run: |
+          # avoid conflicting vite
+          rm -rf apps/web
+          bun install --include=optional
         shell: bash
 
       - name: Build root packages and CLI (to ensure vsce can find the built CLI for packaging)
