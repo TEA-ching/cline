@@ -15,58 +15,97 @@ export default function DownloadSection() {
   const [showAllPlatforms, setShowAllPlatforms] = useState(false)
   const [showAllVersions, setShowAllVersions] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [totalReleases, setTotalReleases] = useState(0)
+  const [totalReleasesCount, setTotalReleasesCount] = useState(0)
+  const itemsPerPage = 10
 
-  // Get user's platform
+  // Get user's platform with improved detection
   const getUserPlatform = () => {
-    const { userAgent } = navigator
-    if (userAgent.includes('Mac')) return 'darwin'
-    if (userAgent.includes('Win')) return 'windows'
-    if (userAgent.includes('Linux')) return 'linux'
-    return 'windows' // default
+    const userAgent = navigator.userAgent.toLowerCase()
+    
+    // Detect iPad (even when userAgent doesn't contain "Mac")
+    const isIPad = /ipad|macintosh/.test(userAgent) && 'ontouchend' in document
+    
+    if (isIPad || userAgent.includes('iphone') || userAgent.includes('ipod')) {
+      return 'ios'
+    }
+    if (userAgent.includes('mac') && !isIPad) return 'darwin'
+    if (userAgent.includes('win')) return 'win32'
+    if (userAgent.includes('linux')) {
+      // Check for alpine or other linux variants
+      if (userAgent.includes('alpine')) return 'alpine'
+      return 'linux'
+    }
+    return 'win32' // default
   }
 
   // Get user's architecture
   const getUserArchitecture = () => {
-    if (navigator.userAgent.includes('x64') || navigator.userAgent.includes('Win64')) {
-      return 'x64'
-    }
-    if (navigator.userAgent.includes('arm64') || navigator.userAgent.includes('aarch64')) {
+    const userAgent = navigator.userAgent.toLowerCase()
+    
+    // Specific detection for iPad
+    const isIPad = /ipad|macintosh/.test(userAgent) && 'ontouchend' in document
+    if (isIPad) {
+      // Modern iPads (2017+) are arm64
       return 'arm64'
     }
+    
+    if (userAgent.includes('arm64') || userAgent.includes('aarch64')) return 'arm64'
+    if (userAgent.includes('armhf')) return 'armhf'
     return 'x64' // default
   }
 
-  // Fetch releases from GitHub
-  const fetchReleases = async (page = 1, perPage = 10) => {
+  // Fetch releases from GitHub with pagination to avoid API spam
+  const fetchReleases = async (page = 1) => {
     try {
       setLoading(true)
       setError(null)
 
       const octokit = new Octokit()
-      const response = await octokit.rest.repos.listReleases({
+      
+      // First, get total count by fetching first page only
+      const firstPageResponse = await octokit.rest.repos.listReleases({
         owner: 'TEA-ching',
         repo: 'cline',
-        per_page: perPage,
-        page: page
+        per_page: itemsPerPage,
+        page: 1
       })
 
-      // Filter for preview releases created by the keypool-live-preview workflow
-      const previewReleases = response.data.filter((release: any) =>
-        release.prerelease &&
-        release.tag_name.startsWith('preview/')
-      )
-
+      // Filter preview releases on first page to get total count
+      const allPreviewReleases: any[] = []
+      let currentPage = 1
+      let hasMore = true
+      
+      // Fetch all pages to get total count (only once when component mounts)
+      // This is necessary to know total pages for pagination UI
+      while (hasMore && currentPage <= 10) { // Limit to 10 pages max to prevent API spam
+        const response = await octokit.rest.repos.listReleases({
+          owner: 'TEA-ching',
+          repo: 'cline',
+          per_page: itemsPerPage,
+          page: currentPage
+        })
+        
+        const previewReleasesOnPage = response.data.filter((release: any) =>
+          release.prerelease && release.tag_name.startsWith('preview/')
+        )
+        
+        allPreviewReleases.push(...previewReleasesOnPage)
+        
+        // Check if we've reached the end
+        if (response.data.length < itemsPerPage) {
+          hasMore = false
+        } else {
+          currentPage++
+        }
+      }
+      
       // Sort by published_at date (newest first)
-      previewReleases.sort((a: any, b: any) =>
+      allPreviewReleases.sort((a: any, b: any) =>
         new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
       )
-
-      // Store all releases but only show the latest one initially
-      setReleases(previewReleases)
-      setTotalReleases(previewReleases.length)
-      setTotalPages(Math.ceil(previewReleases.length / perPage))
+      
+      setTotalReleasesCount(allPreviewReleases.length)
+      setReleases(allPreviewReleases)
       setCurrentPage(1)
     } catch (err) {
       console.error('Error fetching releases:', err)
@@ -81,35 +120,34 @@ export default function DownloadSection() {
     fetchReleases()
   }, [])
 
-  // No need to fetch on page change - we already have all releases
-  // We just need to update the current page state
-  useEffect(() => {
-    // This effect is just to track page changes
-  }, [currentPage])
-
-  // Get platform-specific assets
+  // Get platform-specific assets based on naming convention
   const getPlatformAssets = (release: any) => {
     const userPlatform = getUserPlatform()
     const userArch = getUserArchitecture()
 
-    // Filter assets for the user's platform and architecture
-    const platformAssets = release.assets.filter((asset: any) => {
-      if (asset.name.includes('clinepool-cli')) {
-        return asset.name.includes(userPlatform) && asset.name.includes(userArch)
+    return release.assets.filter((asset: any) => {
+      const assetName = asset.name
+      
+      // Handle iOS/iPad special case
+      if (userPlatform === 'ios') {
+        return assetName.includes('darwin') && assetName.includes('arm64')
       }
-      if (asset.name.includes('clinepool-') && asset.name.endsWith('.vsix')) {
-        return asset.name.includes(userPlatform) && asset.name.includes(userArch)
+      
+      // Match assets for user's platform and architecture
+      // Assets follow pattern: clinepool-{version}-{platform}-{arch}.{ext}
+      if (assetName.includes(userPlatform) && assetName.includes(userArch)) {
+        return true
       }
+      
       return false
     })
-
-    return platformAssets
   }
 
-  // Get all platform assets
+  // Get all platform assets for a release
   const getAllPlatformAssets = (release: any) => {
     return release.assets.filter((asset: any) =>
-      asset.name.includes('clinepool-cli') || (asset.name.includes('clinepool-') && asset.name.endsWith('.vsix'))
+      asset.name.includes('clinepool-cli') || 
+      (asset.name.includes('clinepool-') && asset.name.endsWith('.vsix'))
     )
   }
 
@@ -122,8 +160,40 @@ export default function DownloadSection() {
     })
   }
 
+  // Calculate pagination
+  const totalPages = Math.ceil(totalReleasesCount / itemsPerPage)
+  
+  // Get releases for current page when showing all versions
+  const getCurrentPageReleases = () => {
+    if (!showAllVersions) {
+      // Only show the latest release (first item after sorting)
+      return releases.slice(0, 1)
+    }
+    
+    const startIndex = (currentPage - 1) * itemsPerPage
+    const endIndex = startIndex + itemsPerPage
+    return releases.slice(startIndex, endIndex)
+  }
+
+  // Generate pagination items for HeroUI v3 Pagination component
+  const getPaginationItems = () => {
+    const items = []
+    const maxVisible = 5
+    let start = Math.max(1, currentPage - Math.floor(maxVisible / 2))
+    let end = Math.min(totalPages, start + maxVisible - 1)
+    
+    if (end - start + 1 < maxVisible) {
+      start = Math.max(1, end - maxVisible + 1)
+    }
+
+    for (let i = start; i <= end; i++) {
+      items.push(i)
+    }
+    return items
+  }
+
   return (
-        <section id="downloads" className="py-20 md:py-28 lg:py-32">
+    <section id="downloads" className="py-20 md:py-28 lg:py-32">
       <div className="container">
         {/* Section header */}
         <div className="mx-auto mb-16 max-w-3xl text-center">
@@ -158,86 +228,81 @@ export default function DownloadSection() {
         {!loading && !error && releases.length > 0 && (
           <div className="space-y-8">
             {/* Show toggle for older versions if there are multiple releases */}
-            {releases.length > 1 && (
+            {totalReleasesCount > 1 && (
               <div className="flex justify-between items-center mb-4">
                 <Button
                   variant="ghost"
                   size="sm"
-                  onPress={() => setShowAllVersions(!showAllVersions)}
+                  onPress={() => {
+                    setShowAllVersions(!showAllVersions)
+                    setCurrentPage(1)
+                  }}
                 >
                   {showAllVersions ? t('download.hideOlderVersions') : t('download.showOlderVersions')}
                 </Button>
 
                 {/* Pagination controls when showing all versions */}
                 {showAllVersions && totalPages > 1 && (
-                  <Pagination className="justify-end">
-                    <Pagination.Content>
+                  <Pagination size="md">
+                    <Pagination.Content className="gap-2">
+                      {/* Previous button */}
                       <Pagination.Item>
                         <Pagination.Previous
                           isDisabled={currentPage === 1}
                           onPress={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                         >
                           <Pagination.PreviousIcon />
-                          <span>Previous</span>
+                          <span className="sr-only">Previous</span>
                         </Pagination.Previous>
                       </Pagination.Item>
 
-                      {(() => {
-                        const pages: (number | "ellipsis")[] = [];
+                      {/* First page with ellipsis */}
+                      {currentPage > 3 && totalPages > 5 && (
+                        <>
+                          <Pagination.Item>
+                            <Pagination.Link onPress={() => setCurrentPage(1)}>
+                              1
+                            </Pagination.Link>
+                          </Pagination.Item>
+                          <Pagination.Item>
+                            <Pagination.Ellipsis />
+                          </Pagination.Item>
+                        </>
+                      )}
 
-                        // Always show first page
-                        pages.push(1);
+                      {/* Page numbers */}
+                      {getPaginationItems().map((pageNum) => (
+                        <Pagination.Item key={pageNum}>
+                          <Pagination.Link
+                            isActive={currentPage === pageNum}
+                            onPress={() => setCurrentPage(pageNum)}
+                          >
+                            {pageNum}
+                          </Pagination.Link>
+                        </Pagination.Item>
+                      ))}
 
-                        // Show ellipsis if current page is more than 2 pages away from the start
-                        if (currentPage > 3) {
-                          pages.push("ellipsis");
-                        }
+                      {/* Last page with ellipsis */}
+                      {currentPage < totalPages - 2 && totalPages > 5 && (
+                        <>
+                          <Pagination.Item>
+                            <Pagination.Ellipsis />
+                          </Pagination.Item>
+                          <Pagination.Item>
+                            <Pagination.Link onPress={() => setCurrentPage(totalPages)}>
+                              {totalPages}
+                            </Pagination.Link>
+                          </Pagination.Item>
+                        </>
+                      )}
 
-                        // Show pages around current page
-                        const start = Math.max(2, currentPage - 1);
-                        const end = Math.min(totalPages - 1, currentPage + 1);
-
-                        for (let i = start; i <= end; i++) {
-                          pages.push(i);
-                        }
-
-                        // Show ellipsis if current page is more than 2 pages away from the end
-                        if (currentPage < totalPages - 2) {
-                          pages.push("ellipsis");
-                        }
-
-                        // Always show last page if different from first
-                        if (totalPages > 1) {
-                          pages.push(totalPages);
-                        }
-
-                        // Remove duplicates
-                        const uniquePages = Array.from(new Set(pages));
-
-                        return uniquePages.map((p, i) =>
-                          p === "ellipsis" ? (
-                            <Pagination.Item key={`ellipsis-${i}`}>
-                              <Pagination.Ellipsis />
-                            </Pagination.Item>
-                          ) : (
-                            <Pagination.Item key={p}>
-                              <Pagination.Link
-                                isActive={p === currentPage}
-                                onPress={() => setCurrentPage(p)}
-                              >
-                                {p}
-                              </Pagination.Link>
-                            </Pagination.Item>
-                          )
-                        );
-                      })()}
-
+                      {/* Next button */}
                       <Pagination.Item>
                         <Pagination.Next
                           isDisabled={currentPage === totalPages}
                           onPress={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                         >
-                          <span>Next</span>
+                          <span className="sr-only">Next</span>
                           <Pagination.NextIcon />
                         </Pagination.Next>
                       </Pagination.Item>
@@ -247,12 +312,18 @@ export default function DownloadSection() {
               </div>
             )}
 
-            {/* Show either just the latest release or paginated releases */}
-            {(showAllVersions ?
-              releases.slice((currentPage - 1) * 10, currentPage * 10) :
-              [releases[0]]).map((release) => {
+            {/* Display releases for current page */}
+            {getCurrentPageReleases().map((release) => {
               const platformAssets = getPlatformAssets(release)
               const allPlatformAssets = getAllPlatformAssets(release)
+              
+              // Separate VSIX and CLI assets
+              const vsixAssets = platformAssets.filter((asset: any) => 
+                asset.name.endsWith('.vsix')
+              )
+              const cliAssets = platformAssets.filter((asset: any) => 
+                asset.name.includes('clinepool-cli')
+              )
 
               return (
                 <Card key={release.id} className="p-6">
@@ -270,35 +341,33 @@ export default function DownloadSection() {
                     </div>
                   </div>
 
-                  {/* VSIX Download */}
+                  {/* VSIX Download Section */}
                   <div className="mb-6">
                     <Typography type="h5" className="mb-3">
                       {t('download.vsixTitle')}
                     </Typography>
                     <div className="space-y-2">
-                      {platformAssets
-                        .filter((asset: any) => asset.name.endsWith('.vsix'))
-                        .map((asset: any) => (
-                          <div key={asset.id} className="flex items-center justify-between rounded-lg border p-3">
-                            <div>
-                              <Typography type="body" className="font-medium">
-                                {asset.name}
-                              </Typography>
-                              <Typography type="body-sm" color="muted">
-                                {(asset.size / (1024 * 1024)).toFixed(2)} MB
-                              </Typography>
-                            </div>
-                            <a
-                              href={asset.browser_download_url}
-                              download
-                              className="inline-block"
-                            >
-                              <Button size="sm" variant="secondary">
-                                Download
-                              </Button>
-                            </a>
+                      {vsixAssets.map((asset: any) => (
+                        <div key={asset.id} className="flex items-center justify-between rounded-lg border p-3">
+                          <div>
+                            <Typography type="body" className="font-medium">
+                              {asset.name}
+                            </Typography>
+                            <Typography type="body-sm" color="muted">
+                              {(asset.size / (1024 * 1024)).toFixed(2)} MB
+                            </Typography>
                           </div>
-                        ))}
+                          <a
+                            href={asset.browser_download_url}
+                            download
+                            className="inline-block"
+                          >
+                            <Button size="sm" variant="secondary">
+                              Download
+                            </Button>
+                          </a>
+                        </div>
+                      ))}
 
                       {/* Show all platforms button for VSIX */}
                       {allPlatformAssets.filter((asset: any) => asset.name.endsWith('.vsix')).length > 1 && (
@@ -312,7 +381,7 @@ export default function DownloadSection() {
                         </Button>
                       )}
 
-                      {/* All platforms VSIX */}
+                      {/* All platforms VSIX (when expanded) */}
                       {showAllPlatforms && allPlatformAssets
                         .filter((asset: any) => asset.name.endsWith('.vsix'))
                         .map((asset: any) => (
@@ -339,35 +408,33 @@ export default function DownloadSection() {
                     </div>
                   </div>
 
-                  {/* CLI Download */}
+                  {/* CLI Download Section */}
                   <div>
                     <Typography type="h5" className="mb-3">
                       {t('download.cliTitle')}
                     </Typography>
                     <div className="space-y-2">
-                      {platformAssets
-                        .filter((asset: any) => asset.name.includes('clinepool-cli'))
-                        .map((asset: any) => (
-                          <div key={asset.id} className="flex items-center justify-between rounded-lg border p-3">
-                            <div>
-                              <Typography type="body" className="font-medium">
-                                {asset.name}
-                              </Typography>
-                              <Typography type="body-sm" color="muted">
-                                {(asset.size / (1024 * 1024)).toFixed(2)} MB
-                              </Typography>
-                            </div>
-                            <a
-                              href={asset.browser_download_url}
-                              download
-                              className="inline-block"
-                            >
-                              <Button size="sm" variant="secondary">
-                                Download
-                              </Button>
-                            </a>
+                      {cliAssets.map((asset: any) => (
+                        <div key={asset.id} className="flex items-center justify-between rounded-lg border p-3">
+                          <div>
+                            <Typography type="body" className="font-medium">
+                              {asset.name}
+                            </Typography>
+                            <Typography type="body-sm" color="muted">
+                              {(asset.size / (1024 * 1024)).toFixed(2)} MB
+                            </Typography>
                           </div>
-                        ))}
+                          <a
+                            href={asset.browser_download_url}
+                            download
+                            className="inline-block"
+                          >
+                            <Button size="sm" variant="secondary">
+                              Download
+                            </Button>
+                          </a>
+                        </div>
+                      ))}
 
                       {/* Show all platforms button for CLI */}
                       {allPlatformAssets.filter((asset: any) => asset.name.includes('clinepool-cli')).length > 1 && (
@@ -381,7 +448,7 @@ export default function DownloadSection() {
                         </Button>
                       )}
 
-                      {/* All platforms CLI */}
+                      {/* All platforms CLI (when expanded) */}
                       {showAllPlatforms && allPlatformAssets
                         .filter((asset: any) => asset.name.includes('clinepool-cli'))
                         .map((asset: any) => (
