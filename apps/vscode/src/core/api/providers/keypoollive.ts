@@ -3,6 +3,7 @@
 
 import type { ModelInfo } from "@shared/api";
 import { getCachedVaultModel, loadAiVault } from "@/core/keypoollive/AiVault";
+import { KeypoolLog } from "@/core/keypoollive/KeypoolLog";
 import { KeypoolUsageDb } from "@/core/keypoollive/KeypoolUsageDb";
 import { markKeyAsUsed } from "@/core/keypoollive/KeyPool";
 import {
@@ -223,6 +224,24 @@ export class KeypoolLiveHandler implements ApiHandler {
 				const ephemeral = this.buildEphemeralHandler(config);
 				let promptTokens = 0;
 				let completionTokens = 0;
+
+				// Log the API exchange before making the request
+				await KeypoolLog.logEntry({
+					provider: vaultProviderName,
+					modelId: vaultModelId || config.model.id,
+					messages: [
+						{ role: "system", content: systemPrompt },
+						...messages.map(msg => ({
+							role: msg.role === "user" ? "user" : "assistant",
+							content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)
+						}))
+					],
+					metadata: {
+						keyOwner: config.keyOwner,
+						keyHint: `...${config.apiKey.slice(-8)}`,
+						attempt: attempt + 1
+					}
+				});
 
 				for await (const chunk of ephemeral.createMessage(
 					systemPrompt,
