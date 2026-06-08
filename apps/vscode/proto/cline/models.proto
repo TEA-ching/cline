@@ -65,6 +65,12 @@ service ModelsService {
   rpc keypoolGetErrorStats(KeypoolStatsRequest) returns (KeypoolErrorStatsResponse);
   // KeypoolLive: purge all usage and error statistics
   rpc keypoolPurgeStats(EmptyRequest) returns (KeypoolPurgeStatsResponse);
+  // KeypoolLive: get recent log entries for UI display
+  rpc keypoolGetRecentLogs(KeypoolLogsRequest) returns (KeypoolLogsResponse);
+  // KeypoolLive: get a single log entry as markdown
+  rpc keypoolGetLogMarkdown(KeypoolLogTimestampRequest) returns (KeypoolLogMarkdownResponse);
+  // KeypoolLive: save a log entry as a markdown file via VS Code save dialog
+  rpc keypoolSaveLogMarkdown(KeypoolLogTimestampRequest) returns (KeypoolSaveLogResponse);
 }
 
 // List of VS Code LM models
@@ -792,6 +798,40 @@ message KeypoolErrorStatsResponse {
 
 // Response for keypoolPurgeStats
 message KeypoolPurgeStatsResponse {
+  bool success = 1;
+  optional string error = 2;
+}
+
+// One log entry summary for UI display
+message KeypoolLogEntry {
+  int64 timestamp = 1;
+  string provider = 2;
+  string model_id = 3;
+}
+
+// Request for keypoolGetRecentLogs
+message KeypoolLogsRequest {
+  int32 count = 1;
+}
+
+// Response for keypoolGetRecentLogs
+message KeypoolLogsResponse {
+  repeated KeypoolLogEntry entries = 1;
+}
+
+// Request for keypoolGetLogMarkdown
+message KeypoolLogTimestampRequest {
+  int64 timestamp = 1;
+}
+
+// Response for keypoolGetLogMarkdown
+message KeypoolLogMarkdownResponse {
+  bool found = 1;
+  string markdown = 2;
+}
+
+// Response for keypoolSaveLogMarkdown
+message KeypoolSaveLogResponse {
   bool success = 1;
   optional string error = 2;
 }

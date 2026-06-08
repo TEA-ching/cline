@@ -1,13 +1,13 @@
 // KeypoolLiveProvider — Settings component for the keypoollive provider
 // © 2026 Ronan LE MEILLAT — MIT License
 
-import { useState } from "react"
-import { UpdateApiConfigurationRequestNew, EmptyRequest } from "@shared/proto/index.cline"
-import { Mode } from "@shared/storage/types"
-import { useExtensionState } from "@/context/ExtensionStateContext"
-import { ModelsServiceClient } from "@/services/grpc-client"
-import { DebouncedTextField } from "../common/DebouncedTextField"
-import { useApiConfigurationHandlers } from "../utils/useApiConfigurationHandlers"
+import { useState, useEffect } from "react";
+import { UpdateApiConfigurationRequestNew, EmptyRequest, KeypoolLogsRequest, KeypoolLogTimestampRequest, KeypoolLogEntry } from "@shared/proto/index.cline";
+import { Mode } from "@shared/storage/types";
+import { useExtensionState } from "@/context/ExtensionStateContext";
+import { ModelsServiceClient } from "@/services/grpc-client";
+import { DebouncedTextField } from "../common/DebouncedTextField";
+import { useApiConfigurationHandlers } from "../utils/useApiConfigurationHandlers";
 
 interface KeypoolLiveProviderProps {
 	isPopup?: boolean
@@ -19,6 +19,10 @@ export const KeypoolLiveProvider = ({ isPopup: _isPopup, currentMode: _currentMo
 	const { handleFieldChange } = useApiConfigurationHandlers()
 	const [purging, setPurging] = useState(false)
 	const [purgeResult, setPurgeResult] = useState<string | null>(null)
+	const [logEntries, setLogEntries] = useState<KeypoolLogEntry[]>([])
+	const [selectedLogEntry, setSelectedLogEntry] = useState<number | null>(null)
+	const [loadingLogs, setLoadingLogs] = useState(false)
+	const [downloadError, setDownloadError] = useState<string | null>(null)
 
 	const handlePurge = async () => {
 		setPurging(true)
@@ -30,6 +34,43 @@ export const KeypoolLiveProvider = ({ isPopup: _isPopup, currentMode: _currentMo
 			setPurgeResult(`Purge failed: ${e instanceof Error ? e.message : String(e)}`)
 		} finally {
 			setPurging(false)
+		}
+	}
+
+	// Fetch log entries
+	useEffect(() => {
+		const fetchLogEntries = async () => {
+			setLoadingLogs(true)
+			try {
+				const res = await ModelsServiceClient.keypoolGetRecentLogs(KeypoolLogsRequest.create({ count: 20 }))
+				setLogEntries(res.entries)
+			} catch (error) {
+				console.error("Failed to fetch log entries:", error)
+			} finally {
+				setLoadingLogs(false)
+			}
+		}
+
+		fetchLogEntries()
+	}, [])
+
+	const handleDownloadLogEntry = async () => {
+		if (!selectedLogEntry) {
+			setDownloadError("No log entry selected")
+			return
+		}
+
+		try {
+			setDownloadError(null)
+			const res = await ModelsServiceClient.keypoolSaveLogMarkdown(
+				KeypoolLogTimestampRequest.create({ timestamp: selectedLogEntry })
+			)
+			if (!res.success && res.error && res.error !== "Save cancelled") {
+				setDownloadError(res.error)
+			}
+		} catch (error) {
+			console.error("Failed to save log entry:", error)
+			setDownloadError(`Save failed: ${error instanceof Error ? error.message : String(error)}`)
 		}
 	}
 
@@ -135,6 +176,58 @@ export const KeypoolLiveProvider = ({ isPopup: _isPopup, currentMode: _currentMo
 				</button>
 				{purgeResult && (
 					<span style={{ fontSize: 11, color: "var(--vscode-descriptionForeground)" }}>{purgeResult}</span>
+				)}
+			</div>
+
+			{/* Log entries section */}
+			<div style={{ marginBottom: 12 }}>
+				<div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>Recent Log Entries</div>
+
+				{loadingLogs ? (
+					<div style={{ fontSize: 11, color: "var(--vscode-descriptionForeground)" }}>Loading logs...</div>
+				) : (
+					<>
+						<select
+							disabled={logEntries.length === 0}
+							onChange={(e) => setSelectedLogEntry(parseInt(e.target.value))}
+							style={{
+								width: "100%",
+								padding: "4px 8px",
+								fontSize: 12,
+								marginBottom: 8,
+								background: "var(--vscode-input-background)",
+								color: "var(--vscode-input-foreground)",
+								border: "1px solid var(--vscode-input-border)",
+								borderRadius: "2px"
+							}}
+							value={selectedLogEntry || ""}>
+							<option value="">Select a log entry</option>
+							{logEntries.map((entry) => (
+								<option key={entry.timestamp} value={entry.timestamp}>
+									{new Date(entry.timestamp).toLocaleString()} - {entry.provider}/{entry.modelId}
+								</option>
+							))}
+						</select>
+
+						<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+							<button
+								disabled={!selectedLogEntry || loadingLogs}
+								onClick={handleDownloadLogEntry}
+								style={{
+									background: "var(--vscode-button-secondaryBackground)",
+									border: "none",
+									color: "var(--vscode-button-secondaryForeground)",
+									cursor: (!selectedLogEntry || loadingLogs) ? "not-allowed" : "pointer",
+									fontSize: 12,
+									padding: "4px 10px",
+								}}>
+								{loadingLogs ? "Loading..." : "Download as Markdown"}
+							</button>
+							{downloadError && (
+								<span style={{ fontSize: 11, color: "var(--vscode-errorForeground)" }}>{downloadError}</span>
+							)}
+						</div>
+					 </>
 				)}
 			</div>
 
