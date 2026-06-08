@@ -58,7 +58,17 @@
     },
 
     "footer": {
-      "rights": "© {{year}} ClinePool. Todos los derechos reservados.",
+      "description": "Plataforma de agentes IA con bóveda de claves cifrada, extracción web inteligente y optimización multi-proveedor",
+      "quickLinks": "Enlaces Rápidos",
+      "features": "Características",
+      "downloads": "Descargas",
+      "documentation": "Documentación",
+      "legal": "Legal",
+      "privacyPolicy": "Política de Privacidad",
+      "termsOfService": "Términos de Servicio",
+      "license": "Licencia",
+      "copyright": "© {{year}} ClinePool. Todos los derechos reservados.",
+      "rights": "© {{year}} SCTG Development. Todos los derechos reservados.",
       "links": {
         "privacy": "Política de Privacidad",
         "terms": "Términos de Servicio",

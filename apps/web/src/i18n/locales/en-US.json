@@ -58,7 +58,16 @@
     },
 
     "footer": {
-      "rights": "© {{year}} ClinePool. All rights reserved.",
+      "description": "AI agent platform with encrypted key vault, smart web crawling, and multi-provider optimization",
+      "quickLinks": "Quick Links",
+      "features": "Features",
+      "downloads": "Downloads",
+      "documentation": "Documentation",
+      "legal": "Legal",
+      "privacyPolicy": "Privacy Policy",
+      "termsOfService": "Terms of Service",
+      "license": "License",
+      "copyright": "© {{year}} SCTG Development. All rights reserved.",
       "links": {
         "privacy": "Privacy Policy",
         "terms": "Terms of Service",

@@ -58,7 +58,17 @@
     },
 
     "footer": {
-      "rights": "© {{year}} ClinePool. Tous droits réservés.",
+      "description": "Plateforme d'agents IA avec coffre-fort de clés chiffré, extraction web intelligente et optimisation multi-fournisseurs",
+      "quickLinks": "Liens Rapides",
+      "features": "Fonctionnalités",
+      "downloads": "Téléchargements",
+      "documentation": "Documentation",
+      "legal": "Juridique",
+      "privacyPolicy": "Politique de Confidentialité",
+      "termsOfService": "Conditions d'Utilisation",
+      "license": "Licence",
+      "copyright": "© {{year}} ClinePool. Tous droits réservés.",
+      "rights": "© {{year}} SCTG Development. Tous droits réservés.",
       "links": {
         "privacy": "Politique de Confidentialité",
         "terms": "Conditions d'Utilisation",

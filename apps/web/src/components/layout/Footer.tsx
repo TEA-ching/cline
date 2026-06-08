@@ -74,9 +74,9 @@ export default function Footer() {
 
         {/* Copyright section at the bottom */}
         <div className="pt-6 border-t border-border text-center">
-          <Typography type="body-sm" color="muted">
-            {t('footer.copyright', { year: new Date().getFullYear() })}
-          </Typography>
+            <Typography type="body-sm" color="muted">
+              {t('footer.copyright', { year: new Date().getFullYear() })}
+            </Typography>
         </div>
       </div>
     </footer>
