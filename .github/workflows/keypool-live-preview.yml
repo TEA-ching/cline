@@ -245,7 +245,7 @@ jobs:
 
       - name: Install SDK dependencies
         working-directory: sdk
-        run: bun install
+        run: rm -rf apps/web && bun install
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
