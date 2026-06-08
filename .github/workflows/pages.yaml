@@ -2,7 +2,7 @@ name: Deploy Web App to GitHub Pages
 
 on:
   push:
-    branches: ["main"]
+    branches: ["keypool-live"]
     paths:
       - 'apps/web/**'
   workflow_dispatch:
