@@ -1,0 +1,76 @@
+{
+  "common": {
+    "siteTitle": "ClinePool - Centro de Agentes IA Inteligentes",
+    "siteDescription": "Plataforma de agentes IA con bóveda de claves cifrada, extracción web inteligente y optimización multi-proveedor",
+
+    "header": {
+      "home": "Inicio",
+      "features": "Características",
+      "downloads": "Descargas",
+      "documentation": "Documentación",
+      "github": "GitHub"
+    },
+
+    "hero": {
+      "title": "Agentes IA con Pool de Claves Inteligente",
+      "subtitle": "Optimiza los niveles gratuitos con bóveda cifrada, rotación automática y extracción web inteligente para contenido mejorado",
+      "ctaPrimary": "Comenzar",
+      "ctaSecondary": "Sabér Más"
+    },
+
+    "features": {
+      "title": "Características de Pool de Claves",
+      "subtitle": "Optimiza el uso de IA con bóvedas cifradas y herramientas web inteligentes",
+
+      "voiceCapabilities": {
+        "title": "Soporte Multi-Proveedor",
+        "description": "Cambia fácilmente entre Mistral, Gemini, Cohere y más con interfaz unificada y rotación automática de claves."
+      },
+
+      "knowledgeExtraction": {
+        "title": "Extracción Web Inteligente",
+        "description": "Extracción inteligente de contenido con integración Firecrawl, retroceso automático y salida estructurada en markdown."
+      },
+
+      "codeGeneration": {
+        "title": "Bóveda de Claves Cifrada",
+        "description": "Almacenamiento cifrado AES-256 con integración Cloudflare KV para acceso seguro y compartido a claves API."
+      },
+
+      "agenticWorkflows": {
+        "title": "Optimización de Niveles Gratuitos",
+        "description": "Combina múltiples cuentas gratuitas en pools potentes con rotación automática para maximizar la capacidad."
+      }
+    },
+
+    "download": {
+      "title": "Descargar ClinePool",
+      "subtitle": "Obtén la última versión para tu plataforma",
+      "vsixTitle": "Extensión de VSCode",
+      "cliTitle": "Interfaz de Línea de Comandos",
+      "platformDefault": "Por defecto para tu plataforma",
+      "showAllPlatforms": "Mostrar todas las plataformas",
+      "hidePlatforms": "Ocultar plataformas",
+      "lastUpdated": "Última actualización: {{date}}",
+      "version": "Versión: {{version}}",
+      "showOlderVersions": "Mostrar versiones anteriores",
+      "hideOlderVersions": "Ocultar versiones anteriores"
+    },
+
+    "footer": {
+      "rights": "© {{year}} ClinePool. Todos los derechos reservados.",
+      "links": {
+        "privacy": "Política de Privacidad",
+        "terms": "Términos de Servicio",
+        "contact": "Contáctenos"
+      }
+    },
+
+    "language": {
+      "label": "Idioma",
+      "english": "Inglés",
+      "french": "Francés",
+      "spanish": "Español"
+    }
+  }
+}

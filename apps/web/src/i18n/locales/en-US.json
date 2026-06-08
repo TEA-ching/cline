@@ -1,0 +1,76 @@
+{
+  "common": {
+    "siteTitle": "ClinePool - Smart AI Agent Hub",
+    "siteDescription": "AI agent platform with encrypted key vault, smart web crawling, and multi-provider optimization",
+
+    "header": {
+      "home": "Home",
+      "features": "Features",
+      "downloads": "Downloads",
+      "documentation": "Documentation",
+      "github": "GitHub"
+    },
+
+    "hero": {
+      "title": "Smart AI Agents with Key Pooling",
+      "subtitle": "Optimize free tiers with encrypted key vault, automatic rotation, and intelligent web crawling for enhanced content extraction",
+      "ctaPrimary": "Get Started",
+      "ctaSecondary": "Learn More"
+    },
+
+    "features": {
+      "title": "Key Pooling Features",
+      "subtitle": "Optimize AI usage with encrypted vaults and smart web tools",
+
+      "voiceCapabilities": {
+        "title": "Multi-Provider Support",
+        "description": "Seamlessly switch between Mistral, Gemini, Cohere and more with unified interface and automatic key rotation."
+      },
+
+      "knowledgeExtraction": {
+        "title": "Smart Web Crawling",
+        "description": "Intelligent content extraction with Firecrawl integration, automatic fallback, and structured markdown output."
+      },
+
+      "codeGeneration": {
+        "title": "Encrypted Key Vault",
+        "description": "AES-256 encrypted storage with Cloudflare KV integration for secure, shared access to API keys."
+      },
+
+      "agenticWorkflows": {
+        "title": "Free Tier Optimization",
+        "description": "Combine multiple free accounts into powerful pools with automatic rotation to maximize capacity."
+      }
+    },
+
+    "download": {
+      "title": "Download ClinePool",
+      "subtitle": "Get the latest version for your platform",
+      "vsixTitle": "VSCode Extension",
+      "cliTitle": "Command Line Interface",
+      "platformDefault": "Default for your platform",
+      "showAllPlatforms": "Show all platforms",
+      "hidePlatforms": "Hide platforms",
+      "lastUpdated": "Last updated: {{date}}",
+      "version": "Version: {{version}}",
+      "showOlderVersions": "Show older versions",
+      "hideOlderVersions": "Hide older versions"
+    },
+
+    "footer": {
+      "rights": "© {{year}} ClinePool. All rights reserved.",
+      "links": {
+        "privacy": "Privacy Policy",
+        "terms": "Terms of Service",
+        "contact": "Contact Us"
+      }
+    },
+
+    "language": {
+      "label": "Language",
+      "english": "English",
+      "french": "French",
+      "spanish": "Spanish"
+    }
+  }
+}
