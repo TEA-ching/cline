@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Card, Typography, Spinner } from '@heroui/react'
+import { Button, Card, Typography, Spinner, Pagination } from '@heroui/react'
 import { Octokit } from '@octokit/rest'
 
 /**
@@ -14,6 +14,9 @@ export default function DownloadSection() {
   const [error, setError] = useState<string | null>(null)
   const [showAllPlatforms, setShowAllPlatforms] = useState(false)
   const [showAllVersions, setShowAllVersions] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalReleases, setTotalReleases] = useState(0)
 
   // Get user's platform
   const getUserPlatform = () => {
@@ -36,7 +39,7 @@ export default function DownloadSection() {
   }
 
   // Fetch releases from GitHub
-  const fetchReleases = async () => {
+  const fetchReleases = async (page = 1, perPage = 10) => {
     try {
       setLoading(true)
       setError(null)
@@ -45,6 +48,8 @@ export default function DownloadSection() {
       const response = await octokit.rest.repos.listReleases({
         owner: 'TEA-ching',
         repo: 'cline',
+        per_page: perPage,
+        page: page
       })
 
       // Filter for preview releases created by the keypool-live-preview workflow
@@ -58,7 +63,11 @@ export default function DownloadSection() {
         new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
       )
 
+      // Store all releases but only show the latest one initially
       setReleases(previewReleases)
+      setTotalReleases(previewReleases.length)
+      setTotalPages(Math.ceil(previewReleases.length / perPage))
+      setCurrentPage(1)
     } catch (err) {
       console.error('Error fetching releases:', err)
       setError('Failed to fetch releases. Please try again later.')
@@ -71,6 +80,12 @@ export default function DownloadSection() {
   useEffect(() => {
     fetchReleases()
   }, [])
+
+  // No need to fetch on page change - we already have all releases
+  // We just need to update the current page state
+  useEffect(() => {
+    // This effect is just to track page changes
+  }, [currentPage])
 
   // Get platform-specific assets
   const getPlatformAssets = (release: any) => {
@@ -133,7 +148,7 @@ export default function DownloadSection() {
             <Typography type="body" className="mb-4 text-danger">
               {error}
             </Typography>
-            <Button onClick={fetchReleases} variant="secondary">
+            <Button onPress={() => fetchReleases()} variant="secondary">
               Retry
             </Button>
           </div>
@@ -144,19 +159,98 @@ export default function DownloadSection() {
           <div className="space-y-8">
             {/* Show toggle for older versions if there are multiple releases */}
             {releases.length > 1 && (
-              <div className="flex justify-end mb-4">
+              <div className="flex justify-between items-center mb-4">
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setShowAllVersions(!showAllVersions)}
+                  onPress={() => setShowAllVersions(!showAllVersions)}
                 >
                   {showAllVersions ? t('download.hideOlderVersions') : t('download.showOlderVersions')}
                 </Button>
+
+                {/* Pagination controls when showing all versions */}
+                {showAllVersions && totalPages > 1 && (
+                  <Pagination className="justify-end">
+                    <Pagination.Content>
+                      <Pagination.Item>
+                        <Pagination.Previous
+                          isDisabled={currentPage === 1}
+                          onPress={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        >
+                          <Pagination.PreviousIcon />
+                          <span>Previous</span>
+                        </Pagination.Previous>
+                      </Pagination.Item>
+
+                      {(() => {
+                        const pages: (number | "ellipsis")[] = [];
+
+                        // Always show first page
+                        pages.push(1);
+
+                        // Show ellipsis if current page is more than 2 pages away from the start
+                        if (currentPage > 3) {
+                          pages.push("ellipsis");
+                        }
+
+                        // Show pages around current page
+                        const start = Math.max(2, currentPage - 1);
+                        const end = Math.min(totalPages - 1, currentPage + 1);
+
+                        for (let i = start; i <= end; i++) {
+                          pages.push(i);
+                        }
+
+                        // Show ellipsis if current page is more than 2 pages away from the end
+                        if (currentPage < totalPages - 2) {
+                          pages.push("ellipsis");
+                        }
+
+                        // Always show last page if different from first
+                        if (totalPages > 1) {
+                          pages.push(totalPages);
+                        }
+
+                        // Remove duplicates
+                        const uniquePages = Array.from(new Set(pages));
+
+                        return uniquePages.map((p, i) =>
+                          p === "ellipsis" ? (
+                            <Pagination.Item key={`ellipsis-${i}`}>
+                              <Pagination.Ellipsis />
+                            </Pagination.Item>
+                          ) : (
+                            <Pagination.Item key={p}>
+                              <Pagination.Link
+                                isActive={p === currentPage}
+                                onPress={() => setCurrentPage(p)}
+                              >
+                                {p}
+                              </Pagination.Link>
+                            </Pagination.Item>
+                          )
+                        );
+                      })()}
+
+                      <Pagination.Item>
+                        <Pagination.Next
+                          isDisabled={currentPage === totalPages}
+                          onPress={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        >
+                          <span>Next</span>
+                          <Pagination.NextIcon />
+                        </Pagination.Next>
+                      </Pagination.Item>
+                    </Pagination.Content>
+                  </Pagination>
+                )}
               </div>
             )}
 
-            {/* Show either just the latest release or all releases */}
-            {(showAllVersions ? releases : [releases[0]]).map((release) => {
+            {/* Show either just the latest release or paginated releases */}
+            {(showAllVersions ?
+              releases.slice((currentPage - 1) * 10, currentPage * 10) :
+              [releases[0]]).map((release) => {
               const platformAssets = getPlatformAssets(release)
               const allPlatformAssets = getAllPlatformAssets(release)
 
@@ -212,7 +306,7 @@ export default function DownloadSection() {
                           variant="ghost"
                           size="sm"
                           className="mt-2"
-                          onClick={() => setShowAllPlatforms(!showAllPlatforms)}
+                          onPress={() => setShowAllPlatforms(!showAllPlatforms)}
                         >
                           {showAllPlatforms ? t('download.hidePlatforms') : t('download.showAllPlatforms')}
                         </Button>
@@ -281,7 +375,7 @@ export default function DownloadSection() {
                           variant="ghost"
                           size="sm"
                           className="mt-2"
-                          onClick={() => setShowAllPlatforms(!showAllPlatforms)}
+                          onPress={() => setShowAllPlatforms(!showAllPlatforms)}
                         >
                           {showAllPlatforms ? t('download.hidePlatforms') : t('download.showAllPlatforms')}
                         </Button>
