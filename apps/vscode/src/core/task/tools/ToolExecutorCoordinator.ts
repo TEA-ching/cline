@@ -97,6 +97,10 @@ export class ToolExecutorCoordinator {
 		[ClineDefaultTool.TODO]: (_v: ToolValidator) => undefined,
 		[ClineDefaultTool.WEB_FETCH]: (_v: ToolValidator) => new WebFetchToolHandler(),
 		[ClineDefaultTool.WEB_SEARCH]: (_v: ToolValidator) => new WebSearchToolHandler(),
+		[ClineDefaultTool.FETCH_WEB_CONTENT]: (_v: ToolValidator) =>
+			new SharedToolHandler(ClineDefaultTool.FETCH_WEB_CONTENT, new WebFetchToolHandler()),
+		[ClineDefaultTool.SEARCH_WEB_CONTENT]: (_v: ToolValidator) =>
+			new SharedToolHandler(ClineDefaultTool.SEARCH_WEB_CONTENT, new WebSearchToolHandler()),
 		[ClineDefaultTool.CONDENSE]: (_v: ToolValidator) => new CondenseHandler(),
 		[ClineDefaultTool.SUMMARIZE_TASK]: (_v: ToolValidator) => new SummarizeTaskHandler(_v),
 		[ClineDefaultTool.REPORT_BUG]: (_v: ToolValidator) => new ReportBugHandler(),

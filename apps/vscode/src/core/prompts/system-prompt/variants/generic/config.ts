@@ -1,9 +1,9 @@
 import {
-	isGLMModelFamily,
-	isLocalModel,
-	isNextGenModelFamily,
-	isNextGenModelProvider,
-	isTrinityModelFamily,
+    isGLMModelFamily,
+    isLocalModel,
+    isNextGenModelFamily,
+    isNextGenModelProvider,
+    isTrinityModelFamily,
 } from "@utils/model-utils"
 import { ModelFamily } from "@/shared/prompts"
 import { Logger } from "@/shared/services/Logger"
@@ -64,6 +64,8 @@ export const config = createVariant(ModelFamily.GENERIC)
 		ClineDefaultTool.LIST_FILES,
 		ClineDefaultTool.LIST_CODE_DEF,
 		ClineDefaultTool.BROWSER,
+		ClineDefaultTool.WEB_FETCH,
+		ClineDefaultTool.WEB_SEARCH,
 		ClineDefaultTool.MCP_USE,
 		ClineDefaultTool.MCP_ACCESS,
 		ClineDefaultTool.ASK,

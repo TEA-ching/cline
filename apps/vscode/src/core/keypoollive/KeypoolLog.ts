@@ -15,16 +15,16 @@
  */
 
 import {
-    appendFileSync,
-    existsSync,
-    mkdirSync,
-    readFileSync,
-    statSync,
-    readdirSync,
-    unlinkSync,
-    createReadStream,
-    createWriteStream,
-    writeFileSync
+	appendFileSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	statSync,
+	readdirSync,
+	unlinkSync,
+	createReadStream,
+	createWriteStream,
+	writeFileSync
 } from "fs";
 import path from "path";
 import { createGzip } from "zlib";
@@ -316,7 +316,22 @@ export class KeypoolLog {
 		markdown += `**Messages:**\n`;
 
 		for (const msg of entry.messages) {
-			markdown += `- **${msg.role}:** ${msg.content}\n`;
+			markdown += `- **${msg.role}:**\n`;
+
+			// Check if content is valid JSON and format it accordingly
+			try {
+				const potentialJson = msg.content.trim();
+				if (potentialJson.startsWith('{') && potentialJson.endsWith('}') ||
+					potentialJson.startsWith('[') && potentialJson.endsWith(']')) {
+					JSON.parse(potentialJson);
+					markdown += "```json\n" + JSON.stringify(JSON.parse(potentialJson), null, 2) + "\n```\n";
+				} else {
+					markdown += `${msg.content}\n`;
+				}
+			} catch (e) {
+				// If not valid JSON, display as plain text
+				markdown += `${msg.content}\n`;
+			}
 		}
 
 		if (entry.metadata) {

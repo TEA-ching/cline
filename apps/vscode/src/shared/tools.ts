@@ -25,6 +25,8 @@ export enum ClineDefaultTool {
 	TODO = "focus_chain",
 	WEB_FETCH = "web_fetch",
 	WEB_SEARCH = "web_search",
+	FETCH_WEB_CONTENT = "fetch_web_content",
+	SEARCH_WEB_CONTENT = "search_web",
 	CONDENSE = "condense",
 	SUMMARIZE_TASK = "summarize_task",
 	REPORT_BUG = "report_bug",
@@ -62,6 +64,8 @@ export const READ_ONLY_TOOLS = [
 	ClineDefaultTool.ASK,
 	ClineDefaultTool.WEB_SEARCH,
 	ClineDefaultTool.WEB_FETCH,
+	ClineDefaultTool.SEARCH_WEB_CONTENT,
+	ClineDefaultTool.FETCH_WEB_CONTENT,
 	ClineDefaultTool.USE_SKILL,
 	ClineDefaultTool.USE_SUBAGENTS,
 ] as const

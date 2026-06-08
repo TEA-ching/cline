@@ -6,17 +6,17 @@ import { TASK_PROGRESS_PARAMETER } from "../types"
 const GENERIC: ClineToolSpec = {
 	variant: ModelFamily.GENERIC,
 	id: ClineDefaultTool.WEB_SEARCH,
-	name: "web_search",
+	name: "search_web",
 	description: `Performs a web search and returns relevant results
 - Takes a search query as input and returns search results with titles and URLs
 - Optionally filter results by allowed or blocked domains
 - Use this tool when you need to search the web for information
-- IMPORTANT: If an MCP-provided web search tool is available, prefer using that tool instead of this one, as it may have fewer restrictions.
+- This tool rely on a third-party search API and may have limitations on query length and number of results
 - The query must be at least 2 characters
 - You may provide either allowed_domains OR blocked_domains, but NOT both
 - Domains should be provided as a JSON array of strings
 - This tool is read-only and does not modify any files`,
-	contextRequirements: (context) => context.providerInfo.providerId === "cline" && context.clineWebToolsEnabled === true,
+	contextRequirements: (context) => context.providerInfo.providerId !== "cline" || context.clineWebToolsEnabled === true,
 	parameters: [
 		{
 			name: "query",
@@ -43,10 +43,10 @@ const GENERIC: ClineToolSpec = {
 const NATIVE_NEXT_GEN: ClineToolSpec = {
 	variant: ModelFamily.NATIVE_NEXT_GEN,
 	id: ClineDefaultTool.WEB_SEARCH,
-	name: "web_search",
+	name: "search_web",
 	description:
-		"Performs a web search and returns relevant results with titles and URLs. IMPORTANT: If an MCP-provided web search tool is available, prefer using that tool instead of this one, as it may have fewer restrictions.",
-	contextRequirements: (context) => context.providerInfo.providerId === "cline" && context.clineWebToolsEnabled === true,
+		"Performs a web search and returns relevant results with titles and URLs. This tool rely on a third-party search API and may have limitations on query length and number of results. Use this tool when you need to search the web for information.",
+	contextRequirements: (context) => context.providerInfo.providerId !== "cline" || context.clineWebToolsEnabled === true,
 	parameters: [
 		{
 			name: "query",
