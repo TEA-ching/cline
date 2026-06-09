@@ -52,9 +52,7 @@ function makeConfig(options: {
 	};
 }
 
-async function readRequestBody(
-	body: unknown,
-): Promise<Record<string, unknown>> {
+async function readRequestBody(body: unknown): Promise<Record<string, unknown>> {
 	if (typeof body === "string") {
 		return JSON.parse(body) as Record<string, unknown>;
 	}
