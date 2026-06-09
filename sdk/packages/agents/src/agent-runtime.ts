@@ -1,31 +1,31 @@
-import { createGateway } from "@cline/llms";
-import type { KeypoolEventHandler } from "@cline/shared";
+import { createGateway, type GatewayProviderSettings } from "@cline/llms";
 import type {
-	AgentAfterToolResult,
-	AgentBeforeModelResult,
-	AgentBeforeToolResult,
-	AgentMessage,
-	AgentMessagePart,
-	AgentModel,
-	AgentModelFinishReason,
-	AgentModelRequest,
-	AgentRunResult,
-	AgentRuntimeEvent,
-	AgentRuntimeHooks,
-	AgentRuntimeStateSnapshot,
-	AgentStopControl,
-	AgentTool,
-	AgentToolCallPart,
-	AgentToolDefinition,
-	AgentToolResult,
-	AgentUsage,
-	AgentRuntimeConfig as BaseAgentRuntimeConfig,
-	TelemetryProperties,
-	ToolApprovalResult,
-	ToolPolicy,
+    AgentAfterToolResult,
+    AgentBeforeModelResult,
+    AgentBeforeToolResult,
+    AgentMessage,
+    AgentMessagePart,
+    AgentModel,
+    AgentModelFinishReason,
+    AgentModelRequest,
+    AgentRunResult,
+    AgentRuntimeEvent,
+    AgentRuntimeHooks,
+    AgentRuntimeStateSnapshot,
+    AgentStopControl,
+    AgentTool,
+    AgentToolCallPart,
+    AgentToolDefinition,
+    AgentToolResult,
+    AgentUsage,
+    AgentRuntimeConfig as BaseAgentRuntimeConfig,
+    TelemetryProperties,
+    ToolApprovalResult,
+    ToolPolicy,
 } from "@cline/shared";
 import { captureSdkError, estimateTokens } from "@cline/shared";
 import { nanoid } from "nanoid";
+import type { KeypoolEventHandler } from "@cline/shared";
 
 // Local `createUID` helper. The clinee source imports this from
 // `@cline/shared` (see `packages/shared/dist/identifier.ts`), but
@@ -65,6 +65,8 @@ export interface AgentRuntimeConfigWithProvider
 	baseUrl?: string;
 	/** Additional headers for API requests */
 	headers?: Record<string, string>;
+	/** Provider-specific gateway options */
+	options?: GatewayProviderSettings["options"];
 	/** Optional callback for keypoollive key lifecycle events (key-selected, key-rotated, usage-recorded, …). */
 	keypoolEventHandler?: KeypoolEventHandler;
 }
@@ -91,9 +93,9 @@ function resolveRuntimeConfig(
 	if (hasPrebuiltModel(config)) {
 		return config;
 	}
-	const { providerId, modelId, apiKey, baseUrl, headers, keypoolEventHandler, ...rest } = config;
+	const { providerId, modelId, apiKey, baseUrl, headers, options, keypoolEventHandler, ...rest } = config;
 	const gateway = createGateway({
-		providerConfigs: [{ providerId, apiKey, baseUrl, headers }],
+		providerConfigs: [{ providerId, apiKey, baseUrl, headers, options }],
 		telemetry: rest.telemetry,
 		keypoolEventHandler,
 	});
