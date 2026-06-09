@@ -243,16 +243,15 @@ jobs:
           node-version: "24.x"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Rename SDK package scope for SCTG publish
+        run: |
+          bun sdk/scripts/rename-sdk-package-scope.ts
+          
       - name: Install SDK dependencies
         working-directory: sdk
         run: rm -rf apps/web && bun install
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Rename SDK package scope for SCTG publish
-        run: |
-          bun sdk/scripts/rename-sdk-package-scope.ts
-
 
       - name: Build CLI binaries
         run: |

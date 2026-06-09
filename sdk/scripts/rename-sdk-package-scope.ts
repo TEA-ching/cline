@@ -38,14 +38,23 @@ const ignoredDirs: Set<string> = new Set([
 ])
 
 /**
- * Maps @cline/ package names to @sctg/cline-* format
+ * Maps @cline/ package names to @sctg/ format
  * @param name - The original package name
  * @returns The mapped package name with SCTG scope
  */
 function mapClineName(name: unknown): string {
   if (typeof name !== 'string') return String(name)
   if (!name.startsWith('@cline/')) return name
-  return `@sctg/cline-${name.slice('@cline/'.length)}`
+
+  // Extract the package name after @cline/
+  const packageName = name.slice('@cline/'.length)
+
+  // Avoid double "cline" in the name (e.g., @cline/cline-hub-webview -> @sctg/cline-hub-webview)
+  if (packageName.startsWith('cline-')) {
+    return `@sctg/${packageName}`
+  } else {
+    return `@sctg/cline-${packageName}`
+  }
 }
 
 /**
@@ -123,7 +132,12 @@ function replaceClineReferences(content: string): string {
     : 'https://github.com/TEA-ching/cline'
 
   return content
-    .replace(/@cline\/([a-zA-Z][a-zA-Z0-9-]*)/g, '@sctg/cline-$1')
+    .replace(/@cline\/([a-zA-Z][a-zA-Z0-9-]*)/g, (_, packageName: string) => {
+      if (packageName.startsWith('cline-')) {
+        return `@sctg/${packageName}`
+      }
+      return `@sctg/cline-${packageName}`
+    })
     .replace(/docs\.cline\.bot/g, 'docs.ai-ml.pp.ua')
     .replace(/https:\/\/github\.com\/cline\/cline\.git/g, `${repositoryUrl}.git`)
     .replace(/https:\/\/github\.com\/cline\/cline/g, `${repositoryUrl}`)
