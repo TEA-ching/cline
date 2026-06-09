@@ -396,11 +396,5 @@ export * from "./team";
 export { createTool } from "./tools/create";
 export type { CrawlerKeyResolver, CrawlerProtocol, ResolvedCrawlerConfig } from "./tools/crawler";
 export * from "./types";
-export type { OAuthProviderId } from "./types/auth";
-export {
-	AUTH_ERROR_PATTERNS,
-	isLikelyAuthError,
-	isOAuthProviderId,
-	OAUTH_PROVIDER_IDS,
-} from "./types/auth";
+export { AUTH_ERROR_PATTERNS, isLikelyAuthError } from "./types/auth";
 export { initVcr } from "./vcr";
