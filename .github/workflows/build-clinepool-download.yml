@@ -195,7 +195,7 @@ jobs:
     needs: setup
     name: Build and push multi-arch Docker image
     runs-on: ubuntu-latest
-    if: ${{secrets.DOCKER_USERNAME}} != '' && ${{secrets.DOCKER_PASSWORD}} != ''
+    if: ${{ secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
