@@ -116,7 +116,7 @@ function findAllFiles(dir: string, acc: string[] = []): string[] {
  */
 function replaceClineReferences(content: string): string {
   // Get repository information for setting package repository URLs
-  const githubRepository = process.env.GITHUB_REPOSITORY
+  const githubRepository = process.env.GITHUB_REPOSITORY || 'TEA-ching/cline'
   const githubServerUrl = process.env.GITHUB_SERVER_URL || 'https://github.com'
   const repositoryUrl = githubRepository
     ? `${githubServerUrl}/${githubRepository}`
