@@ -1,0 +1,110 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - keypool-live
+
+permissions:
+  id-token: write
+  contents: write
+  attestations: write
+  packages: write
+
+jobs:
+  setup:
+    name: Compute build metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      datetime: ${{ steps.meta.outputs.datetime }}
+      # datetime_safe: colons replaced by '-' — required for Windows filenames
+      # and for git tag names (colons are not allowed in refs).
+      datetime_safe: ${{ steps.meta.outputs.datetime_safe }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Compute version and datetime
+        id: meta
+        run: |
+          # Extract version from Cargo.toml
+          VERSION=$(grep '^version' ./apps/clinepool-download/Cargo.toml | cut -d '"' -f 2)
+          DATETIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          DATETIME_SAFE=$(echo "$DATETIME" | tr ':' '-')
+          echo "version=$VERSION"             >> "$GITHUB_OUTPUT"
+          echo "datetime=$DATETIME"           >> "$GITHUB_OUTPUT"
+          echo "datetime_safe=$DATETIME_SAFE" >> "$GITHUB_OUTPUT"
+
+  build-and-upload:
+    needs: setup
+    name: Build and upload
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        include:
+          - build: windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            arch: amd64
+            family: windows
+
+          - build: macos-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            arch: arm64
+            family: macos
+
+          - build: macos-x86_64
+            os: macos-latest
+            target: x86_64-apple-darwin
+            arch: amd64
+            family: macos
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Get the release version from the tag
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        working-directory: ./apps/clinepool-download
+        run: cargo build --verbose --release --target ${{ matrix.target }}
+
+      - name: Build archive
+        shell: bash
+        env:
+          VERSION: ${{ needs.setup.outputs.version }}
+          DATETIME_SAFE: ${{ needs.setup.outputs.datetime_safe }}
+        run: |
+          # Replace with the name of your binary
+          binary_name="clinepool-download"
+
+          dirname="$binary_name-${{ env.VERSION }}-${{ matrix.target }}"
+          mkdir "$dirname"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp "target/${{ matrix.target }}/release/$binary_name.exe" "clinepool-download_${{ matrix.family }}_${{ matrix.arch }}_${{ env.VERSION }}.exe"
+            echo "ASSET=clinepool-download_${{ matrix.family }}_${{ matrix.arch }}_${{ env.VERSION }}.exe" >> $GITHUB_ENV
+          else
+            cp "target/${{ matrix.target }}/release/$binary_name" "clinepool-download_${{ matrix.family }}_${{ matrix.arch }}_${{ env.VERSION }}"
+            echo "ASSET=clinepool-download_${{ matrix.family }}_${{ matrix.arch }}_${{ env.VERSION }}" >> $GITHUB_ENV 
+          fi
+          
+      - name: Attest release
+        uses: actions/attest-build-provenance@v1
+        continue-on-error: true
+        with:
+          subject-path: "clinepool-download_${{ matrix.family }}_${{ matrix.arch }}_${{ env.VERSION }}"
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ${{ env.ASSET }}
