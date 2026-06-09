@@ -181,7 +181,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: apps/clinepool-download/.
           file: apps/clinepool-download/Dockerfile
           platforms: linux/arm64, linux/amd64, linux/armhf
           cache-from: type=gha
