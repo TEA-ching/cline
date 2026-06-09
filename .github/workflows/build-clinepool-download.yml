@@ -115,27 +115,6 @@ jobs:
         working-directory: ./apps/clinepool-download
         run: cargo build --verbose --release --target ${{ matrix.target }}
 
-      # Linux ARM builds using Docker + QEMU
-      - name: Set up QEMU for ARM builds
-        if: matrix.build == 'linux-arm64' || matrix.build == 'linux-armhf'
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: ${{ matrix.docker_platform }}
-
-      - name: Build Linux ARM binary with Docker
-        if: matrix.build == 'linux-arm64' || matrix.build == 'linux-armhf'
-        run: |
-          mkdir -p target/${{ matrix.target }}/release
-          docker run --rm \
-            -v ${{ github.workspace }}:/workspace \
-            -w /workspace/apps/clinepool-download \
-            -e CARGO_HOME=/workspace/.cargo \
-            --platform ${{ matrix.docker_platform }} \
-            rust:latest \
-            cargo build --verbose --release --target ${{ matrix.target }}
-          
-          # The binary will be at target/${{ matrix.target }}/release/clinepool-download
-
       - name: Prepare binary artifact
         shell: bash
         env:
