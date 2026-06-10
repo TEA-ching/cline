@@ -216,7 +216,9 @@ function buildProviderConfig(
 				}
 			: undefined;
 	const sessionProviderConfig =
-		config.providerConfig?.providerId === config.providerId ? config.providerConfig : undefined;
+		config.providerConfig?.providerId === config.providerId
+			? config.providerConfig
+			: undefined;
 	const settings: ProviderSettings = {
 		...(stored ?? {}),
 		provider: config.providerId,
