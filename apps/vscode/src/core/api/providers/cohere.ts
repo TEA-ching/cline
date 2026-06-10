@@ -74,7 +74,6 @@ function resolveModel(options: CohereHandlerOptions): { id: CohereModelId; info:
 // so @ai-sdk/cohere always sees a non-zero tokens.input_tokens value.
 function patchCohereUsageFetch(baseFetch: typeof fetch): typeof fetch {
 	return async (input, init) => {
-
 		// Patch tool schemas and add strict_tools when tools are present.
 		if (init?.body) {
 			const body = typeof init.body === "string" ? JSON.parse(init.body) : init.body
@@ -95,7 +94,8 @@ function patchCohereUsageFetch(baseFetch: typeof fetch): typeof fetch {
 		}
 
 		// Log as TypeScript fetch script
-		if (process.env.COHERE_DEBUG_FETCH_LOG === "1" || true) { // DON'T FORGET TO REMOVE THIS TRUE
+		// if (process.env.COHERE_DEBUG_FETCH_LOG === "1") {
+		if (true) { // curently always log
 			try {
 				const storagePath = path.join(HostProvider.get().globalStorageFsPath, "cohere")
 				await fs.mkdir(storagePath, { recursive: true })
@@ -106,50 +106,7 @@ function patchCohereUsageFetch(baseFetch: typeof fetch): typeof fetch {
 				const headers = (init?.headers as Record<string, string>) || {}
 				const bodyObj = init?.body ? (typeof init.body === "string" ? JSON.parse(init.body) : init.body) : undefined
 				// Generate TypeScript fetch code
-				const tsCode = `// Auto-generated Cohere API request script
-// This script demonstrates how to make the same API request using fetch in TypeScript
-
-/**
- * Makes a Cohere API request using fetch
- * @returns Promise that resolves with the API response
- */
-async function makeCohereRequest(): Promise<Response> {
-    const url = "${url}";
-    const method = "${method}";
-
-    // Request headers
-    const headers = new Headers();
-${Object.entries(headers).map(([key, value]) => `    headers.append("${key}", "${value.replace(/"/g, '\\"')}");`).join("\n")}
-
-    // Request body (if present)
-${bodyObj ? `    const body = ${JSON.stringify(bodyObj, null, 2)};` : `    const body = undefined;`}
-
-    // Execute the fetch request
-    const response = await fetch(url, {
-        method: method,
-        headers: headers,
-${bodyObj ? `        body: JSON.stringify(body),` : ""}
-    });
-
-    return response;
-}
-
-// Execute the request
-makeCohereRequest()
-    .then(response => {
-        console.log("Request successful:", response.status, response.statusText);
-        return response.json();
-    })
-    .then(data => {
-        console.log("Response data:", data);
-    })
-    .catch(error => {
-        console.error("Request failed:", error);
-    });
-
-// Export for programmatic use
-export { makeCohereRequest };
-`
+				const tsCode = generateTypeScriptFetchCode(url, method, headers, bodyObj);
 
 				await fs.writeFile(path.join(storagePath, `${timestamp}.ts`), tsCode)
 
@@ -240,6 +197,53 @@ function patchMessageEndLine(line: string): string {
 	}
 }
 
+function generateTypeScriptFetchCode(url: string, method: string, headers: Record<string, string>, bodyObj: any): string {
+	return `// Auto-generated Cohere API request script
+// This script demonstrates how to make the same API request using fetch in TypeScript
+
+/**
+ * Makes a Cohere API request using fetch
+ * @returns Promise that resolves with the API response
+ */
+async function makeCohereRequest(): Promise<Response> {
+    const url = "${url}";
+    const method = "${method}";
+
+    // Request headers
+    const headers = new Headers();
+${Object.entries(headers).map(([key, value]) => `    headers.append("${key}", "${value.replace(/"/g, '\\"')}");`).join("\n")}
+
+    // Request body (if present)
+${bodyObj ? `    const body = ${JSON.stringify(bodyObj, null, 2)};` : `    const body = undefined;`}
+
+    // Execute the fetch request
+    const response = await fetch(url, {
+        method: method,
+        headers: headers,
+${bodyObj ? `        body: JSON.stringify(body),` : ""}
+    });
+
+    return response;
+}
+
+// Execute the request
+makeCohereRequest()
+    .then(response => {
+        console.log("Request successful:", response.status, response.statusText);
+        return response.json();
+    })
+    .then(data => {
+        console.log("Response data:", data);
+    })
+    .catch(error => {
+        console.error("Request failed:", error);
+    });
+
+// Export for programmatic use
+export { makeCohereRequest };
+`
+}
+
 /**
  * Cleans up old log files, keeping only the most recent ones
  * @param directoryPath Path to the directory containing log files
@@ -281,3 +285,5 @@ export async function cleanupOldLogFiles(directoryPath: string, maxFilesToKeep: 
 		console.error("Failed to cleanup old log files:", error)
 	}
 }
+
+
