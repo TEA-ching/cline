@@ -29,6 +29,7 @@ RUN if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
 
 COPY src /build/src
 COPY Cargo.toml /build/Cargo.toml
+COPY Cargo.lock /build/Cargo.lock
 
 
 RUN export TARGET=$(cat /build/_target) \

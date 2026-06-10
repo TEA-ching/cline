@@ -124,9 +124,9 @@ jobs:
           artifact_name="clinepool-download_${{ matrix.family }}_${{ matrix.arch }}_${VERSION}${{ matrix.ext }}"
           
           if [ "${{ matrix.family }}" = "windows" ]; then
-            cp "target/${{ matrix.target }}/release/${binary_name}.exe" "$artifact_name"
+            cp "apps/clinepool-download/target/${{ matrix.target }}/release/${binary_name}.exe" "$artifact_name"
           else
-            cp "target/${{ matrix.target }}/release/${binary_name}" "$artifact_name"
+            cp "apps/clinepool-download/target/${{ matrix.target }}/release/${binary_name}" "$artifact_name"
           fi
           
           echo "artifact_name=$artifact_name" >> $GITHUB_ENV
