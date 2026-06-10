@@ -38,5 +38,6 @@ RUN export TARGET=$(cat /build/_target) \
     && mkdir -p /build/ubuntu-noble/bin \
     && cp /build/target/$(cat /build/_target)/release/clinepool-download /build/ubuntu-noble/bin/
 FROM ubuntu:noble
+RUN apt-get update && apt-get install -y ca-certificates
 COPY --from=builder /build/ubuntu-noble/bin/clinepool-download /usr/local/bin/clinepool-download
 ENTRYPOINT [ "/usr/local/bin/clinepool-download" ]
