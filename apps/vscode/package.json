@@ -533,6 +533,8 @@
 		"chokidar": "^4.0.1",
 		"chrome-launcher": "^1.1.2",
 		"clone-deep": "^4.0.1",
+		"@ai-sdk/cohere": "^3.0.36",
+		"ai": "^6.0.144",
 		"cohere-ai": "8.0.0",
 		"default-shell": "^2.2.0",
 		"diff": "8.0.4",

@@ -1,5 +1,5 @@
-import { ApiFormat } from "./proto/cline/models"
-import type { ApiHandlerSettings } from "./storage/state-keys"
+import { ApiFormat } from "./proto/cline/models";
+import type { ApiHandlerSettings } from "./storage/state-keys";
 
 export type ApiProvider =
 	| "anthropic"
@@ -5422,14 +5422,9 @@ export const cohereDefaultModelId: CohereModelId = "command-a-03-2025"
 export const cohereModels = {
 	"command-a-plus-05-2026": {
 		maxTokens: 64_000,
-		contextWindow: 128_000,
+		contextWindow: 436_000,
 		supportsImages: true,
 		supportsPromptCache: false,
-		supportsReasoning: true,
-		thinkingConfig: {
-			maxBudget: 32_000,
-			outputPrice: 10.0,
-		},
 		inputPrice: 2.5,
 		outputPrice: 10.0,
 		description:
