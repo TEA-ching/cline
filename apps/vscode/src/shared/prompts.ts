@@ -15,4 +15,5 @@ export enum ModelFamily {
 	GENERIC = "generic",
 	XS = "xs",
 	NATIVE_NEXT_GEN = "native-next-gen", // Uses native tool calling
+	NATIVE_COHERE = "native-cohere", // Uses native tool calling
 }

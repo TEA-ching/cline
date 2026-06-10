@@ -5418,6 +5418,9 @@ export const nousResearchModels = {
 
 // https://docs.cohere.com/docs/models
 export type CohereModelId = keyof typeof cohereModels
+export interface CohereModelInfo extends ModelInfo {
+	supportsTools?: boolean
+}
 export const cohereDefaultModelId: CohereModelId = "command-a-03-2025"
 export const cohereModels = {
 	"command-a-plus-05-2026": {
@@ -5425,6 +5428,7 @@ export const cohereModels = {
 		contextWindow: 436_000,
 		supportsImages: true,
 		supportsPromptCache: false,
+		supportsTools: true,	
 		inputPrice: 2.5,
 		outputPrice: 10.0,
 		description:
@@ -5436,6 +5440,7 @@ export const cohereModels = {
 		supportsImages: false,
 		supportsPromptCache: false,
 		supportsReasoning: true,
+		supportsTools: true,
 		thinkingConfig: {
 			maxBudget: 32_000,
 			outputPrice: 10.0,
@@ -5450,8 +5455,9 @@ export const cohereModels = {
 		contextWindow: 256_000,
 		supportsImages: false,
 		supportsPromptCache: false,
+		supportsTools: true,
 		inputPrice: 2.5,
 		outputPrice: 10,
 		description: "Command A is Cohere's most performant model to date, excelling at real world enterprise tasks including tool use.",
 	},
-} as const satisfies Record<string, ModelInfo>
+} as const satisfies Record<string, CohereModelInfo>

@@ -333,7 +333,8 @@ export class SubagentRunner {
 			stats.contextWindow = providerInfo.model.info.contextWindow || 0
 			const nativeToolCallsRequested =
 				providerInfo.model.info.apiFormat === ApiFormat.OPENAI_RESPONSES ||
-				!!this.baseConfig.services.stateManager.getGlobalStateKey("nativeToolCallEnabled")
+				!!this.baseConfig.services.stateManager.getGlobalStateKey("nativeToolCallEnabled") ||
+				!!(providerInfo.model.info as any).supportsTools
 
 			const host = HostRegistryInfo.get()
 			const remoteSkillEntries = this.baseConfig.services.stateManager.getRemoteConfigSettings().remoteGlobalSkills || []
