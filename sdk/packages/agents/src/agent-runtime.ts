@@ -1,4 +1,5 @@
 import { createGateway } from "@cline/llms";
+import type { KeypoolEventHandler } from "@cline/shared";
 import type {
 	AgentAfterToolResult,
 	AgentBeforeModelResult,
@@ -64,6 +65,8 @@ export interface AgentRuntimeConfigWithProvider
 	baseUrl?: string;
 	/** Additional headers for API requests */
 	headers?: Record<string, string>;
+	/** Optional callback for keypoollive key lifecycle events (key-selected, key-rotated, usage-recorded, …). */
+	keypoolEventHandler?: KeypoolEventHandler;
 }
 
 /**
@@ -88,10 +91,11 @@ function resolveRuntimeConfig(
 	if (hasPrebuiltModel(config)) {
 		return config;
 	}
-	const { providerId, modelId, apiKey, baseUrl, headers, ...rest } = config;
+	const { providerId, modelId, apiKey, baseUrl, headers, keypoolEventHandler, ...rest } = config;
 	const gateway = createGateway({
 		providerConfigs: [{ providerId, apiKey, baseUrl, headers }],
 		telemetry: rest.telemetry,
+		keypoolEventHandler,
 	});
 	const model = gateway.createAgentModel({ providerId, modelId });
 	return { ...rest, model };

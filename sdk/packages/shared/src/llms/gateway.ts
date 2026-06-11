@@ -264,4 +264,6 @@ export interface GatewayConfig {
 	fetch?: typeof fetch;
 	logger?: BasicLogger;
 	telemetry?: ITelemetryService;
+	/** Optional callback forwarded into GatewayProviderContext for keypoollive events. */
+	keypoolEventHandler?: KeypoolEventHandler;
 }
