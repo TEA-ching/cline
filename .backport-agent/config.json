@@ -35,8 +35,8 @@
     "models": {
         "provider": "keypoollive",
         "apiKey": "auto",
-        "fast": "mistral/mistral-medium-latest",
-        "specialist": "mistral/mistral-medium-latest",
+        "fast": "mistral/devstral-medium-latest",
+        "specialist": "mistral/mistral-vibe-cli-latest",
         "powerful": "openai/gpt-5.5"
     },
     "ai": {
