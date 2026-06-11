@@ -20,6 +20,7 @@ export const DefaultToolNames = {
 	SKILLS: "skills",
 	ASK: "ask_question",
 	SUBMIT_AND_EXIT: "submit_and_exit",
+	WRITE_MARKDOWN_TO_DOCX: "write_markdown_to_docx",
 } as const;
 
 /**
@@ -36,4 +37,5 @@ export const ALL_DEFAULT_TOOL_NAMES: DefaultToolName[] = [
 	DefaultToolNames.SKILLS,
 	DefaultToolNames.ASK,
 	DefaultToolNames.SUBMIT_AND_EXIT,
+	DefaultToolNames.WRITE_MARKDOWN_TO_DOCX,
 ];

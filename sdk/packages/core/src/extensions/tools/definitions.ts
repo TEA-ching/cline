@@ -5,68 +5,71 @@
  */
 
 import {
-	type AgentTool,
-	type AgentToolContext,
-	createTool,
-	validateWithZod,
-	zodToJsonSchema,
+    type AgentTool,
+    type AgentToolContext,
+    createTool,
+    validateWithZod,
+    zodToJsonSchema,
 } from "@cline/shared";
 import { captureRunCommandsTimeout } from "../../services/telemetry/core-events";
 import { getToolContextTelemetry } from "../../services/telemetry/tool-context";
 import {
-	formatError,
-	formatReadFileQuery,
-	formatRunCommandQuery,
-	getEditorSizeError,
-	getReadFileRangeError,
-	normalizeRunCommandsInput,
-	TimeoutError,
-	withTimeout,
+    formatError,
+    formatReadFileQuery,
+    formatRunCommandQuery,
+    getEditorSizeError,
+    getReadFileRangeError,
+    normalizeRunCommandsInput,
+    TimeoutError,
+    withTimeout,
 } from "./helpers";
 import {
-	type ApplyPatchInput,
-	ApplyPatchInputSchema,
-	ApplyPatchInputUnionSchema,
-	type AskQuestionInput,
-	AskQuestionInputSchema,
-	type EditFileInput,
-	EditFileInputSchema,
-	type FetchWebContentInput,
-	FetchWebContentInputSchema,
-	type ReadFileRequest,
-	type ReadFilesInput,
-	ReadFilesInputSchema,
-	ReadFilesInputUnionSchema,
-	type RunCommandsInput,
-	RunCommandsInputSchema,
-	RunCommandsInputUnionSchema,
-	type SearchCodebaseInput,
-	SearchCodebaseInputSchema,
-	SearchCodebaseUnionInputSchema,
-	type SearchWebInput,
-	SearchWebInputSchema,
-	SearchWebInputUnionSchema,
-	type SkillsInput,
-	SkillsInputSchema,
-	type StructuredCommandInput,
-	StructuredCommandsInputSchema,
-	type SubmitInput,
-	SubmitInputSchema
+    type ApplyPatchInput,
+    ApplyPatchInputSchema,
+    ApplyPatchInputUnionSchema,
+    type AskQuestionInput,
+    AskQuestionInputSchema,
+    type EditFileInput,
+    EditFileInputSchema,
+    type FetchWebContentInput,
+    FetchWebContentInputSchema,
+    type ReadFileRequest,
+    type ReadFilesInput,
+    ReadFilesInputSchema,
+    ReadFilesInputUnionSchema,
+    type RunCommandsInput,
+    RunCommandsInputSchema,
+    RunCommandsInputUnionSchema,
+    type SearchCodebaseInput,
+    SearchCodebaseInputSchema,
+    SearchCodebaseUnionInputSchema,
+    type SearchWebInput,
+    SearchWebInputSchema,
+    SearchWebInputUnionSchema,
+    type SkillsInput,
+    SkillsInputSchema,
+    type StructuredCommandInput,
+    StructuredCommandsInputSchema,
+    type SubmitInput,
+    SubmitInputSchema,
+    type WriteMarkdownToDocxInput,
+    WriteMarkdownToDocxInputSchema
 } from "./schemas";
 import type {
-	ApplyPatchExecutor,
-	AskQuestionExecutor,
-	BashExecutor,
-	CreateDefaultToolsOptions,
-	DefaultToolsConfig,
-	EditorExecutor,
-	FileReadExecutor,
-	SearchExecutor,
-	SkillsExecutorWithMetadata,
-	ToolOperationResult,
-	VerifySubmitExecutor,
-	WebFetchExecutor,
-	WebSearchExecutor
+    ApplyPatchExecutor,
+    AskQuestionExecutor,
+    BashExecutor,
+    CreateDefaultToolsOptions,
+    DefaultToolsConfig,
+    EditorExecutor,
+    FileReadExecutor,
+    SearchExecutor,
+    SkillsExecutorWithMetadata,
+    ToolOperationResult,
+    VerifySubmitExecutor,
+    WebFetchExecutor,
+    WebSearchExecutor,
+    WriteMarkdownToDocxExecutor
 } from "./types";
 
 // =============================================================================
@@ -764,6 +767,56 @@ export function createAskQuestionTool(
 	};
 }
 
+/**
+ * Create the write_markdown_to_docx tool
+ *
+ * Converts markdown content to DOCX format and saves to a file.
+ */
+export function createWriteMarkdownToDocxTool(
+	executor: WriteMarkdownToDocxExecutor,
+	config: Pick<DefaultToolsConfig, "writeMarkdownToDocxTimeoutMs"> = {},
+): AgentTool<WriteMarkdownToDocxInput, ToolOperationResult> {
+	const timeoutMs = config.writeMarkdownToDocxTimeoutMs ?? 30000;
+
+	return createTool<WriteMarkdownToDocxInput, ToolOperationResult>({
+		name: "write_markdown_to_docx",
+		description:
+			"Convert markdown content to DOCX format and save to a file. " +
+			"Use for generating Word documents from markdown content. " +
+			"Provide the markdown content and the output file path.",
+		inputSchema: zodToJsonSchema(WriteMarkdownToDocxInputSchema),
+		timeoutMs,
+		retryable: true,
+		maxRetries: 2,
+		execute: async (input, context) => {
+			// Validate input with Zod schema
+			const validatedInput = validateWithZod(WriteMarkdownToDocxInputSchema, input);
+
+			try {
+				const result = await withTimeout(
+					executor(validatedInput.markdown, validatedInput.output_path, context),
+					timeoutMs,
+					`Markdown to DOCX conversion timed out after ${timeoutMs}ms`,
+				);
+
+				return {
+					query: `markdown to docx: ${validatedInput.output_path}`,
+					result,
+					success: true,
+				};
+			} catch (error) {
+				const msg = formatError(error);
+				return {
+					query: `markdown to docx: ${validatedInput.output_path}`,
+					result: "",
+					error: `Markdown to DOCX conversion failed: ${msg}`,
+					success: false,
+				};
+			}
+		},
+	});
+}
+
 export function createSubmitAndExitTool(
 	executor: VerifySubmitExecutor,
 	config: Pick<DefaultToolsConfig, "submitTimeoutMs"> = {},
@@ -853,6 +906,7 @@ export function createDefaultTools(
 		enableSkills = true,
 		enableAskQuestion = true,
 		enableSubmitAndExit = false,
+		enableWriteMarkdownToDocx = true,
 		...config
 	} = options;
 
@@ -906,6 +960,11 @@ export function createDefaultTools(
 	// Add ask_question tool if enabled and executor provided
 	if (enableAskQuestion && executors.askQuestion && !submitExecutor) {
 		tools.push(createAskQuestionTool(executors.askQuestion));
+	}
+
+	// Add write_markdown_to_docx tool if enabled and executor provided
+	if (enableWriteMarkdownToDocx && executors.writeMarkdownToDocx) {
+		tools.push(createWriteMarkdownToDocxTool(executors.writeMarkdownToDocx, config));
 	}
 
 	// Add submit_and_exit tool if enabled and executor provided

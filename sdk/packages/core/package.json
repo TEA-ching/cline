@@ -61,6 +61,7 @@
 		"@opentelemetry/semantic-conventions": "^1.40.0",
 		"jiti": "^2.7.0",
 		"node-machine-id": "^1.1.12",
+		"markdown-docx": "^1.6.0",
 		"nanoid": "^5.1.7",
 		"simple-git": "3.36.0",
 		"ws": "^8.20.0",

@@ -5,15 +5,15 @@
  */
 
 import type {
-	AgentToolContext,
-	ImageContent,
-	TextContent,
+    AgentToolContext,
+    ImageContent,
+    TextContent,
 } from "@cline/shared";
 import type {
-	ApplyPatchInput,
-	EditFileInput,
-	ReadFileRequest,
-	StructuredCommandInput,
+    ApplyPatchInput,
+    EditFileInput,
+    ReadFileRequest,
+    StructuredCommandInput,
 } from "./schemas";
 
 // =============================================================================
@@ -205,6 +205,20 @@ export type VerifySubmitExecutor = (
 ) => Promise<string>;
 
 /**
+ * Executor for converting markdown to DOCX
+ *
+ * @param markdown - Markdown content to convert
+ * @param outputPath - Output file path for the DOCX file
+ * @param context - Tool execution context
+ * @returns Conversion result message
+ */
+export type WriteMarkdownToDocxExecutor = (
+	markdown: string,
+	outputPath: string,
+	context: AgentToolContext,
+) => Promise<string>;
+
+/**
  * Collection of all tool executors
  */
 export interface ToolExecutors {
@@ -228,6 +242,8 @@ export interface ToolExecutors {
 	askQuestion?: AskQuestionExecutor;
 	/** Final submission implementation */
 	submit?: VerifySubmitExecutor;
+	/** Markdown to DOCX conversion implementation */
+	writeMarkdownToDocx?: WriteMarkdownToDocxExecutor;
 }
 
 // =============================================================================
@@ -247,7 +263,8 @@ export type DefaultToolName =
 	| "editor"
 	| "skills"
 	| "ask_question"
-	| "submit_and_exit";
+	| "submit_and_exit"
+	| "write_markdown_to_docx";
 
 /**
  * Configuration for enabling/disabling default tools
@@ -314,6 +331,12 @@ export interface DefaultToolsConfig {
 	enableSubmitAndExit?: boolean;
 
 	/**
+	 * Enable the write_markdown_to_docx tool
+	 * @default true
+	 */
+	enableWriteMarkdownToDocx?: boolean;
+
+	/**
 	 * Current working directory for tools that need it
 	 */
 	cwd?: string;
@@ -371,6 +394,12 @@ export interface DefaultToolsConfig {
 	 * @default 15000
 	 */
 	submitTimeoutMs?: number;
+
+	/**
+	 * Timeout for markdown to DOCX conversion operations in milliseconds
+	 * @default 30000
+	 */
+	writeMarkdownToDocxTimeoutMs?: number;
 }
 
 /**

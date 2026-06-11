@@ -1,7 +1,7 @@
 import type { CoreAgentMode } from "../../types/config";
 import {
-	DEFAULT_MODEL_TOOL_ROUTING_RULES,
-	resolveToolRoutingConfig,
+    DEFAULT_MODEL_TOOL_ROUTING_RULES,
+    resolveToolRoutingConfig,
 } from "./model-tool-routing";
 import { resolveToolPresetName, ToolPresets } from "./presets";
 import { createSpawnAgentTool } from "./team/spawn-agent-tool";
@@ -76,6 +76,12 @@ const BASE_TOOL_CATALOG: readonly RuntimeToolCatalogEntry[] = [
 		headlessToolNames: ["ask_question"],
 	},
 	{
+		id: "write_markdown_to_docx",
+		description:
+			"Convert markdown content to DOCX format and save to a file for generating Word documents from markdown.",
+		headlessToolNames: ["write_markdown_to_docx"],
+	},
+	{
 		id: "spawn_agent",
 		description: createSpawnAgentTool({ configProvider: {} as never })
 			.description,
@@ -84,7 +90,7 @@ const BASE_TOOL_CATALOG: readonly RuntimeToolCatalogEntry[] = [
 	{
 		id: "teams",
 		description:
-			"Enable team collaboration tools for teammate management, task coordination, mailbox messaging, mission logs, and outcomes.",
+			"Enable team collaboration tools for teammate management, task coordination, mailbox messaging, and mission logs, and outcomes.",
 		headlessToolNames: [...TEAM_TOOL_NAMES],
 	},
 ] as const;
@@ -104,6 +110,7 @@ const TOOL_NAME_TO_FLAG: Partial<
 			| "enableSkills"
 			| "enableAskQuestion"
 			| "enableSubmitAndExit"
+			| "enableWriteMarkdownToDocx"
 		>
 	>
 > = {
@@ -116,6 +123,7 @@ const TOOL_NAME_TO_FLAG: Partial<
 	editor: "enableEditor",
 	skills: "enableSkills",
 	ask_question: "enableAskQuestion",
+	write_markdown_to_docx: "enableWriteMarkdownToDocx",
 };
 
 function resolveContextMode(
@@ -136,6 +144,7 @@ type ResolvedToolFlags = Pick<
 	| "enableSkills"
 	| "enableAskQuestion"
 	| "enableSubmitAndExit"
+	| "enableWriteMarkdownToDocx"
 > & {
 	enableSpawnAgent?: boolean;
 	enableAgentTeams?: boolean;

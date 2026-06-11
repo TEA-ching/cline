@@ -320,6 +320,20 @@ export const SubmitInputSchema = z.object({
 		),
 });
 
+/**
+ * Schema for write_markdown_to_docx tool input
+ */
+export const WriteMarkdownToDocxInputSchema = z.object({
+	markdown: z
+		.string()
+		.min(1)
+		.describe("Markdown content to convert to DOCX format"),
+	output_path: z
+		.string()
+		.min(1)
+		.describe("Output file path for the generated DOCX file"),
+});
+
 // =============================================================================
 // Type Definitions (derived from Zod schemas)
 // =============================================================================
@@ -386,3 +400,8 @@ export type AskQuestionInput = z.infer<typeof AskQuestionInputSchema>;
  * Input for the submit and exit tool
  */
 export type SubmitInput = z.infer<typeof SubmitInputSchema>;
+
+/**
+ * Input for the write_markdown_to_docx tool
+ */
+export type WriteMarkdownToDocxInput = z.infer<typeof WriteMarkdownToDocxInputSchema>;
