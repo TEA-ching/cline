@@ -5,71 +5,68 @@
  */
 
 import {
-    type AgentTool,
-    type AgentToolContext,
-    createTool,
-    validateWithZod,
-    zodToJsonSchema,
+	type AgentTool,
+	type AgentToolContext,
+	createTool,
+	validateWithZod,
+	zodToJsonSchema,
 } from "@cline/shared";
 import { captureRunCommandsTimeout } from "../../services/telemetry/core-events";
 import { getToolContextTelemetry } from "../../services/telemetry/tool-context";
 import {
-    formatError,
-    formatReadFileQuery,
-    formatRunCommandQuery,
-    getEditorSizeError,
-    getReadFileRangeError,
-    normalizeRunCommandsInput,
-    TimeoutError,
-    withTimeout,
+	formatError,
+	formatReadFileQuery,
+	formatRunCommandQueryPreview,
+	getEditorSizeError,
+	getReadFileRangeError,
+	normalizeRunCommandsInput,
+	TimeoutError,
+	withTimeout,
 } from "./helpers";
 import {
-    type ApplyPatchInput,
-    ApplyPatchInputSchema,
-    ApplyPatchInputUnionSchema,
-    type AskQuestionInput,
-    AskQuestionInputSchema,
-    type EditFileInput,
-    EditFileInputSchema,
-    type FetchWebContentInput,
-    FetchWebContentInputSchema,
-    type ReadFileRequest,
-    type ReadFilesInput,
-    ReadFilesInputSchema,
-    ReadFilesInputUnionSchema,
-    type RunCommandsInput,
-    RunCommandsInputSchema,
-    RunCommandsInputUnionSchema,
-    type SearchCodebaseInput,
-    SearchCodebaseInputSchema,
-    SearchCodebaseUnionInputSchema,
-    type SearchWebInput,
-    SearchWebInputSchema,
-    SearchWebInputUnionSchema,
-    type SkillsInput,
-    SkillsInputSchema,
-    type StructuredCommandInput,
-    StructuredCommandsInputSchema,
-    type SubmitInput,
-    SubmitInputSchema,
-    type WriteMarkdownToDocxInput,
-    WriteMarkdownToDocxInputSchema
+	type ApplyPatchInput,
+	ApplyPatchInputSchema,
+	ApplyPatchInputUnionSchema,
+	type AskQuestionInput,
+	AskQuestionInputSchema,
+	type EditFileInput,
+	EditFileInputSchema,
+	type FetchWebContentInput,
+	FetchWebContentInputSchema,
+	type ReadFileRequest,
+	type ReadFilesInput,
+	ReadFilesInputSchema,
+	ReadFilesInputUnionSchema,
+	type RunCommandsInput,
+	RunCommandsInputSchema,
+	RunCommandsInputUnionSchema,
+	type SearchCodebaseInput,
+	SearchCodebaseInputSchema,
+	SearchCodebaseUnionInputSchema,
+	type SearchWebInput,
+	SearchWebInputSchema,
+	SearchWebInputUnionSchema,
+	type SkillsInput,
+	SkillsInputSchema,
+	type StructuredCommandInput,
+	StructuredCommandsInputSchema,
+	type SubmitInput,
+	SubmitInputSchema,
 } from "./schemas";
 import type {
-    ApplyPatchExecutor,
-    AskQuestionExecutor,
-    BashExecutor,
-    CreateDefaultToolsOptions,
-    DefaultToolsConfig,
-    EditorExecutor,
-    FileReadExecutor,
-    SearchExecutor,
-    SkillsExecutorWithMetadata,
-    ToolOperationResult,
-    VerifySubmitExecutor,
-    WebFetchExecutor,
-    WebSearchExecutor,
-    WriteMarkdownToDocxExecutor
+	ApplyPatchExecutor,
+	AskQuestionExecutor,
+	BashExecutor,
+	CreateDefaultToolsOptions,
+	DefaultToolsConfig,
+	EditorExecutor,
+	FileReadExecutor,
+	SearchExecutor,
+	SkillsExecutorWithMetadata,
+	ToolOperationResult,
+	VerifySubmitExecutor,
+	WebFetchExecutor,
+	WebSearchExecutor,
 } from "./types";
 
 // =============================================================================
@@ -317,6 +314,7 @@ export function createBashTool(
 			return Promise.all(
 				commands.map(async (command: string): Promise<ToolOperationResult> => {
 					const startedAt = Date.now();
+					const query = formatRunCommandQueryPreview(command);
 					try {
 						const output = await withTimeout(
 							executor(command, cwd, context),
@@ -324,7 +322,7 @@ export function createBashTool(
 							`Command timed out after ${timeoutMs}ms`,
 						);
 						return {
-							query: command,
+							query,
 							result: output,
 							success: true,
 						};
@@ -339,7 +337,7 @@ export function createBashTool(
 						}
 						const msg = formatError(error);
 						return {
-							query: command,
+							query,
 							result: "",
 							error: `Command failed: ${msg}`,
 							success: false,
@@ -383,6 +381,7 @@ export function createWindowsShellTool(
 			return Promise.all(
 				commands.map(async (command): Promise<ToolOperationResult> => {
 					const startedAt = Date.now();
+					const query = formatRunCommandQueryPreview(command);
 					try {
 						const output = await withTimeout(
 							executor(command, cwd, context),
@@ -390,7 +389,7 @@ export function createWindowsShellTool(
 							`Command timed out after ${timeoutMs}ms`,
 						);
 						return {
-							query: formatRunCommandQuery(command),
+							query,
 							result: output,
 							success: true,
 						};
@@ -405,7 +404,7 @@ export function createWindowsShellTool(
 						}
 						const msg = formatError(error);
 						return {
-							query: formatRunCommandQuery(command),
+							query,
 							result: "",
 							error: `Command failed: ${msg}`,
 							success: false,
@@ -906,7 +905,6 @@ export function createDefaultTools(
 		enableSkills = true,
 		enableAskQuestion = true,
 		enableSubmitAndExit = false,
-		enableWriteMarkdownToDocx = true,
 		...config
 	} = options;
 
@@ -960,11 +958,6 @@ export function createDefaultTools(
 	// Add ask_question tool if enabled and executor provided
 	if (enableAskQuestion && executors.askQuestion && !submitExecutor) {
 		tools.push(createAskQuestionTool(executors.askQuestion));
-	}
-
-	// Add write_markdown_to_docx tool if enabled and executor provided
-	if (enableWriteMarkdownToDocx && executors.writeMarkdownToDocx) {
-		tools.push(createWriteMarkdownToDocxTool(executors.writeMarkdownToDocx, config));
 	}
 
 	// Add submit_and_exit tool if enabled and executor provided
