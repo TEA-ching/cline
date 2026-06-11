@@ -130,6 +130,72 @@ export interface GatewayResolvedModel {
 	model: GatewayModelDefinition;
 }
 
+// ─── Keypool live event types ─────────────────────────────────────────────────
+
+/** Fired when keypoollive selects a key at the start of a stream (attempt 0). */
+export interface KeypoolKeySelectedEvent {
+	type: "key-selected";
+	providerName: string;
+	modelId: string;
+	keyHint: string;
+	keyOwner?: string;
+	roundRobin: boolean;
+}
+
+/** Fired when keypoollive rotates to a new key after detecting a key error. */
+export interface KeypoolKeyRotatedEvent {
+	type: "key-rotated";
+	providerName: string;
+	modelId: string;
+	/** Masked hint of the key that failed. */
+	failedKeyHint: string;
+	attempt: number;
+	error: string;
+}
+
+/** Fired when keypoollive marks a key as healthy after a successful request. */
+export interface KeypoolKeyRecoveredEvent {
+	type: "key-recovered";
+	providerName: string;
+	modelId: string;
+	keyHint: string;
+	keyOwner?: string;
+}
+
+/** Fired when all rotation attempts are exhausted and the stream fails. */
+export interface KeypoolKeyExhaustedEvent {
+	type: "key-exhausted";
+	providerName: string;
+	modelId: string;
+	attempts: number;
+	error: string;
+}
+
+/** Fired after a successful stream with the cumulative token usage totals. */
+export interface KeypoolUsageRecordedEvent {
+	type: "usage-recorded";
+	providerName: string;
+	modelId: string;
+	keyHint: string;
+	keyOwner?: string;
+	inputTokens: number;
+	outputTokens: number;
+	cacheReadTokens: number;
+	cacheWriteTokens: number;
+}
+
+export type KeypoolEvent =
+	| KeypoolKeySelectedEvent
+	| KeypoolKeyRotatedEvent
+	| KeypoolKeyRecoveredEvent
+	| KeypoolKeyExhaustedEvent
+	| KeypoolUsageRecordedEvent;
+
+/** Callback invoked by the keypoollive provider at key lifecycle milestones. */
+export type KeypoolEventHandler = (event: KeypoolEvent) => void;
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export interface GatewayProviderContext {
 	provider: GatewayProviderManifest;
 	model: GatewayModelDefinition;
@@ -137,6 +203,8 @@ export interface GatewayProviderContext {
 	signal?: AbortSignal;
 	logger?: BasicLogger;
 	telemetry?: ITelemetryService;
+	/** Optional callback for keypoollive key lifecycle events. */
+	keypoolEventHandler?: KeypoolEventHandler;
 }
 
 export interface GatewayStreamRequest {

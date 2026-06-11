@@ -158,12 +158,18 @@ function periodCutoffMs(period: UsagePeriod): number {
 /**
  * Returns the directory containing both NDJSON files.
  *
- * Location:
- * On Windows: C:\Users\<User>\AppData\Roaming\Code\User\globalStorage\<extension-id>
- * On macOS: ~/Library/Application Support/Code/User/globalStorage/<extension-id>
- * On Linux: ~/.config/Code/User/globalStorage/<extension-id>
- * */
+ * Resolution order:
+ * 1. `KEYPOOL_USAGE_DB_DIR` environment variable — allows sharing the database
+ *    with the SDK keypoollive provider (set the same path in both environments).
+ * 2. VS Code extension global storage (per-extension, platform-specific):
+ *    - Windows: %APPDATA%\Code\User\globalStorage\<extension-id>
+ *    - macOS:   ~/Library/Application Support/Code/User/globalStorage/<extension-id>
+ *    - Linux:   ~/.config/Code/User/globalStorage/<extension-id>
+ */
 function getDbDir(): string {
+	if (process.env.KEYPOOL_USAGE_DB_DIR) {
+		return process.env.KEYPOOL_USAGE_DB_DIR;
+	}
 	const storagePath = HostProvider.get().globalStorageFsPath;
 	return path.join(storagePath, "keypoollive");
 }
