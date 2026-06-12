@@ -9,7 +9,7 @@ import type { WriteMarkdownToDocxExecutor } from "../types";
 import { writeFileSync } from "fs";
 import { dirname } from "path";
 import { mkdir } from "fs/promises";
-import markdownDocx from "markdown-docx";
+import markdownDocx, { Packer } from "markdown-docx";
 
 export interface WriteMarkdownToDocxExecutorOptions {
 	/**
@@ -36,57 +36,27 @@ export interface WriteMarkdownToDocxExecutorOptions {
  * ```
  */
 export function createWriteMarkdownToDocxExecutor(
-	options: WriteMarkdownToDocxExecutorOptions = {},
+	_options: WriteMarkdownToDocxExecutorOptions = {},
 ): WriteMarkdownToDocxExecutor {
-	const { timeoutMs = 30000 } = options;
-
 	return async (
 		markdown: string,
 		outputPath: string,
-		context: AgentToolContext,
+		_context: AgentToolContext,
 	): Promise<string> => {
-		// Create abort controller for timeout
-		const controller = new AbortController();
-		const timeout = setTimeout(() => controller.abort(), timeoutMs);
-		let contextAbortHandler: (() => void) | undefined;
-
-		// Combine with context abort signal
-		if (context.signal) {
-			contextAbortHandler = () => controller.abort();
-			context.signal.addEventListener("abort", contextAbortHandler);
-		}
-
 		try {
-			// Ensure output directory exists
 			const outputDir = dirname(outputPath);
 			await mkdir(outputDir, { recursive: true });
 
-			// Convert markdown to DOCX
-			const docxBuffer = await markdownDocx({
-				content: markdown,
-				signal: controller.signal,
-			});
-
-			// Write the DOCX file
+			const document = await markdownDocx(markdown);
+			const docxBuffer = await Packer.toBuffer(document);
 			writeFileSync(outputPath, docxBuffer);
-
-			clearTimeout(timeout);
 
 			return `Successfully converted markdown to DOCX and saved to ${outputPath}`;
 		} catch (error) {
-			clearTimeout(timeout);
-
 			if (error instanceof Error) {
-				if (error.name === "AbortError") {
-					throw new Error(`Markdown to DOCX conversion timed out after ${timeoutMs}ms`);
-				}
 				throw new Error(`Markdown to DOCX conversion failed: ${error.message}`);
 			}
 			throw new Error(`Markdown to DOCX conversion failed: ${String(error)}`);
-		} finally {
-			if (context.signal && contextAbortHandler) {
-				context.signal.removeEventListener("abort", contextAbortHandler);
-			}
 		}
 	};
 }
