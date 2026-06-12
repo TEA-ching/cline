@@ -8,6 +8,7 @@ import {
 import { basename, dirname } from "node:path";
 import { resolveProviderSettingsPath } from "@cline/shared/storage";
 import { getLiveModelsCatalog } from "../..";
+import { getProviderAuthHandler } from "../../auth/provider-auth-registry";
 import {
 	emptyStoredProviderSettings,
 	type ProviderConfig,
@@ -156,9 +157,34 @@ export class ProviderSettingsManager {
 		return next;
 	}
 
+	private resolveProviderSettings(
+		state: StoredProviderSettings,
+		providerId: string,
+	): ProviderSettings | undefined {
+		const directSettings = state.providers[providerId]?.settings;
+		const authHandler = getProviderAuthHandler(providerId);
+		const storageProviderId = authHandler?.storageProviderId;
+		if (!storageProviderId || storageProviderId === providerId) {
+			return directSettings;
+		}
+
+		const authSettings = state.providers[storageProviderId]?.settings;
+		if (!authSettings) {
+			return directSettings;
+		}
+
+		return ProviderSettingsSchema.parse({
+			...(authSettings.auth ? { auth: authSettings.auth } : {}),
+			...(authSettings.apiKey ? { apiKey: authSettings.apiKey } : {}),
+			...(authSettings.baseUrl ? { baseUrl: authSettings.baseUrl } : {}),
+			...(directSettings ?? {}),
+			provider: providerId,
+		});
+	}
+
 	getProviderSettings(providerId: string): ProviderSettings | undefined {
 		const state = this.read();
-		return state.providers[providerId]?.settings;
+		return this.resolveProviderSettings(state, providerId);
 	}
 
 	private resolveLastUsedProviderId(
@@ -184,7 +210,7 @@ export class ProviderSettingsManager {
 		if (!providerId) {
 			return undefined;
 		}
-		return state.providers[providerId]?.settings;
+		return this.resolveProviderSettings(state, providerId);
 	}
 
 	getProviderConfig(
