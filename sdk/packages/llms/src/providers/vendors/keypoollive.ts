@@ -42,24 +42,24 @@ type AiProtocol = "openai" | "anthropic" | "gemini" | "mistral" | "cohere";
 /**
  * Supported crawler protocols that the vault can handle
  */
-type CrawlerProtocol = 'firecrawl' | 'exa' | 'scrapegraphai';
+type CrawlerProtocol = "firecrawl" | "exa" | "scrapegraphai";
 
 /**
  * Represents a crawler API key in the vault
  */
 interface CrawlerKey {
-  key: string;
-  owner?: string;
-  type?: AiKeyTier;
+	key: string;
+	owner?: string;
+	type?: AiKeyTier;
 }
 
 /**
  * Represents a crawler service configuration in the vault
  */
 interface VaultCrawler {
-  protocol: CrawlerProtocol;
-  endpoint: string;
-  keys: CrawlerKey[];
+	protocol: CrawlerProtocol;
+	endpoint: string;
+	keys: CrawlerKey[];
 }
 
 /**
@@ -97,6 +97,7 @@ interface VaultModel {
 interface VaultProvider {
 	protocol: AiProtocol;
 	endpoint?: string;
+	userAgent?: string;
 	keys: VaultKey[];
 	models: VaultModel[];
 }
@@ -141,6 +142,7 @@ interface RawAiModel {
 interface RawAiProvider {
 	protocol: AiProtocol;
 	endpoint?: string;
+	userAgent?: string;
 	keys: RawAiKey[];
 	models: RawAiModel[];
 }
@@ -151,15 +153,18 @@ interface RawAiProvider {
 interface RawAiConfig {
 	version: number;
 	providers: Record<string, RawAiProvider>;
-	crawlers?: Record<string, {
-		protocol: CrawlerProtocol;
-		endpoint: string;
-		keys: Array<{
-			key: string;
-			owner?: string;
-			type?: AiKeyTier;
-		}>;
-	}>;
+	crawlers?: Record<
+		string,
+		{
+			protocol: CrawlerProtocol;
+			endpoint: string;
+			keys: Array<{
+				key: string;
+				owner?: string;
+				type?: AiKeyTier;
+			}>;
+		}
+	>;
 }
 
 // ─── AiVault (decryption + caching) ──────────────────────────────────────────
@@ -268,6 +273,7 @@ function transformRawConfig(raw: RawAiConfig): AiVaultConfig {
 		vault.providers[name] = {
 			protocol: p.protocol,
 			endpoint: p.endpoint,
+			userAgent: p.userAgent,
 			keys: p.keys.map((k) => ({
 				key: k.key,
 				owner: k.owner ?? "unknown",
@@ -278,7 +284,7 @@ function transformRawConfig(raw: RawAiConfig): AiVaultConfig {
 	}
 
 	// Transform crawlers if present in the raw config
-	if ('crawlers' in raw) {
+	if ("crawlers" in raw) {
 		const rawCrawlers = raw as RawAiConfig & { crawlers?: Record<string, any> };
 		if (rawCrawlers.crawlers) {
 			vault.crawlers = {};
@@ -380,59 +386,66 @@ const crawlerKeyStatuses = new Map<string, KeyStatus>();
  * Generates a unique identifier for a crawler key
  */
 function getCrawlerKeyId(crawlerName: string, keyValue: string): string {
-  return `${crawlerName}:${keyValue.slice(-8)}`;
+	return `${crawlerName}:${keyValue.slice(-8)}`;
 }
 
 /**
  * Checks if a crawler key is currently usable
  */
 function isCrawlerKeyUsable(crawlerName: string, keyValue: string): boolean {
-  const status = crawlerKeyStatuses.get(getCrawlerKeyId(crawlerName, keyValue));
-  if (!status) return true;
+	const status = crawlerKeyStatuses.get(getCrawlerKeyId(crawlerName, keyValue));
+	if (!status) return true;
 
-  if (status.failureCount >= MAX_FAILURE_COUNT) {
-    if (status.cooledDownAt && Date.now() - status.cooledDownAt >= KEY_COOLDOWN_MS) {
-      crawlerKeyStatuses.delete(getCrawlerKeyId(crawlerName, keyValue));
-      persistStateSoon();
-      return true;
-    }
-    return false;
-  }
-  return true;
+	if (status.failureCount >= MAX_FAILURE_COUNT) {
+		if (
+			status.cooledDownAt &&
+			Date.now() - status.cooledDownAt >= KEY_COOLDOWN_MS
+		) {
+			crawlerKeyStatuses.delete(getCrawlerKeyId(crawlerName, keyValue));
+			persistStateSoon();
+			return true;
+		}
+		return false;
+	}
+	return true;
 }
 
 /**
  * Marks a crawler key as failed
  */
-export function markCrawlerKeyAsFailed(crawlerName: string, keyValue: string): void {
-  const id = getCrawlerKeyId(crawlerName, keyValue);
-  const existing = crawlerKeyStatuses.get(id);
-  const failureCount = (existing?.failureCount ?? 0) + 1;
+export function markCrawlerKeyAsFailed(
+	crawlerName: string,
+	keyValue: string,
+): void {
+	const id = getCrawlerKeyId(crawlerName, keyValue);
+	const existing = crawlerKeyStatuses.get(id);
+	const failureCount = (existing?.failureCount ?? 0) + 1;
 
-  crawlerKeyStatuses.set(id, {
-    key: keyValue,
-    failureCount,
-    cooledDownAt: failureCount >= MAX_FAILURE_COUNT ? Date.now() : existing?.cooledDownAt,
-  });
-  persistStateSoon();
+	crawlerKeyStatuses.set(id, {
+		key: keyValue,
+		failureCount,
+		cooledDownAt:
+			failureCount >= MAX_FAILURE_COUNT ? Date.now() : existing?.cooledDownAt,
+	});
+	persistStateSoon();
 }
 
 /**
  * Selects the next crawler key to use
  */
 function selectNextCrawlerKey(
-  crawlerName: string,
-  keys: CrawlerKey[],
+	crawlerName: string,
+	keys: CrawlerKey[],
 ): CrawlerKey | null {
-  const eligible = keys.filter(k => k.type !== 'expired');
-  if (!eligible.length) return null;
+	const eligible = keys.filter((k) => k.type !== "expired");
+	if (!eligible.length) return null;
 
-  const usable = eligible.filter(k => isCrawlerKeyUsable(crawlerName, k.key));
-  const pool = usable.length ? usable : eligible;
+	const usable = eligible.filter((k) => isCrawlerKeyUsable(crawlerName, k.key));
+	const pool = usable.length ? usable : eligible;
 
-  const idx = (crawlerRoundRobinIndexes.get(crawlerName) ?? 0) % pool.length;
-  crawlerRoundRobinIndexes.set(crawlerName, (idx + 1) % pool.length);
-  return pool[idx];
+	const idx = (crawlerRoundRobinIndexes.get(crawlerName) ?? 0) % pool.length;
+	crawlerRoundRobinIndexes.set(crawlerName, (idx + 1) % pool.length);
+	return pool[idx];
 }
 
 // ---- Implémentation de CrawlerKeyResolver ----
@@ -441,41 +454,43 @@ function selectNextCrawlerKey(
  * KeypoolCrawlerResolver - implements CrawlerKeyResolver for KeypoolLive
  */
 export class KeypoolCrawlerResolver implements CrawlerKeyResolver {
-  constructor(private readonly vaultUrl: string) {}
+	constructor(private readonly vaultUrl: string) {}
 
-  async resolve(): Promise<ResolvedCrawlerConfig | null> {
-    const vault = await loadAiVault(this.vaultUrl);
+	async resolve(): Promise<ResolvedCrawlerConfig | null> {
+		const vault = await loadAiVault(this.vaultUrl);
 
-    // Access crawlers in the vault
-    const crawlers = vault.crawlers;
-    if (!crawlers) return null;
+		// Access crawlers in the vault
+		const crawlers = vault.crawlers;
+		if (!crawlers) return null;
 
-    const entries = Object.entries(crawlers);
-    if (!entries.length) return null;
+		const entries = Object.entries(crawlers);
+		if (!entries.length) return null;
 
-    // Find the first crawler with a usable key
-    for (const [crawlerName, crawler] of entries) {
-      const key = selectNextCrawlerKey(crawlerName, crawler.keys);
-      if (!key) continue;
+		// Find the first crawler with a usable key
+		for (const [crawlerName, crawler] of entries) {
+			const key = selectNextCrawlerKey(crawlerName, crawler.keys);
+			if (!key) continue;
 
-      return {
-        crawlerName,
-        protocol: crawler.protocol,
-        endpoint: crawler.endpoint,
-        apiKey: key.key,
-        keyOwner: key.owner,
-      };
-    }
+			return {
+				crawlerName,
+				protocol: crawler.protocol,
+				endpoint: crawler.endpoint,
+				apiKey: key.key,
+				keyOwner: key.owner,
+			};
+		}
 
-    return null;
-  }
+		return null;
+	}
 }
 
 /**
  * Creates a CrawlerKeyResolver based on the KeypoolLive vault
  */
-export function createKeypoolCrawlerResolver(vaultUrl: string): CrawlerKeyResolver {
-  return new KeypoolCrawlerResolver(vaultUrl);
+export function createKeypoolCrawlerResolver(
+	vaultUrl: string,
+): CrawlerKeyResolver {
+	return new KeypoolCrawlerResolver(vaultUrl);
 }
 
 /**
@@ -768,7 +783,9 @@ interface ResolvedApiConfig {
 	providerName: string;
 	protocol: AiProtocol;
 	endpoint?: string;
+	userAgent?: string;
 	apiKey: string;
+	keyOwner?: string;
 	model: VaultModel;
 }
 
@@ -809,12 +826,40 @@ function resolveNextApiConfig(
 		providerName,
 		protocol: provider.protocol,
 		endpoint: provider.endpoint,
+		userAgent: provider.userAgent,
 		apiKey: key.key,
+		keyOwner: key.owner,
 		model,
 	};
 }
 
 // ─── Error detection ──────────────────────────────────────────────────────────
+
+/**
+ * Extracts an HTTP status code from an error object, returning null if not found.
+ */
+function extractHttpStatus(error: unknown): number | null {
+	if (!error || typeof error !== "object") return null;
+	const e = error as Record<string, unknown>;
+	const nested =
+		e.error && typeof e.error === "object"
+			? (e.error as Record<string, unknown>)
+			: undefined;
+	const response =
+		e.response && typeof e.response === "object"
+			? (e.response as Record<string, unknown>)
+			: undefined;
+	const candidates = [
+		e.status,
+		e.statusCode,
+		nested?.status,
+		nested?.statusCode,
+		response?.status,
+		response?.statusCode,
+	];
+	const found = candidates.find((v): v is number => typeof v === "number");
+	return found ?? null;
+}
 /**
  * Error detection utilities for identifying key-related failures
  */
@@ -970,6 +1015,111 @@ function parseModelId(compositeModelId: string): {
 	};
 }
 
+// ─── NDJSON usage recording ───────────────────────────────────────────────────
+// Compatible with apps/vscode/src/core/keypoollive/KeypoolUsageDb.ts record format.
+// Directory: KEYPOOL_USAGE_DB_DIR env var, or ~/.cline/data/keypoollive/
+
+const KEYPOOL_USAGE_DB_DIR_ENV = "KEYPOOL_USAGE_DB_DIR";
+
+interface NdjsonUsageEntry {
+	ts: number;
+	provider: string;
+	modelId: string;
+	keyOwner: string;
+	keyHint: string;
+	promptTokens: number;
+	completionTokens: number;
+}
+
+interface NdjsonErrorEntry {
+	ts: number;
+	provider: string;
+	modelId: string;
+	keyOwner: string;
+	keyHint: string;
+	errorCode: number | null;
+}
+
+async function getUsageDbDir(): Promise<string> {
+	if (process.env[KEYPOOL_USAGE_DB_DIR_ENV]) {
+		return process.env[KEYPOOL_USAGE_DB_DIR_ENV] as string;
+	}
+	const os = await import("node:os");
+	const path = await import("node:path");
+	return path.join(os.homedir(), ".cline", "data", "keypoollive");
+}
+
+async function recordKeypoolUsageToNdjson(
+	entry: Omit<NdjsonUsageEntry, "ts">,
+): Promise<void> {
+	const fs = await import("node:fs/promises");
+	const path = await import("node:path");
+	const dbDir = await getUsageDbDir();
+	await fs.mkdir(dbDir, { recursive: true });
+	const line =
+		JSON.stringify({ ts: Date.now(), ...entry } satisfies NdjsonUsageEntry) +
+		"\n";
+	await fs.appendFile(path.join(dbDir, "usage.ndjson"), line, "utf8");
+}
+
+async function recordKeypoolErrorToNdjson(
+	entry: Omit<NdjsonErrorEntry, "ts">,
+): Promise<void> {
+	const fs = await import("node:fs/promises");
+	const path = await import("node:path");
+	const dbDir = await getUsageDbDir();
+	await fs.mkdir(dbDir, { recursive: true });
+	const line =
+		JSON.stringify({ ts: Date.now(), ...entry } satisfies NdjsonErrorEntry) +
+		"\n";
+	await fs.appendFile(path.join(dbDir, "errors.ndjson"), line, "utf8");
+}
+
+// ─── Key state query ──────────────────────────────────────────────────────────
+
+/** Snapshot of a tracked key's health state. */
+export interface KeypoolKeyState {
+	providerName: string;
+	keyHint: string;
+	failureCount: number;
+	inCooldown: boolean;
+	cooledDownAt?: number;
+	/** Milliseconds remaining in cooldown, only set when inCooldown is true. */
+	cooldownRemainingMs?: number;
+}
+
+/**
+ * Returns the in-memory health state for all tracked keypoollive keys.
+ * Call after loadPersistentStateOnce() has run (i.e. after the first stream).
+ *
+ * @param providerName - If provided, only return keys for this vault provider.
+ */
+export function getKeypoolKeyStates(providerName?: string): KeypoolKeyState[] {
+	return Array.from(keyStatuses.entries())
+		.filter(([id]) => !providerName || id.startsWith(`${providerName}:`))
+		.map(([id, status]) => {
+			const sep = id.indexOf(":");
+			const pName = sep >= 0 ? id.slice(0, sep) : id;
+			const kHint = sep >= 0 ? id.slice(sep + 1) : "";
+			const now = Date.now();
+			const inCooldown =
+				status.failureCount >= MAX_FAILURE_COUNT &&
+				!!status.cooledDownAt &&
+				now - status.cooledDownAt < KEY_COOLDOWN_MS;
+			return {
+				providerName: pName,
+				keyHint: kHint,
+				failureCount: status.failureCount,
+				inCooldown,
+				cooledDownAt: status.cooledDownAt,
+				cooldownRemainingMs:
+					inCooldown && status.cooledDownAt
+						? KEY_COOLDOWN_MS - (now - status.cooledDownAt)
+						: undefined,
+			};
+		});
+}
+
 // ─── Manual key rotation ──────────────────────────────────────────────────────
 
 /**
@@ -1062,6 +1212,8 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 			let resolvedEndpoint: string | undefined;
 			let resolvedProtocol: AiProtocol = "openai";
 			let resolvedVaultModel: VaultModel | undefined;
+			let resolvedKeyOwner: string | undefined;
+			let resolvedUserAgent: string | undefined;
 			let selectedByRoundRobin = false;
 
 			// Handle explicit key mode (no rotation)
@@ -1087,6 +1239,8 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 				resolvedEndpoint = resolved.endpoint;
 				resolvedProtocol = resolved.protocol;
 				resolvedVaultModel = resolved.model;
+				resolvedKeyOwner = resolved.keyOwner;
+				resolvedUserAgent = resolved.userAgent;
 				selectedByRoundRobin = true;
 			}
 
@@ -1100,6 +1254,21 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 					key: maskedKey,
 					roundRobin: selectedByRoundRobin,
 				});
+				context.keypoolEventHandler?.({
+					type: "key-selected",
+					providerName,
+					modelId,
+					keyHint: maskedKey,
+					keyOwner: resolvedKeyOwner,
+					roundRobin: selectedByRoundRobin,
+				});
+				if (resolvedUserAgent) {
+					context.keypoolEventHandler?.({
+						type: "user-agent-set",
+						userAgent: resolvedUserAgent,
+						source: "config",
+					});
+				}
 			}
 
 			// Create sub-request with the actual (un-prefixed) model ID
@@ -1124,6 +1293,14 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 					...context.config,
 					apiKey: resolvedApiKey,
 					baseUrl: resolvedEndpoint,
+					...(resolvedUserAgent
+						? {
+								headers: {
+									...(context.config.headers ?? {}),
+									"User-Agent": resolvedUserAgent,
+								},
+							}
+						: {}),
 				},
 			};
 
@@ -1132,6 +1309,14 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 				...config,
 				apiKey: resolvedApiKey,
 				baseUrl: resolvedEndpoint,
+				...(resolvedUserAgent
+					? {
+							headers: {
+								...(config.headers ?? {}),
+								"User-Agent": resolvedUserAgent,
+							},
+						}
+					: {}),
 			};
 
 			try {
@@ -1140,7 +1325,9 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 					providerName,
 					protocol: resolvedProtocol,
 					endpoint: resolvedEndpoint,
+					userAgent: resolvedUserAgent,
 					apiKey: resolvedApiKey,
+					keyOwner: resolvedKeyOwner,
 					model: resolvedVaultModel ?? { id: modelId },
 				};
 
@@ -1150,8 +1337,21 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 				const iterable =
 					streamResult instanceof Promise ? await streamResult : streamResult;
 
-				// Yield all events from the sub-provider stream
-				yield* iterable;
+				// Iterate the sub-provider stream, accumulating token usage along the way
+				let inputTokens = 0;
+				let outputTokens = 0;
+				let cacheReadTokens = 0;
+				let cacheWriteTokens = 0;
+				for await (const event of iterable) {
+					yield event;
+					if (event.type === "usage") {
+						inputTokens += event.usage.inputTokens ?? 0;
+						outputTokens += event.usage.outputTokens ?? 0;
+						cacheReadTokens += event.usage.cacheReadTokens ?? 0;
+						cacheWriteTokens += event.usage.cacheWriteTokens ?? 0;
+					}
+				}
+
 				markKeyAsHealthy(providerName, resolvedApiKey);
 				context.logger?.log("KeypoolLive request succeeded", {
 					providerId: "keypoollive",
@@ -1161,6 +1361,37 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 					key: maskedKey,
 					attempt,
 				});
+
+				// Notify caller of key health recovery and usage
+				context.keypoolEventHandler?.({
+					type: "key-recovered",
+					providerName,
+					modelId,
+					keyHint: maskedKey,
+					keyOwner: resolvedKeyOwner,
+				});
+				if (inputTokens > 0 || outputTokens > 0) {
+					context.keypoolEventHandler?.({
+						type: "usage-recorded",
+						providerName,
+						modelId,
+						keyHint: maskedKey,
+						keyOwner: resolvedKeyOwner,
+						inputTokens,
+						outputTokens,
+						cacheReadTokens,
+						cacheWriteTokens,
+					});
+					// Persist to shared NDJSON (fire-and-forget; failures are non-fatal)
+					void recordKeypoolUsageToNdjson({
+						provider: providerName,
+						modelId,
+						keyOwner: resolvedKeyOwner ?? "unknown",
+						keyHint: maskedKey,
+						promptTokens: inputTokens,
+						completionTokens: outputTokens,
+					}).catch(() => {});
+				}
 				return; // Success - exit the retry loop
 			} catch (err) {
 				lastError = err;
@@ -1183,6 +1414,25 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 					attempt,
 					error: errorMessage,
 				});
+
+				// Persist error to shared NDJSON (fire-and-forget)
+				void recordKeypoolErrorToNdjson({
+					provider: providerName,
+					modelId,
+					keyOwner: resolvedKeyOwner ?? "unknown",
+					keyHint: maskedKey,
+					errorCode: extractHttpStatus(err),
+				}).catch(() => {});
+
+				context.keypoolEventHandler?.({
+					type: "key-rotated",
+					providerName,
+					modelId,
+					failedKeyHint: maskedKey,
+					attempt,
+					error: errorMessage,
+				});
+
 				yield {
 					type: "reasoning-delta",
 					text: `[keypoollive] Key rotation triggered for ${providerName}/${modelId}: ${maskedKey}`,
@@ -1199,9 +1449,15 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 
 				// If this was the last attempt, throw a comprehensive error
 				if (attempt === MAX_KEY_ATTEMPTS - 1) {
-					throw new Error(
-						`[keypoollive] All key rotation attempts exhausted for "${providerName}/${modelId}". Last error: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
-					);
+					const exhaustedMsg = `[keypoollive] All key rotation attempts exhausted for "${providerName}/${modelId}". Last error: ${lastError instanceof Error ? lastError.message : String(lastError)}`;
+					context.keypoolEventHandler?.({
+						type: "key-exhausted",
+						providerName,
+						modelId,
+						attempts: MAX_KEY_ATTEMPTS,
+						error: exhaustedMsg,
+					});
+					throw new Error(exhaustedMsg);
 				}
 				// Otherwise, continue to next iteration to try another key
 			}

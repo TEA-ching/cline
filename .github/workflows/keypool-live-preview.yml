@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - keypool-live
+    paths:
+      - 'apps/vscode/**'
+      - 'sdk/**'
+      - 'apps/cli/**'
+      - '.github/workflows/keypool-live-preview.yml'
 
 # Cancel any in-flight run for the same ref so only the latest commit gets published.
 concurrency:

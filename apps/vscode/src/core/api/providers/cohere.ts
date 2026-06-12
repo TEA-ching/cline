@@ -14,8 +14,16 @@ interface CohereHandlerOptions extends CommonApiHandlerOptions {
 	apiModelId?: string
 }
 
+/**
+ * Handles API requests to Cohere's language models.
+ * Extends the AiSdkHandler class to provide Cohere-specific functionality.
+ */
 export class CohereHandler extends AiSdkHandler {
  	private modelInfo: CohereModelInfo	
+	/**
+	 * Initializes a new instance of the CohereHandler class.
+	 * @param {CohereHandlerOptions} options - Configuration options for the handler.
+	 */
 	constructor(options: CohereHandlerOptions) {
 		const { id: modelId, info: modelInfo } = resolveModel(options)
 		
@@ -54,13 +62,20 @@ export class CohereHandler extends AiSdkHandler {
 		this.modelInfo = modelInfo
 	}
 	/**
-	 * Checks if the current model supports tools
+	 * Checks if the current model supports tools.
+	 * @returns {boolean} True if the model supports tools, false otherwise.
 	 */
 	supportsTools(): boolean {
 		return this.modelInfo.supportsTools ?? false
 	}
 }
 
+/**
+ * Resolves the model ID and information based on the provided options.
+ * If a valid model ID is provided, it is used; otherwise, the default model is selected.
+ * @param {CohereHandlerOptions} options - Configuration options containing the model ID.
+ * @returns {{ id: CohereModelId; info: CohereModelInfo }} - The resolved model ID and information.
+ */
 function resolveModel(options: CohereHandlerOptions): { id: CohereModelId; info: CohereModelInfo } {
 	const modelId = options.apiModelId
 	if (modelId && modelId in cohereModels) {
@@ -69,12 +84,14 @@ function resolveModel(options: CohereHandlerOptions): { id: CohereModelId; info:
 	return { id: cohereDefaultModelId, info: cohereModels[cohereDefaultModelId] }
 }
 
-// Cohere's command-a* models with thinking report tokens.input_tokens = 0 while
-// billed_units.input_tokens holds the actual prompt size.  Patch the raw SSE stream
-// so @ai-sdk/cohere always sees a non-zero tokens.input_tokens value.
+/**
+ * Patches the fetch function to correct usage reporting for Cohere's command-a* models.
+ * Ensures that input token counts are accurately reported in the message-end event.
+ * @param {typeof fetch} baseFetch - The original fetch function to be patched.
+ * @returns {typeof fetch} - The patched fetch function.
+ */
 function patchCohereUsageFetch(baseFetch: typeof fetch): typeof fetch {
 	return async (input, init) => {
-
 		// Patch tool schemas and add strict_tools when tools are present.
 		if (init?.body) {
 			const body = typeof init.body === "string" ? JSON.parse(init.body) : init.body
@@ -95,7 +112,8 @@ function patchCohereUsageFetch(baseFetch: typeof fetch): typeof fetch {
 		}
 
 		// Log as TypeScript fetch script
-		if (process.env.COHERE_DEBUG_FETCH_LOG === "1" || true) { // DON'T FORGET TO REMOVE THIS TRUE
+		// if (process.env.COHERE_DEBUG_FETCH_LOG === "1") {
+		if (true) { // curently always log
 			try {
 				const storagePath = path.join(HostProvider.get().globalStorageFsPath, "cohere")
 				await fs.mkdir(storagePath, { recursive: true })
@@ -106,7 +124,117 @@ function patchCohereUsageFetch(baseFetch: typeof fetch): typeof fetch {
 				const headers = (init?.headers as Record<string, string>) || {}
 				const bodyObj = init?.body ? (typeof init.body === "string" ? JSON.parse(init.body) : init.body) : undefined
 				// Generate TypeScript fetch code
-				const tsCode = `// Auto-generated Cohere API request script
+				const tsCode = generateTypeScriptFetchCode(url, method, headers, bodyObj);
+
+				await fs.writeFile(path.join(storagePath, `${timestamp}.ts`), tsCode)
+
+				// Keep only the 100 most recent files
+				await cleanupOldLogFiles(storagePath, 100)
+			} catch (error) {
+				console.error("Failed to write cohere TypeScript log:", error)
+			}
+		}
+
+		const response = await baseFetch(input, init)
+		if (!response.body || !response.headers.get("content-type")?.includes("event-stream")) {
+			return response
+		}
+		const decoder = new TextDecoder()
+		const encoder = new TextEncoder()
+		let buffer = ""
+		const patched = response.body.pipeThrough(
+			new TransformStream<Uint8Array, Uint8Array>({
+				transform(chunk, controller) {
+					buffer += decoder.decode(chunk, { stream: true })
+					const lines = buffer.split("\n")
+					buffer = lines.pop() ?? ""
+					for (const line of lines) {
+						controller.enqueue(encoder.encode(patchMessageEndLine(line) + "\n"))
+					}
+				},
+				flush(controller) {
+					if (buffer) controller.enqueue(encoder.encode(patchMessageEndLine(buffer)))
+				},
+			}),
+		)
+		return new Response(patched, { status: response.status, statusText: response.statusText, headers: response.headers })
+	}
+}
+
+/**
+ * Recursively patches object schemas to ensure they have at least one required field.
+ * This is necessary for Cohere's strict_tools=true requirement.
+ * @param {unknown} schema - The schema to be patched.
+ * @returns {unknown} - The patched schema.
+ */
+function patchObjectSchemaRequired(schema: unknown): unknown {
+	if (!schema || typeof schema !== "object") return schema
+	const s = schema as Record<string, unknown>
+	if (s.type === "object") {
+		const props = s.properties as Record<string, unknown> | undefined
+		const keys = props ? Object.keys(props) : []
+		const existing = (s.required as string[] | undefined) ?? []
+		const patchedProps = props
+			? Object.fromEntries(Object.entries(props).map(([k, v]) => [k, patchObjectSchemaRequired(v)]))
+			: props
+		return {
+			...s,
+			...(patchedProps ? { properties: patchedProps } : {}),
+			...(keys.length > 0 && existing.length === 0 ? { required: [keys[0]] } : {}),
+		}
+	}
+	if (s.items) {
+		return { ...s, items: patchObjectSchemaRequired(s.items) }
+	}
+	return s
+}
+
+/**
+ * Patches the message-end line to correct token counts based on billed units.
+ * Ensures that input and output token counts are accurately reported.
+ * @param {string} line - The message-end line to be patched.
+ * @returns {string} - The patched message-end line.
+ */
+function patchMessageEndLine(line: string): string {
+	if (!line.startsWith("data: ")) return line
+	try {
+		const event = JSON.parse(line.slice(6))
+		if (event.type === "message-end" && event.delta?.usage) {
+			const usage = event.delta.usage
+			const billed = usage.billed_units
+			if (billed) {
+				if (!usage.tokens) {
+					usage.tokens = {
+						input_tokens: billed.input_tokens ?? 0,
+						output_tokens: billed.output_tokens ?? 0,
+					}
+				} else {
+					if (!(usage.tokens.input_tokens > 0) && billed.input_tokens > 0) {
+						usage.tokens.input_tokens = billed.input_tokens
+					}
+					if (!(usage.tokens.output_tokens > 0) && billed.output_tokens > 0) {
+						usage.tokens.output_tokens = billed.output_tokens
+					}
+				}
+			}
+		}
+		return `data: ${JSON.stringify(event)}`
+	} catch {
+		return line
+	}
+}
+
+/**
+ * Generates TypeScript code for a fetch request based on the provided parameters.
+ * Used for logging API requests to Cohere.
+ * @param {string} url - The URL of the request.
+ * @param {string} method - The HTTP method of the request.
+ * @param {Record<string, string>} headers - The headers of the request.
+ * @param {any} bodyObj - The body of the request.
+ * @returns {string} - The generated TypeScript code.
+ */
+function generateTypeScriptFetchCode(url: string, method: string, headers: Record<string, string>, bodyObj: any): string {
+	return `// Auto-generated Cohere API request script
 // This script demonstrates how to make the same API request using fetch in TypeScript
 
 /**
@@ -150,100 +278,12 @@ makeCohereRequest()
 // Export for programmatic use
 export { makeCohereRequest };
 `
-
-				await fs.writeFile(path.join(storagePath, `${timestamp}.ts`), tsCode)
-
-				// Keep only the 100 most recent files
-				await cleanupOldLogFiles(storagePath, 100)
-			} catch (error) {
-				console.error("Failed to write cohere TypeScript log:", error)
-			}
-		}
-
-		const response = await baseFetch(input, init)
-		if (!response.body || !response.headers.get("content-type")?.includes("event-stream")) {
-			return response
-		}
-		const decoder = new TextDecoder()
-		const encoder = new TextEncoder()
-		let buffer = ""
-		const patched = response.body.pipeThrough(
-			new TransformStream<Uint8Array, Uint8Array>({
-				transform(chunk, controller) {
-					buffer += decoder.decode(chunk, { stream: true })
-					const lines = buffer.split("\n")
-					buffer = lines.pop() ?? ""
-					for (const line of lines) {
-						controller.enqueue(encoder.encode(patchMessageEndLine(line) + "\n"))
-					}
-				},
-				flush(controller) {
-					if (buffer) controller.enqueue(encoder.encode(patchMessageEndLine(buffer)))
-				},
-			}),
-		)
-		return new Response(patched, { status: response.status, statusText: response.statusText, headers: response.headers })
-	}
-}
-
-// Cohere strict_tools=true requires every object-type parameter schema to declare at least
-// one required field.  Recursively add the first property key to `required` for any object
-// schema that has properties but no required array (or an empty one).
-function patchObjectSchemaRequired(schema: unknown): unknown {
-	if (!schema || typeof schema !== "object") return schema
-	const s = schema as Record<string, unknown>
-	if (s.type === "object") {
-		const props = s.properties as Record<string, unknown> | undefined
-		const keys = props ? Object.keys(props) : []
-		const existing = (s.required as string[] | undefined) ?? []
-		const patchedProps = props
-			? Object.fromEntries(Object.entries(props).map(([k, v]) => [k, patchObjectSchemaRequired(v)]))
-			: props
-		return {
-			...s,
-			...(patchedProps ? { properties: patchedProps } : {}),
-			...(keys.length > 0 && existing.length === 0 ? { required: [keys[0]] } : {}),
-		}
-	}
-	if (s.items) {
-		return { ...s, items: patchObjectSchemaRequired(s.items) }
-	}
-	return s
-}
-
-function patchMessageEndLine(line: string): string {
-	if (!line.startsWith("data: ")) return line
-	try {
-		const event = JSON.parse(line.slice(6))
-		if (event.type === "message-end" && event.delta?.usage) {
-			const usage = event.delta.usage
-			const billed = usage.billed_units
-			if (billed) {
-				if (!usage.tokens) {
-					usage.tokens = {
-						input_tokens: billed.input_tokens ?? 0,
-						output_tokens: billed.output_tokens ?? 0,
-					}
-				} else {
-					if (!(usage.tokens.input_tokens > 0) && billed.input_tokens > 0) {
-						usage.tokens.input_tokens = billed.input_tokens
-					}
-					if (!(usage.tokens.output_tokens > 0) && billed.output_tokens > 0) {
-						usage.tokens.output_tokens = billed.output_tokens
-					}
-				}
-			}
-		}
-		return `data: ${JSON.stringify(event)}`
-	} catch {
-		return line
-	}
 }
 
 /**
- * Cleans up old log files, keeping only the most recent ones
- * @param directoryPath Path to the directory containing log files
- * @param maxFilesToKeep Maximum number of files to keep
+ * Cleans up old log files, keeping only the most recent ones.
+ * @param {string} directoryPath - Path to the directory containing log files.
+ * @param {number} maxFilesToKeep - Maximum number of files to keep.
  */
 export async function cleanupOldLogFiles(directoryPath: string, maxFilesToKeep: number): Promise<void> {
 	try {

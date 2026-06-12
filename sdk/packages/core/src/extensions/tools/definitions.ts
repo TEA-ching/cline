@@ -16,7 +16,7 @@ import { getToolContextTelemetry } from "../../services/telemetry/tool-context";
 import {
 	formatError,
 	formatReadFileQuery,
-	formatRunCommandQuery,
+	formatRunCommandQueryPreview,
 	getEditorSizeError,
 	getReadFileRangeError,
 	normalizeRunCommandsInput,
@@ -51,7 +51,9 @@ import {
 	type StructuredCommandInput,
 	StructuredCommandsInputSchema,
 	type SubmitInput,
-	SubmitInputSchema
+	SubmitInputSchema,
+	type WriteMarkdownToDocxInput,
+	WriteMarkdownToDocxInputSchema,
 } from "./schemas";
 import type {
 	ApplyPatchExecutor,
@@ -66,7 +68,8 @@ import type {
 	ToolOperationResult,
 	VerifySubmitExecutor,
 	WebFetchExecutor,
-	WebSearchExecutor
+	WebSearchExecutor,
+	WriteMarkdownToDocxExecutor,
 } from "./types";
 
 // =============================================================================
@@ -314,6 +317,7 @@ export function createBashTool(
 			return Promise.all(
 				commands.map(async (command: string): Promise<ToolOperationResult> => {
 					const startedAt = Date.now();
+					const query = formatRunCommandQueryPreview(command);
 					try {
 						const output = await withTimeout(
 							executor(command, cwd, context),
@@ -321,7 +325,7 @@ export function createBashTool(
 							`Command timed out after ${timeoutMs}ms`,
 						);
 						return {
-							query: command,
+							query,
 							result: output,
 							success: true,
 						};
@@ -336,7 +340,7 @@ export function createBashTool(
 						}
 						const msg = formatError(error);
 						return {
-							query: command,
+							query,
 							result: "",
 							error: `Command failed: ${msg}`,
 							success: false,
@@ -380,6 +384,7 @@ export function createWindowsShellTool(
 			return Promise.all(
 				commands.map(async (command): Promise<ToolOperationResult> => {
 					const startedAt = Date.now();
+					const query = formatRunCommandQueryPreview(command);
 					try {
 						const output = await withTimeout(
 							executor(command, cwd, context),
@@ -387,7 +392,7 @@ export function createWindowsShellTool(
 							`Command timed out after ${timeoutMs}ms`,
 						);
 						return {
-							query: formatRunCommandQuery(command),
+							query,
 							result: output,
 							success: true,
 						};
@@ -402,7 +407,7 @@ export function createWindowsShellTool(
 						}
 						const msg = formatError(error);
 						return {
-							query: formatRunCommandQuery(command),
+							query,
 							result: "",
 							error: `Command failed: ${msg}`,
 							success: false,
@@ -762,6 +767,56 @@ export function createAskQuestionTool(
 			return executor(validatedInput.question, validatedInput.options, context);
 		},
 	};
+}
+
+/**
+ * Create the write_markdown_to_docx tool
+ *
+ * Converts markdown content to DOCX format and saves to a file.
+ */
+export function createWriteMarkdownToDocxTool(
+	executor: WriteMarkdownToDocxExecutor,
+	config: Pick<DefaultToolsConfig, "writeMarkdownToDocxTimeoutMs"> = {},
+): AgentTool<WriteMarkdownToDocxInput, ToolOperationResult> {
+	const timeoutMs = config.writeMarkdownToDocxTimeoutMs ?? 30000;
+
+	return createTool<WriteMarkdownToDocxInput, ToolOperationResult>({
+		name: "write_markdown_to_docx",
+		description:
+			"Convert markdown content to DOCX format and save to a file. " +
+			"Use for generating Word documents from markdown content. " +
+			"Provide the markdown content and the output file path.",
+		inputSchema: zodToJsonSchema(WriteMarkdownToDocxInputSchema),
+		timeoutMs,
+		retryable: true,
+		maxRetries: 2,
+		execute: async (input, context) => {
+			// Validate input with Zod schema
+			const validatedInput = validateWithZod(WriteMarkdownToDocxInputSchema, input);
+
+			try {
+				const result = await withTimeout(
+					executor(validatedInput.markdown, validatedInput.output_path, context),
+					timeoutMs,
+					`Markdown to DOCX conversion timed out after ${timeoutMs}ms`,
+				);
+
+				return {
+					query: `markdown to docx: ${validatedInput.output_path}`,
+					result,
+					success: true,
+				};
+			} catch (error) {
+				const msg = formatError(error);
+				return {
+					query: `markdown to docx: ${validatedInput.output_path}`,
+					result: "",
+					error: `Markdown to DOCX conversion failed: ${msg}`,
+					success: false,
+				};
+			}
+		},
+	});
 }
 
 export function createSubmitAndExitTool(

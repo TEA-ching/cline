@@ -1,45 +1,51 @@
 import type {
-	AgentConfig,
-	AgentHooks,
-	AgentTool,
-	ExtensionContext,
-	ITelemetryService,
-	RuntimeConfigExtensionKind,
-	ToolApprovalRequest,
-	ToolApprovalResult,
-	WorkspaceInfo,
+    AgentConfig,
+    AgentEvent,
+    AgentHooks,
+    AgentTool,
+    ExtensionContext,
+    ITelemetryService,
+    RuntimeConfigExtensionKind,
+    ToolApprovalRequest,
+    ToolApprovalResult,
+    WorkspaceInfo,
 } from "@cline/shared";
 import { hasRuntimeConfigExtension } from "@cline/shared";
 import { decodeJwtPayload } from "../auth/utils";
 import {
-	resolveAndLoadAgentPlugins,
-	resolvePluginSkillDirectoriesFromPaths,
+    resolveAndLoadAgentPlugins,
+    resolvePluginSkillDirectoriesFromPaths,
 } from "../extensions/plugin/plugin-config-loader";
 import type {
-	PluginInitializationFailure,
-	PluginInitializationWarning,
+    PluginInitializationFailure,
+    PluginInitializationWarning,
 } from "../extensions/plugin/plugin-load-report";
-import type { TeamEvent } from "../extensions/tools/team";
+import type {
+    SubAgentEndContext,
+    SubAgentStartContext,
+    TeamEvent,
+} from "../extensions/tools/team";
 import { createCheckpointHooks } from "../hooks/checkpoint-hooks";
 import {
-	createHookAuditHooks,
-	createHookConfigFileExtension,
-	mergeAgentHooks,
+    createHookAuditHooks,
+    createHookConfigFileExtension,
+    mergeAgentHooks,
 } from "../hooks/hook-file-hooks";
 import type { RuntimeCapabilities } from "../runtime/capabilities";
 import { normalizeRuntimeCapabilities } from "../runtime/capabilities";
 import type {
-	LocalRuntimeStartOptions,
-	StartSessionInput,
+    LocalRuntimeStartOptions,
+    StartSessionInput,
 } from "../runtime/host/runtime-host";
 import type { RuntimeBuilderInput } from "../runtime/orchestration/session-runtime";
 import type { CoreSessionConfig } from "../types/config";
 import {
-	type ProviderConfig,
-	type ProviderSettings,
-	toProviderConfig,
+    type ProviderConfig,
+    type ProviderSettings,
+    toProviderConfig,
 } from "../types/provider-settings";
 import { createKeypoolCrawlerResolver } from "@cline/llms";
+import type { KeypoolEventHandler } from "@cline/shared";
 import { createWebFetchExecutor, createWebSearchExecutor } from "../extensions/tools/executors";
 import type { ToolExecutors } from "../extensions/tools";
 import { resolveWorkspacePath } from "./config";
@@ -167,6 +173,29 @@ function buildOpenAICodexHeaders(input: {
 	return headers;
 }
 
+export function buildKeyPoolLiveHeader(input: {
+	configHeaders: CoreSessionConfig["headers"];
+	storedHeaders: ProviderSettings["headers"];
+	onEvent?: KeypoolEventHandler;
+}): Record<string, string> | undefined {
+	const headers: Record<string, string> = {
+		...(input.storedHeaders ?? {}),
+		...(input.configHeaders ?? {}),
+	};
+
+	const existingUa = headers["User-Agent"];
+	if (!existingUa) {
+		headers["User-Agent"] = `Cline/${process.env.npm_package_version || "1.0.0"}`;
+	}
+	input.onEvent?.({
+		type: "user-agent-set",
+		userAgent: headers["User-Agent"],
+		source: existingUa ? "config" : "default",
+	});
+
+	return headers;
+}
+
 function deriveOpenAICodexAccountId(
 	accessToken: string | undefined,
 ): string | undefined {
@@ -195,12 +224,13 @@ function deriveOpenAICodexAccountId(
 	return undefined;
 }
 
-function buildProviderConfig(
+export function buildProviderConfig(
 	config: CoreSessionConfig,
 	sessionId: string,
 	providerSettingsManager: ProviderSettingsManager,
 	modelCatalogDefaults?: Partial<ProviderSettings["modelCatalog"]>,
 	defaultFetch?: typeof fetch,
+	keypoolEventHandler?: KeypoolEventHandler,
 ): ProviderConfig {
 	const stored = providerSettingsManager.getProviderSettings(config.providerId);
 	const modelCatalog =
@@ -210,27 +240,40 @@ function buildProviderConfig(
 					...(stored?.modelCatalog ?? {}),
 				}
 			: undefined;
+	const sessionProviderConfig =
+		config.providerConfig?.providerId === config.providerId
+			? config.providerConfig
+			: undefined;
 	const settings: ProviderSettings = {
 		...(stored ?? {}),
 		provider: config.providerId,
 		model: config.modelId,
 		apiKey: config.apiKey ?? stored?.apiKey,
 		baseUrl: config.baseUrl ?? stored?.baseUrl,
-		headers:
-			config.providerId === "openai-codex"
-				? buildOpenAICodexHeaders({
-						sessionId,
+	headers:
+		config.providerId === "openai-codex"
+			? buildOpenAICodexHeaders({
+					sessionId,
+					configHeaders: config.headers,
+					storedHeaders: stored?.headers,
+					accountId: stored?.auth?.accountId,
+					accessToken:
+						config.apiKey ?? stored?.auth?.accessToken ?? stored?.apiKey,
+				})
+			: config.providerId === "keypoollive"
+				? buildKeyPoolLiveHeader({
 						configHeaders: config.headers,
 						storedHeaders: stored?.headers,
-						accountId: stored?.auth?.accountId,
-						accessToken:
-							config.apiKey ?? stored?.auth?.accessToken ?? stored?.apiKey,
+						onEvent: keypoolEventHandler,
 					})
 				: (config.headers ?? stored?.headers),
 		reasoning: resolveReasoningSettings(config, stored?.reasoning),
 		modelCatalog,
 	};
-	const providerConfig = toProviderConfig(settings);
+	const providerConfig: ProviderConfig = {
+		...toProviderConfig(settings),
+		...(sessionProviderConfig ?? {}),
+	};
 	if (config.knownModels) {
 		providerConfig.knownModels = config.knownModels;
 	}
@@ -260,8 +303,18 @@ export interface PrepareLocalRuntimeBootstrapOptions {
 	 * AI gateway providers can use a custom HTTP implementation.
 	 */
 	defaultFetch?: typeof fetch;
+	/**
+	 * Optional callback for keypoollive bootstrap events (e.g. `user-agent-set`).
+	 * Fires once at session initialisation, before any LLM call is made.
+	 */
+	keypoolEventHandler?: KeypoolEventHandler;
 	onPluginEvent: (event: { name: string; payload?: unknown }) => void;
 	onTeamEvent: (event: TeamEvent) => void;
+	createSubAgentLifecycleCallbacks?: (config: CoreSessionConfig) => {
+		onSubAgentEvent?: (event: AgentEvent) => void;
+		onSubAgentStart?: (context: SubAgentStartContext) => void | Promise<void>;
+		onSubAgentEnd?: (context: SubAgentEndContext) => void | Promise<void>;
+	};
 	createSpawnTool: () => AgentTool;
 	readSessionMetadata: () => Promise<Record<string, unknown> | undefined>;
 	writeSessionMetadata: (
@@ -297,8 +350,10 @@ export async function prepareLocalRuntimeBootstrap(
 		defaultCapabilities,
 		defaultToolPolicies,
 		defaultFetch,
+		keypoolEventHandler,
 		onPluginEvent,
 		onTeamEvent,
+		createSubAgentLifecycleCallbacks,
 		createSpawnTool,
 		localRuntime,
 		readSessionMetadata,
@@ -425,6 +480,7 @@ export async function prepareLocalRuntimeBootstrap(
 		providerSettingsManager,
 		modelCatalogDefaults,
 		defaultFetch,
+		keypoolEventHandler,
 	);
 	const hooks = mergeAgentHooks([
 		baseConfig.hooks,
@@ -454,6 +510,7 @@ export async function prepareLocalRuntimeBootstrap(
 	);
 	const requestToolApproval = capabilities?.requestToolApproval;
 	const effectiveToolExecutors = augmentWithKeypoolWebFetch(capabilities?.toolExecutors);
+	const subAgentLifecycleCallbacks = createSubAgentLifecycleCallbacks?.(config);
 	const workspaceManager = new InMemoryWorkspaceManager({
 		currentWorkspacePath: workspaceInfo.rootPath,
 		workspaces: {
@@ -479,13 +536,18 @@ export async function prepareLocalRuntimeBootstrap(
 			onTeamEvent,
 			createSpawnTool,
 			onTeamRestored: onTeamRestored,
+			onSubAgentEvent: subAgentLifecycleCallbacks?.onSubAgentEvent,
+			onSubAgentStart: subAgentLifecycleCallbacks?.onSubAgentStart,
+			onSubAgentEnd: subAgentLifecycleCallbacks?.onSubAgentEnd,
 			userInstructionService: userInstructionService,
 			pluginSkillDirectories,
 			configExtensions: configExtensions,
 			toolExecutors: effectiveToolExecutors,
+			toolPolicies,
 			workspaceManager,
 			logger: config.logger,
 			telemetry: config.telemetry,
+			requestToolApproval,
 		},
 	};
 }

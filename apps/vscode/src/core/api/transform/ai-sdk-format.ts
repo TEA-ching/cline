@@ -1,24 +1,24 @@
 import type {
-	AssistantModelMessage,
-	ImagePart,
-	ModelMessage,
-	SystemModelMessage,
-	TextPart,
-	Tool,
-	ToolCallPart,
-	ToolModelMessage,
-	ToolResultPart,
-	UserModelMessage,
-} from "ai"
-import { jsonSchema } from "ai"
-import type { ChatCompletionFunctionTool } from "openai/resources/chat/completions"
+    AssistantModelMessage,
+    ImagePart,
+    ModelMessage,
+    SystemModelMessage,
+    TextPart,
+    Tool,
+    ToolCallPart,
+    ToolModelMessage,
+    ToolResultPart,
+    UserModelMessage,
+} from "ai";
+import { jsonSchema } from "ai";
+import type { ChatCompletionFunctionTool } from "openai/resources/chat/completions";
 import type {
-	ClineAssistantToolUseBlock,
-	ClineImageContentBlock,
-	ClineStorageMessage,
-	ClineUserToolResultContentBlock,
-} from "@/shared/messages/content"
-import type { ClineTool } from "@/shared/tools"
+    ClineAssistantToolUseBlock,
+    ClineImageContentBlock,
+    ClineStorageMessage,
+    ClineUserToolResultContentBlock,
+} from "@/shared/messages/content";
+import type { ClineTool } from "@/shared/tools";
 
 /**
  * Converts ClineStorageMessage[] + systemPrompt to AI SDK ModelMessage[].
@@ -95,11 +95,21 @@ export function convertToAiSdkMessages(
 					if (text) contentParts.push({ type: "text", text })
 				} else if (block.type === "image" && supportsImages) {
 					const img = block as ClineImageContentBlock
-					contentParts.push({
-						type: "image",
-						image: img.source.data,
-						mediaType: img.source.media_type as string,
-					})
+					if ("data" in img.source) {
+						// Base64ImageSource
+						contentParts.push({
+							type: "image",
+							image: img.source.data,
+							mediaType: img.source.media_type as string,
+						})
+					} else if ("url" in img.source) {
+						// URLImageSource
+						contentParts.push({
+							type: "image",
+							image: img.source.url,
+							mediaType: "url" in img.source && "media_type" in img.source ? img.source.media_type as string : undefined,
+						})
+					}
 				} else if (block.type === "tool_result") {
 					const tr = block as ClineUserToolResultContentBlock
 					const text =

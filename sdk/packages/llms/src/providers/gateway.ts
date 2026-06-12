@@ -199,11 +199,13 @@ export class DefaultGateway implements Gateway {
 	private readonly registry: GatewayRegistry;
 	private readonly logger: BasicLogger | undefined;
 	private readonly telemetry: ITelemetryService | undefined;
+	private readonly keypoolEventHandler: GatewayConfig["keypoolEventHandler"];
 
 	constructor(config: GatewayConfig = {}) {
 		this.registry = new GatewayRegistry(config.fetch);
 		this.logger = config.logger;
 		this.telemetry = config.telemetry;
+		this.keypoolEventHandler = config.keypoolEventHandler;
 
 		if (config.builtins !== false) {
 			const builtins = new Set(
@@ -298,6 +300,7 @@ export class DefaultGateway implements Gateway {
 				signal: request.signal,
 				logger: this.logger,
 				telemetry: this.telemetry,
+				keypoolEventHandler: this.keypoolEventHandler,
 			},
 		);
 
