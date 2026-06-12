@@ -246,7 +246,18 @@ jobs:
       - name: Rename SDK package scope for SCTG publish
         run: |
           bun sdk/scripts/rename-sdk-package-scope.ts
+
+      - name: Pack SDK sources for internal consumption by CLI build (which needs to reference the built SDK packages)
+        working-directory: sdk
+        run: |
+          tar -czf "$RUNNER_TEMP/sdk-sources.tar.gz" -C sdk packages
           
+      - name: Upload SDK sources for futur reference
+        uses: actions/upload-artifact@v7
+        with:
+          name: sdk-sources
+          path: "$RUNNER_TEMP/sdk-sources.tar.gz"
+
       - name: Install SDK dependencies
         working-directory: sdk
         run: rm -rf apps/web && bun install
