@@ -908,6 +908,7 @@ export function createDefaultTools(
 		enableSkills = true,
 		enableAskQuestion = true,
 		enableSubmitAndExit = false,
+		enableWriteMarkdownToDocx = true,
 		...config
 	} = options;
 
@@ -966,6 +967,11 @@ export function createDefaultTools(
 	// Add submit_and_exit tool if enabled and executor provided
 	if (submitExecutor) {
 		tools.push(createSubmitAndExitTool(submitExecutor, config));
+	}
+
+	// Add write_markdown_to_docx tool if enabled and executor provided
+	if (enableWriteMarkdownToDocx && executors.writeMarkdownToDocx) {
+		tools.push(createWriteMarkdownToDocxTool(executors.writeMarkdownToDocx, config));
 	}
 
 	return tools as unknown as AgentTool[];

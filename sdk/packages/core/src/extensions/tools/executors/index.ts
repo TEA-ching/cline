@@ -22,6 +22,10 @@ import {
 	createWebFetchExecutor,
 	type WebFetchExecutorOptions,
 } from "./web-fetch";
+import {
+	createWriteMarkdownToDocxExecutor,
+	type WriteMarkdownToDocxExecutorOptions,
+} from "./markdown-docx";
 
 // Re-export individual executors and their options types
 export {
@@ -43,6 +47,10 @@ export {
 	type WebFetchExecutorOptions,
 } from "./web-fetch";
 export {
+	createWriteMarkdownToDocxExecutor,
+	type WriteMarkdownToDocxExecutorOptions,
+} from "./markdown-docx";
+export {
 	createSmartWebFetchExecutor,
 	createWebSearchExecutor,
 	type CrawlerKeyResolver,
@@ -60,6 +68,7 @@ export interface DefaultExecutorsOptions {
 	webFetch?: WebFetchExecutorOptions;
 	applyPatch?: ApplyPatchExecutorOptions;
 	editor?: EditorExecutorOptions;
+	writeMarkdownToDocx?: WriteMarkdownToDocxExecutorOptions;
 }
 
 /**
@@ -90,5 +99,6 @@ export function createDefaultExecutors(
 		webFetch: createWebFetchExecutor(options.webFetch),
 		applyPatch: createApplyPatchExecutor(options.applyPatch),
 		editor: createEditorExecutor(options.editor),
+		writeMarkdownToDocx: createWriteMarkdownToDocxExecutor(options.writeMarkdownToDocx),
 	};
 }
