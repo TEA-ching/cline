@@ -255,13 +255,13 @@ jobs:
       - name: Pack SDK sources for internal consumption by CLI build (which needs to reference the built SDK packages)
         working-directory: sdk
         run: |
-          tar -czf "$RUNNER_TEMP/sdk-sources.tar.gz" -C sdk packages
+          tar -czf "sdk-sources.tar.gz" -C sdk
           
       - name: Upload SDK sources for futur reference
         uses: actions/upload-artifact@v7
         with:
           name: sdk-sources
-          path: "$RUNNER_TEMP/sdk-sources.tar.gz"
+          path: "sdk/sdk-sources.tar.gz"
 
       - name: Install SDK dependencies
         working-directory: sdk
