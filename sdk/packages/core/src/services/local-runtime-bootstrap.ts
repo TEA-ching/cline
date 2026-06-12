@@ -1,48 +1,48 @@
 import type {
-	AgentConfig,
-	AgentEvent,
-	AgentHooks,
-	AgentTool,
-	ExtensionContext,
-	ITelemetryService,
-	RuntimeConfigExtensionKind,
-	ToolApprovalRequest,
-	ToolApprovalResult,
-	WorkspaceInfo,
+    AgentConfig,
+    AgentEvent,
+    AgentHooks,
+    AgentTool,
+    ExtensionContext,
+    ITelemetryService,
+    RuntimeConfigExtensionKind,
+    ToolApprovalRequest,
+    ToolApprovalResult,
+    WorkspaceInfo,
 } from "@cline/shared";
 import { hasRuntimeConfigExtension } from "@cline/shared";
 import { decodeJwtPayload } from "../auth/utils";
 import {
-	resolveAndLoadAgentPlugins,
-	resolvePluginSkillDirectoriesFromPaths,
+    resolveAndLoadAgentPlugins,
+    resolvePluginSkillDirectoriesFromPaths,
 } from "../extensions/plugin/plugin-config-loader";
 import type {
-	PluginInitializationFailure,
-	PluginInitializationWarning,
+    PluginInitializationFailure,
+    PluginInitializationWarning,
 } from "../extensions/plugin/plugin-load-report";
 import type {
-	SubAgentEndContext,
-	SubAgentStartContext,
-	TeamEvent,
+    SubAgentEndContext,
+    SubAgentStartContext,
+    TeamEvent,
 } from "../extensions/tools/team";
 import { createCheckpointHooks } from "../hooks/checkpoint-hooks";
 import {
-	createHookAuditHooks,
-	createHookConfigFileExtension,
-	mergeAgentHooks,
+    createHookAuditHooks,
+    createHookConfigFileExtension,
+    mergeAgentHooks,
 } from "../hooks/hook-file-hooks";
 import type { RuntimeCapabilities } from "../runtime/capabilities";
 import { normalizeRuntimeCapabilities } from "../runtime/capabilities";
 import type {
-	LocalRuntimeStartOptions,
-	StartSessionInput,
+    LocalRuntimeStartOptions,
+    StartSessionInput,
 } from "../runtime/host/runtime-host";
 import type { RuntimeBuilderInput } from "../runtime/orchestration/session-runtime";
 import type { CoreSessionConfig } from "../types/config";
 import {
-	type ProviderConfig,
-	type ProviderSettings,
-	toProviderConfig,
+    type ProviderConfig,
+    type ProviderSettings,
+    toProviderConfig,
 } from "../types/provider-settings";
 import { createKeypoolCrawlerResolver } from "@cline/llms";
 import { createWebFetchExecutor, createWebSearchExecutor } from "../extensions/tools/executors";
@@ -172,6 +172,23 @@ function buildOpenAICodexHeaders(input: {
 	return headers;
 }
 
+export function buildKeyPoolLiveHeader(input: {
+	configHeaders: CoreSessionConfig["headers"];
+	storedHeaders: ProviderSettings["headers"];
+}): Record<string, string> | undefined {
+	const headers: Record<string, string> = {
+		...(input.storedHeaders ?? {}),
+		...(input.configHeaders ?? {}),
+	};
+
+	// Set default User-Agent if not manually specified
+	if (!headers["User-Agent"]) {
+		headers["User-Agent"] = `Cline/${process.env.npm_package_version || "1.0.0"}`;
+	}
+
+	return headers;
+}
+
 function deriveOpenAICodexAccountId(
 	accessToken: string | undefined,
 ): string | undefined {
@@ -200,7 +217,7 @@ function deriveOpenAICodexAccountId(
 	return undefined;
 }
 
-function buildProviderConfig(
+export function buildProviderConfig(
 	config: CoreSessionConfig,
 	sessionId: string,
 	providerSettingsManager: ProviderSettingsManager,
@@ -225,15 +242,20 @@ function buildProviderConfig(
 		model: config.modelId,
 		apiKey: config.apiKey ?? stored?.apiKey,
 		baseUrl: config.baseUrl ?? stored?.baseUrl,
-		headers:
-			config.providerId === "openai-codex"
-				? buildOpenAICodexHeaders({
-						sessionId,
+	headers:
+		config.providerId === "openai-codex"
+			? buildOpenAICodexHeaders({
+					sessionId,
+					configHeaders: config.headers,
+					storedHeaders: stored?.headers,
+					accountId: stored?.auth?.accountId,
+					accessToken:
+						config.apiKey ?? stored?.auth?.accessToken ?? stored?.apiKey,
+				})
+			: config.providerId === "keypoollive"
+				? buildKeyPoolLiveHeader({
 						configHeaders: config.headers,
 						storedHeaders: stored?.headers,
-						accountId: stored?.auth?.accountId,
-						accessToken:
-							config.apiKey ?? stored?.auth?.accessToken ?? stored?.apiKey,
 					})
 				: (config.headers ?? stored?.headers),
 		reasoning: resolveReasoningSettings(config, stored?.reasoning),
