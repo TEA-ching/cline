@@ -39,6 +39,13 @@ export interface SaveProviderSettingsOptions {
 	tokenSource?: ProviderTokenSource;
 }
 
+export interface ResolveLastUsedProviderSettingsOptions {
+	isClinePassEnabled?: boolean;
+}
+
+const CLINE_PROVIDER_ID = "cline";
+const CLINE_PASS_PROVIDER_ID = "cline-pass";
+
 function inferLegacyDataDir(filePath: string): string | undefined {
 	if (basename(filePath) !== "providers.json") {
 		return undefined;
@@ -154,9 +161,26 @@ export class ProviderSettingsManager {
 		return state.providers[providerId]?.settings;
 	}
 
-	getLastUsedProviderSettings(): ProviderSettings | undefined {
-		const state = this.read();
+	private resolveLastUsedProviderId(
+		state: StoredProviderSettings,
+		options: ResolveLastUsedProviderSettingsOptions,
+	): string | undefined {
 		const providerId = state.lastUsedProvider;
+		if (
+			providerId === CLINE_PASS_PROVIDER_ID &&
+			options.isClinePassEnabled === false
+		) {
+			return CLINE_PROVIDER_ID;
+		}
+
+		return providerId;
+	}
+
+	getLastUsedProviderSettings(
+		options: ResolveLastUsedProviderSettingsOptions = {},
+	): ProviderSettings | undefined {
+		const state = this.read();
+		const providerId = this.resolveLastUsedProviderId(state, options);
 		if (!providerId) {
 			return undefined;
 		}
@@ -175,9 +199,10 @@ export class ProviderSettingsManager {
 	}
 
 	getLastUsedProviderConfig(
-		options?: ToProviderConfigOptions,
+		options: ToProviderConfigOptions &
+			ResolveLastUsedProviderSettingsOptions = {},
 	): ProviderConfig | undefined {
-		const settings = this.getLastUsedProviderSettings();
+		const settings = this.getLastUsedProviderSettings(options);
 		if (!settings) {
 			return undefined;
 		}
