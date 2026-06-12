@@ -36,8 +36,17 @@ describe("createBashExecutor", () => {
 
 	it("includes stderr in combined output on success", async () => {
 		const bash = createBashExecutor({ combineOutput: true });
-		const cmd = `${shellCommand(process.execPath)} -e "process.stdout.write('ok'); process.stderr.write('warn')"`;
-		const output = await bash(cmd, process.cwd(), ctx);
+		const output = await bash(
+			{
+				command: process.execPath,
+				args: [
+					"-e",
+					"process.stdout.write('ok'); process.stderr.write('warn')",
+				],
+			},
+			process.cwd(),
+			ctx,
+		);
 		expect(output).toContain("ok");
 		expect(output).toContain("[stderr]");
 		expect(output).toContain("warn");
@@ -45,8 +54,17 @@ describe("createBashExecutor", () => {
 
 	it("excludes stderr when combineOutput is false", async () => {
 		const bash = createBashExecutor({ combineOutput: false });
-		const cmd = `${shellCommand(process.execPath)} -e "process.stdout.write('ok'); process.stderr.write('warn')"`;
-		const output = await bash(cmd, process.cwd(), ctx);
+		const output = await bash(
+			{
+				command: process.execPath,
+				args: [
+					"-e",
+					"process.stdout.write('ok'); process.stderr.write('warn')",
+				],
+			},
+			process.cwd(),
+			ctx,
+		);
 		expect(output.trim()).toBe("ok");
 	});
 
@@ -55,6 +73,89 @@ describe("createBashExecutor", () => {
 		await expect(bash("sleep 10", process.cwd(), ctx)).rejects.toThrow(
 			"timed out",
 		);
+	});
+
+	it("middle-truncates output exceeding maxOutputBytes, keeping head and tail", async () => {
+		const bash = createBashExecutor({ maxOutputBytes: 20 });
+		const output = await bash(
+			{
+				command: process.execPath,
+				args: ["-e", "process.stdout.write('HEAD' + 'x'.repeat(100) + 'TAIL')"],
+			},
+			process.cwd(),
+			ctx,
+		);
+		expect(output).toContain("HEAD");
+		expect(output).toContain("TAIL");
+		expect(output).toContain("[... output truncated: 108 chars total");
+		expect(output.length).toBeLessThan(300);
+	});
+
+	it("keeps default-capped output under the MessageBuilder per-result backstop", async () => {
+		// MessageBuilder re-truncates tool-result strings over 50_000 chars
+		// (session/services/message-builder.ts), which would replace the
+		// executor's truncation notice with a generic marker. The default
+		// cap plus notice must stay below that.
+		const bash = createBashExecutor();
+		const output = await bash(
+			{
+				command: process.execPath,
+				args: ["-e", "process.stdout.write('x'.repeat(60_000))"],
+			},
+			process.cwd(),
+			ctx,
+		);
+		expect(output.length).toBeLessThanOrEqual(50_000);
+		expect(output).toContain("output truncated: 60000 chars total");
+	});
+
+	it("does not truncate output within maxOutputBytes", async () => {
+		const bash = createBashExecutor({ maxOutputBytes: 1000 });
+		const payload = "b".repeat(500);
+		const output = await bash(
+			{
+				command: process.execPath,
+				args: ["-e", `process.stdout.write('${payload}')`],
+			},
+			process.cwd(),
+			ctx,
+		);
+		expect(output).toBe(payload);
+	});
+
+	it("marks truncation in the error when a failing command floods stderr", async () => {
+		const bash = createBashExecutor({ maxOutputBytes: 20 });
+		await expect(
+			bash(
+				{
+					command: process.execPath,
+					args: [
+						"-e",
+						"process.stderr.write('ERR' + 'x'.repeat(100) + 'TAIL'); process.exit(1)",
+					],
+				},
+				process.cwd(),
+				ctx,
+			),
+		).rejects.toThrow("output truncated");
+	});
+
+	it("keeps the tail of streamed output written in many chunks", async () => {
+		const bash = createBashExecutor({ maxOutputBytes: 40 });
+		const output = await bash(
+			{
+				command: process.execPath,
+				args: [
+					"-e",
+					"for (let i = 0; i < 50; i++) process.stdout.write('line' + i + '\\n'); process.stdout.write('FINAL')",
+				],
+			},
+			process.cwd(),
+			ctx,
+		);
+		expect(output).toContain("line0");
+		expect(output).toContain("FINAL");
+		expect(output).toContain("output truncated");
 	});
 
 	it("truncates output exceeding maxOutputBytes", async () => {
