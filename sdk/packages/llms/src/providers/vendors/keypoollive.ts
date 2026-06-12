@@ -1262,6 +1262,13 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 					keyOwner: resolvedKeyOwner,
 					roundRobin: selectedByRoundRobin,
 				});
+				if (resolvedUserAgent) {
+					context.keypoolEventHandler?.({
+						type: "user-agent-set",
+						userAgent: resolvedUserAgent,
+						source: "config",
+					});
+				}
 			}
 
 			// Create sub-request with the actual (un-prefixed) model ID
