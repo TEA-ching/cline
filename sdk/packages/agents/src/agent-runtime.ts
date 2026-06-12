@@ -94,8 +94,17 @@ function resolveRuntimeConfig(
 		return config;
 	}
 	const { providerId, modelId, apiKey, baseUrl, headers, options, keypoolEventHandler, ...rest } = config;
+	let resolvedHeaders = headers;
+	if (providerId === "keypoollive" && keypoolEventHandler) {
+		const existingUa = (headers as Record<string, string> | undefined)?.["User-Agent"];
+		const userAgent = existingUa ?? `Cline/${(typeof process !== "undefined" && process.env?.npm_package_version) || "1.0.0"}`;
+		if (!existingUa) {
+			resolvedHeaders = { ...(headers ?? {}), "User-Agent": userAgent };
+		}
+		keypoolEventHandler({ type: "user-agent-set", userAgent, source: existingUa ? "config" : "default" });
+	}
 	const gateway = createGateway({
-		providerConfigs: [{ providerId, apiKey, baseUrl, headers, options }],
+		providerConfigs: [{ providerId, apiKey, baseUrl, headers: resolvedHeaders, options }],
 		telemetry: rest.telemetry,
 		keypoolEventHandler,
 	});

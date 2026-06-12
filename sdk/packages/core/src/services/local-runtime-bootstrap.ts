@@ -45,6 +45,7 @@ import {
     toProviderConfig,
 } from "../types/provider-settings";
 import { createKeypoolCrawlerResolver } from "@cline/llms";
+import type { KeypoolEventHandler } from "@cline/shared";
 import { createWebFetchExecutor, createWebSearchExecutor } from "../extensions/tools/executors";
 import type { ToolExecutors } from "../extensions/tools";
 import { resolveWorkspacePath } from "./config";
@@ -175,16 +176,22 @@ function buildOpenAICodexHeaders(input: {
 export function buildKeyPoolLiveHeader(input: {
 	configHeaders: CoreSessionConfig["headers"];
 	storedHeaders: ProviderSettings["headers"];
+	onEvent?: KeypoolEventHandler;
 }): Record<string, string> | undefined {
 	const headers: Record<string, string> = {
 		...(input.storedHeaders ?? {}),
 		...(input.configHeaders ?? {}),
 	};
 
-	// Set default User-Agent if not manually specified
-	if (!headers["User-Agent"]) {
+	const existingUa = headers["User-Agent"];
+	if (!existingUa) {
 		headers["User-Agent"] = `Cline/${process.env.npm_package_version || "1.0.0"}`;
 	}
+	input.onEvent?.({
+		type: "user-agent-set",
+		userAgent: headers["User-Agent"],
+		source: existingUa ? "config" : "default",
+	});
 
 	return headers;
 }
@@ -223,6 +230,7 @@ export function buildProviderConfig(
 	providerSettingsManager: ProviderSettingsManager,
 	modelCatalogDefaults?: Partial<ProviderSettings["modelCatalog"]>,
 	defaultFetch?: typeof fetch,
+	keypoolEventHandler?: KeypoolEventHandler,
 ): ProviderConfig {
 	const stored = providerSettingsManager.getProviderSettings(config.providerId);
 	const modelCatalog =
@@ -256,6 +264,7 @@ export function buildProviderConfig(
 				? buildKeyPoolLiveHeader({
 						configHeaders: config.headers,
 						storedHeaders: stored?.headers,
+						onEvent: keypoolEventHandler,
 					})
 				: (config.headers ?? stored?.headers),
 		reasoning: resolveReasoningSettings(config, stored?.reasoning),
@@ -294,6 +303,11 @@ export interface PrepareLocalRuntimeBootstrapOptions {
 	 * AI gateway providers can use a custom HTTP implementation.
 	 */
 	defaultFetch?: typeof fetch;
+	/**
+	 * Optional callback for keypoollive bootstrap events (e.g. `user-agent-set`).
+	 * Fires once at session initialisation, before any LLM call is made.
+	 */
+	keypoolEventHandler?: KeypoolEventHandler;
 	onPluginEvent: (event: { name: string; payload?: unknown }) => void;
 	onTeamEvent: (event: TeamEvent) => void;
 	createSubAgentLifecycleCallbacks?: (config: CoreSessionConfig) => {
@@ -336,6 +350,7 @@ export async function prepareLocalRuntimeBootstrap(
 		defaultCapabilities,
 		defaultToolPolicies,
 		defaultFetch,
+		keypoolEventHandler,
 		onPluginEvent,
 		onTeamEvent,
 		createSubAgentLifecycleCallbacks,
@@ -465,6 +480,7 @@ export async function prepareLocalRuntimeBootstrap(
 		providerSettingsManager,
 		modelCatalogDefaults,
 		defaultFetch,
+		keypoolEventHandler,
 	);
 	const hooks = mergeAgentHooks([
 		baseConfig.hooks,

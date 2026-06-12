@@ -187,12 +187,24 @@ export interface KeypoolUsageRecordedEvent {
 	cacheWriteTokens: number;
 }
 
+/**
+ * Fired once at provider initialisation when the User-Agent header is resolved.
+ * `source: "config"` means the caller supplied it explicitly;
+ * `source: "default"` means it was injected automatically.
+ */
+export interface KeypoolUserAgentSetEvent {
+	type: "user-agent-set";
+	userAgent: string;
+	source: "config" | "default";
+}
+
 export type KeypoolEvent =
 	| KeypoolKeySelectedEvent
 	| KeypoolKeyRotatedEvent
 	| KeypoolKeyRecoveredEvent
 	| KeypoolKeyExhaustedEvent
-	| KeypoolUsageRecordedEvent;
+	| KeypoolUsageRecordedEvent
+	| KeypoolUserAgentSetEvent;
 
 /** Callback invoked by the keypoollive provider at key lifecycle milestones. */
 export type KeypoolEventHandler = (event: KeypoolEvent) => void;
