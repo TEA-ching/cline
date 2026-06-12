@@ -52,6 +52,8 @@ import {
 	StructuredCommandsInputSchema,
 	type SubmitInput,
 	SubmitInputSchema,
+	type WriteMarkdownToDocxInput,
+	WriteMarkdownToDocxInputSchema,
 } from "./schemas";
 import type {
 	ApplyPatchExecutor,
@@ -67,6 +69,7 @@ import type {
 	VerifySubmitExecutor,
 	WebFetchExecutor,
 	WebSearchExecutor,
+	WriteMarkdownToDocxExecutor,
 } from "./types";
 
 // =============================================================================
