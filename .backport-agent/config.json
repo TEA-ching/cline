@@ -36,8 +36,10 @@
         "provider": "keypoollive",
         "apiKey": "auto",
         "fast": "mistral/devstral-medium-latest",
-        "specialist": "mistral/mistral-vibe-cli-latest",
-        "powerful": "openai/gpt-5.5"
+        "_fast": "mistral/mistral-vibe-cli-latest",
+        "specialist": "mistral/mistral-medium-2604",
+        "_powerful": "openai/gpt-5.5",
+        "powerful": "mistral/mistral-vibe-cli-latest"
     },
     "ai": {
         "_comment": "AI quality guardrails — all fields are optional (defaults shown). Remove this section to use defaults.",
@@ -73,6 +75,16 @@
             "pushd apps/vscode && bun install && npm run test:unit ; popd",
             "pushd apps/vscode && bun install && npm run compile ; popd",
             "pushd apps/vscode && bun install && npm run package:vsix ; popd"
+        ],
+        "final": [
+            "bun install",
+            "bun run build:models",
+            "bun run build:sdk",
+            "cd apps/vscode && bun install",
+            "cd apps/vscode/webview-ui && npm i",
+            "cd apps/vscode && bunx vsce package",
+            "cd apps/cli && bun run build",
+            "git checkout ."
         ]
     }
 }
