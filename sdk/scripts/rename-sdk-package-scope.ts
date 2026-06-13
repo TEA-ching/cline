@@ -123,7 +123,7 @@ function findAllFiles(dir: string, acc: string[] = []): string[] {
  * @param content - The file content to process
  * @returns Content with package references updated
  */
-function replaceClineReferences(content: string): string {
+export function replaceClineReferences(content: string): string {
   // Get repository information for setting package repository URLs
   const githubRepository = process.env.GITHUB_REPOSITORY || 'TEA-ching/cline'
   const githubServerUrl = process.env.GITHUB_SERVER_URL || 'https://github.com'
