@@ -7,17 +7,18 @@ import { KeypoolLog } from "@/core/keypoollive/KeypoolLog";
 import { KeypoolUsageDb } from "@/core/keypoollive/KeypoolUsageDb";
 import { markKeyAsUsed } from "@/core/keypoollive/KeyPool";
 import {
-    configureSessionKeyManager,
-    getSessionApiConfig,
-    rotateSessionKey,
+	configureSessionKeyManager,
+	getSessionApiConfig,
+	rotateSessionKey,
 } from "@/core/keypoollive/SessionKeyManager";
 import type { AiProtocol, ResolvedApiConfig } from "@/core/keypoollive/types";
 import type { ClineStorageMessage } from "@/shared/messages/content";
+import type { ClineTool } from "@/shared/tools";
 import { Logger } from "@/shared/services/Logger";
 import type {
-    ApiHandler,
-    ApiHandlerModel,
-    CommonApiHandlerOptions,
+	ApiHandler,
+	ApiHandlerModel,
+	CommonApiHandlerOptions,
 } from "../index";
 import type { ApiStream } from "../transform/stream";
 import { AnthropicHandler } from "./anthropic";
@@ -29,6 +30,10 @@ import { OpenAiHandler } from "./openai";
 /**
  * Maps an AiProtocol to the correct Cloudflare AI Gateway provider slug.
  * Cloudflare uses 'google-ai-studio' for Gemini (not 'gemini').
+ *
+ * @param protocol - The AI protocol to map (e.g., "gemini", "anthropic")
+ * @param fallback - Fallback value if protocol is not recognized
+ * @returns Cloudflare AI Gateway slug for the given protocol
  */
 function toCfGatewaySlug(protocol: AiProtocol, fallback: string): string {
 	switch (protocol) {
@@ -49,13 +54,24 @@ function toCfGatewaySlug(protocol: AiProtocol, fallback: string): string {
 
 const KEYPOOLLIVE_SESSION_ID = "kpl-global";
 
-/** Returns first 6 chars + "..." + last 6 chars of an API key for safe logging. */
+/**
+ * Returns first 6 chars + "..." + last 6 chars of an API key for safe logging.
+ * This prevents exposing full API keys in logs while still providing identifiable information.
+ *
+ * @param apiKey - The full API key to format
+ * @returns Formatted key hint (e.g., "abc123...xyz789")
+ */
 function formatKeyHint(apiKey: string): string {
 	if (apiKey.length <= 12) return apiKey;
 	return `${apiKey.slice(0, 6)}...${apiKey.slice(-6)}`;
 }
 
-/** Shows a VSCode information toast if running inside the extension host (no-op in standalone). */
+/**
+ * Shows a VSCode information toast if running inside the extension host (no-op in standalone).
+ * This provides user feedback for key rotation events and other important notifications.
+ *
+ * @param message - The message to display to the user
+ */
 function tryShowVscodeInfo(message: string): void {
 	try {
 		// eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -66,7 +82,13 @@ function tryShowVscodeInfo(message: string): void {
 	}
 }
 
-/** Errors that warrant key rotation */
+/**
+ * Determines if an error warrants key rotation.
+ * Returns true for authentication errors (401, 403) and rate limiting (429).
+ *
+ * @param e - The error object to check
+ * @returns true if the error indicates a key problem that might be resolved by rotation
+ */
 function isKeyError(e: any): boolean {
 	const code = e?.status ?? e?.statusCode ?? e?.error?.status ?? 0;
 	return [401, 403, 429].includes(Number(code));
@@ -85,10 +107,21 @@ interface KeypoolLiveHandlerOptions extends CommonApiHandlerOptions {
 	ulid?: string;
 }
 
+/**
+ * KeypoolLiveHandler - Main API handler class
+ *
+ * This class manages API requests to various AI providers using keys from a KeypoolLive vault.
+ * It handles key rotation, usage tracking, and Cloudflare AI Gateway integration.
+ */
 export class KeypoolLiveHandler implements ApiHandler {
 	private options: KeypoolLiveHandlerOptions;
 	private resolvedConfig: ResolvedApiConfig | null = null;
 
+	/**
+	 * Constructor - Initializes the handler with configuration options
+	 *
+	 * @param options - Configuration options including vault URL, secrets, and gateway settings
+	 */
 	constructor(options: KeypoolLiveHandlerOptions) {
 		this.options = options;
 		// Inject the vault secret into process.env so AiVault can find it
@@ -107,6 +140,12 @@ export class KeypoolLiveHandler implements ApiHandler {
 		}
 	}
 
+	/**
+	 * Parses the model ID from the configuration options.
+	 * Expected format: "providerName/modelId" (e.g., "openai/gpt-4o")
+	 *
+	 * @returns Object containing vaultProviderName and vaultModelId
+	 */
 	private parseModelId(): { vaultProviderName: string; vaultModelId: string } {
 		const raw = this.options.apiModelId ?? "";
 		const slashIdx = raw.indexOf("/");
@@ -119,6 +158,14 @@ export class KeypoolLiveHandler implements ApiHandler {
 		};
 	}
 
+	/**
+	 * Builds an ephemeral provider-specific handler based on the resolved configuration.
+	 * This creates the appropriate handler (Anthropic, OpenAI, Gemini, etc.) with the
+	 * correct API key, endpoint, and model configuration.
+	 *
+	 * @param config - Resolved API configuration from the vault
+	 * @returns Provider-specific API handler instance
+	 */
 	private buildEphemeralHandler(config: ResolvedApiConfig): ApiHandler {
 		const { protocol, apiKey, endpoint, model } = config;
 		const gatewayBase =
@@ -171,6 +218,12 @@ export class KeypoolLiveHandler implements ApiHandler {
 		}
 	}
 
+	/**
+	 * Builds HTTP headers for Cloudflare AI Gateway requests.
+	 * Includes authorization and optional cache control headers.
+	 *
+	 * @returns Object containing the required headers
+	 */
 	private buildGatewayHeaders(): Record<string, string> {
 		if (
 			!this.options.keypoolliveUseGateway ||
@@ -187,9 +240,29 @@ export class KeypoolLiveHandler implements ApiHandler {
 		return headers;
 	}
 
+	/**
+	 * Main message creation method - handles the complete API request lifecycle
+	 *
+	 * This method:
+	 * 1. Resolves the API configuration from the vault
+	 * 2. Creates an ephemeral provider-specific handler
+	 * 3. Logs the API exchange
+	 * 4. Streams the response
+	 * 5. Records usage metrics
+	 * 6. Handles errors with automatic key rotation and retry
+	 *
+	 * @param systemPrompt - System prompt for the AI model
+	 * @param messages - Conversation history
+	 * @param tools - Optional tools for function calling
+	 * @param useResponseApi - Whether to use response API format
+	 * @returns Async generator yielding API response chunks
+	 * @throws Will throw the last error if all attempts fail
+	 */
 	async *createMessage(
 		systemPrompt: string,
 		messages: ClineStorageMessage[],
+		tools?: ClineTool[],
+		useResponseApi?: boolean,
 	): ApiStream {
 		const { vaultProviderName, vaultModelId } = this.parseModelId();
 
@@ -246,6 +319,8 @@ export class KeypoolLiveHandler implements ApiHandler {
 				for await (const chunk of ephemeral.createMessage(
 					systemPrompt,
 					messages,
+					tools,
+					useResponseApi,
 				)) {
 					if (chunk.type === "usage") {
 						promptTokens = chunk.inputTokens;
@@ -309,6 +384,12 @@ export class KeypoolLiveHandler implements ApiHandler {
 		throw lastError;
 	}
 
+	/**
+	 * Returns model information for the configured provider and model.
+	 * This is used by the UI model picker and for validating model capabilities.
+	 *
+	 * @returns ApiHandlerModel containing model ID and capabilities
+	 */
 	getModel(): ApiHandlerModel {
 		const { vaultProviderName, vaultModelId } = this.parseModelId();
 		// resolvedConfig is set after the first createMessage(); before that, fall back to the
