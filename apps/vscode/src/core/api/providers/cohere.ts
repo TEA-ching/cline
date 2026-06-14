@@ -224,6 +224,7 @@ const COHERE_UNSUPPORTED_CONSTRAINTS = new Set([
 	"minItems", "maxItems",
 	"minLength", "maxLength", "pattern",
 	"minimum", "maximum", "multipleOf",
+	"format",
 ])
 
 function stripUnsupportedConstraints(s: Record<string, unknown>): Record<string, unknown> {
@@ -239,12 +240,24 @@ function stripUnsupportedConstraints(s: Record<string, unknown>): Record<string,
  * 2. Ensures every non-empty object schema has at least one required field.
  * 3. Converts empty object schemas ({type:"object", properties:{}}) to {} so Cohere
  *    accepts no-parameter tools.
+ * 4. Recurses into anyOf/oneOf/allOf sub-schemas (produced by Zod's .nullable(), z.union(), etc.).
  * @param {unknown} schema - The schema to be patched.
  * @returns {unknown} - The patched schema.
  */
 function patchObjectSchemaRequired(schema: unknown): unknown {
 	if (!schema || typeof schema !== "object") return schema
 	const s = schema as Record<string, unknown>
+	// Recurse into anyOf/oneOf/allOf: Zod's .nullable() generates {anyOf: [{type: "integer", maximum: ...}, {type: "null"}]},
+	// so constraints inside sub-schemas must be stripped too.
+	if (Array.isArray(s.anyOf)) {
+		return stripUnsupportedConstraints({ ...s, anyOf: (s.anyOf as unknown[]).map(patchObjectSchemaRequired) })
+	}
+	if (Array.isArray(s.oneOf)) {
+		return stripUnsupportedConstraints({ ...s, oneOf: (s.oneOf as unknown[]).map(patchObjectSchemaRequired) })
+	}
+	if (Array.isArray(s.allOf)) {
+		return stripUnsupportedConstraints({ ...s, allOf: (s.allOf as unknown[]).map(patchObjectSchemaRequired) })
+	}
 	if (s.type === "object") {
 		const props = s.properties as Record<string, unknown> | undefined
 		const keys = props ? Object.keys(props) : []
