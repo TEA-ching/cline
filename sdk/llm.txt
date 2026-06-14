@@ -1,4 +1,4 @@
-@sctg/sdk — source index (2026-06-13)
+@sctg/sdk — source index (2026-06-14)
 Stack: @sctg/sdk with name @sctg/cline-sdk
 
 FILES
@@ -277,6 +277,7 @@ FILES
   packages/core/src/services/feature-flags/FeatureFlagsService.test.ts
   packages/core/src/services/feature-flags/FeatureFlagsService.ts
   packages/core/src/services/feature-flags/index.ts
+  packages/core/src/services/feature-flags/posthog.ts
   packages/core/src/services/feature-flags/providers.ts
   packages/core/src/services/global-settings.test.ts
   packages/core/src/services/global-settings.ts
@@ -389,6 +390,7 @@ FILES
   packages/llms/scripts/fix-esm-imports.ts
   packages/llms/scripts/generate-models.ts
   packages/llms/scripts/models/generate-models-dev.ts
+  packages/llms/src/catalog/catalog-cline-recommended.ts
   packages/llms/src/catalog/catalog-live.test.ts
   packages/llms/src/catalog/catalog-live.ts
   packages/llms/src/catalog/catalog.generated-access.ts
@@ -520,6 +522,7 @@ FILES
   packages/shared/src/prompt/format.test.ts
   packages/shared/src/prompt/format.ts
   packages/shared/src/prompt/system.ts
+  packages/shared/src/providers/utils.ts
   packages/shared/src/remote-config/artifact-store.ts
   packages/shared/src/remote-config/blob-storage.ts
   packages/shared/src/remote-config/bundle.ts

@@ -279,6 +279,19 @@ jobs:
           bun run build
           bun run build:platforms
 
+      - name: Create LLM files
+        run: |
+          cd sdk
+          bun scripts/export-sdk-code-for-llm.ts
+  
+      - name: Upload LLM files as artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: llm-files
+          path: |
+            ./sdk/llm.md
+            ./sdk/llm.txt
+
       - name: Upload CLI binaries as artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -465,6 +478,12 @@ jobs:
           name: sdk-bundle
           path: sdk-artifact/
 
+      - name: Download LLM files
+        uses: actions/download-artifact@v8
+        with:
+          name: llm-files
+          path: llm-files/
+
       - name: Move SDK artifact alongside VSIXes
         run: mv sdk-artifact/clinepool-*.tar.gz release-assets/
 
@@ -510,4 +529,5 @@ jobs:
             --notes-file release-notes.md \
             release-assets/*.vsix \
             release-assets/*.tar.gz \
-            release-assets/cli/*
+            release-assets/cli/* \
+            llm-files/*
