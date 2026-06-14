@@ -5460,4 +5460,14 @@ export const cohereModels = {
 		outputPrice: 10,
 		description: "Command A is Cohere's most performant model to date, excelling at real world enterprise tasks including tool use.",
 	},
+	"north-mini-code-1-0": {
+		maxTokens: 64_000,
+		contextWindow: 256_000,
+		supportsImages: false,
+		supportsPromptCache: false,
+		supportsTools: true,
+		inputPrice: 2.5,
+		outputPrice: 10,
+		description: "North Mini Code is Cohere's coding specialist model, excelling at code generation and reasoning tasks.",
+	}
 } as const satisfies Record<string, CohereModelInfo>
