@@ -272,6 +272,7 @@ jobs:
       - name: Build CLI binaries
         run: |
           bun install
+          bun run build:sdk
           bun run build:models
           bun run build:sdk
           cd apps/cli
