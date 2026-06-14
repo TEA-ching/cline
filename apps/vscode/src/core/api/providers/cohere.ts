@@ -15,16 +15,36 @@ interface CohereHandlerOptions extends CommonApiHandlerOptions {
 }
 
 /**
- * Handles API requests to Cohere's language models.
- * Extends the AiSdkHandler class to provide Cohere-specific functionality.
+ * CohereHandler
+ * 
+ * This class handles API requests to Cohere's language models. It extends the base AiSdkHandler
+ * class to provide Cohere-specific functionality including model configuration, reasoning support,
+ * and tool execution capabilities.
+ * 
+ * The handler manages the entire lifecycle of a Cohere API session:
+ * - Model resolution and validation
+ * - Provider initialization with proper authentication and headers
+ * - Reasoning configuration for supported models (command-a* series)
+ * - Tool schema patching for strict_tools compatibility
+ * - Usage reporting correction through fetch patching
+ * - Streaming response handling with token count correction
+ * 
+ * Key responsibilities:
+ * - Creating the Cohere SDK provider with custom fetch wrapper
+ * - Configuring reasoning parameters when supported (thinking mode)
+ * - Ensuring tool schemas meet Cohere's strict requirements
+ * - Patching message-end events to report accurate token usage
+ * - Supporting both text and tool-based interactions
  */
 export class CohereHandler extends AiSdkHandler {
  	private modelInfo: CohereModelInfo	
 	/**
 	 * Initializes a new instance of the CohereHandler class.
 	 * @param {CohereHandlerOptions} options - Configuration options for the handler.
+	 * @returns {CohereHandler} The configured handler instance.
 	 */
 	constructor(options: CohereHandlerOptions) {
+
 		const { id: modelId, info: modelInfo } = resolveModel(options)
 		
 		const provider = createCohere({
@@ -71,12 +91,32 @@ export class CohereHandler extends AiSdkHandler {
 }
 
 /**
- * Resolves the model ID and information based on the provided options.
- * If a valid model ID is provided, it is used; otherwise, the default model is selected.
- * @param {CohereHandlerOptions} options - Configuration options containing the model ID.
- * @returns {{ id: CohereModelId; info: CohereModelInfo }} - The resolved model ID and information.
+ * resolveModel
+ * 
+ * Resolves the model identifier and its information based on the provided options.
+ * If a valid model identifier is provided, it is used; otherwise, the default model is selected.
+ * 
+ * This function centralizes the model selection logic, ensuring we always use a known and valid model.
+ * It performs implicit validation by checking the existence of the identifier in the shared model registry.
+ * 
+ * @param {CohereHandlerOptions} options - Configuration options containing the model identifier to use.
+ *   - apiModelId: Specific model identifier desired (optional)
+ * @returns {Object} An object containing:
+ *   - id: The selected model identifier (CohereModelId)
+ *   - info: The detailed model information (CohereModelInfo)
+ * 
+ * @example
+ * // Using the default model
+ * const { id, info } = resolveModel({})
+ * // id will be cohereDefaultModelId, info will be its information
+ * 
+ * @example
+ * // Using a specific model
+ * const { id, info } = resolveModel({ apiModelId: "command-r-plus" })
+ * // id will be "command-r-plus", info will be its information from cohereModels
  */
 function resolveModel(options: CohereHandlerOptions): { id: CohereModelId; info: CohereModelInfo } {
+
 	const modelId = options.apiModelId
 	if (modelId && modelId in cohereModels) {
 		return { id: modelId as CohereModelId, info: cohereModels[modelId as CohereModelId] }
@@ -85,12 +125,29 @@ function resolveModel(options: CohereHandlerOptions): { id: CohereModelId; info:
 }
 
 /**
- * Patches the fetch function to correct usage reporting for Cohere's command-a* models.
- * Ensures that input token counts are accurately reported in the message-end event.
- * @param {typeof fetch} baseFetch - The original fetch function to be patched.
- * @returns {typeof fetch} - The patched fetch function.
+ * patchCohereUsageFetch
+ * 
+ * Returns a modified fetch function that corrects token usage reporting for Cohere's
+ * command-a* models when "thinking" mode is enabled.
+ * 
+ * Problem solved: Cohere streaming "message-end" events incorrectly report
+ * `tokens.input_tokens = 0` while `billed_units.input_tokens` contains the correct value.
+ * This function patches the response body to correct these counters before they are
+ * parsed by the client.
+ * 
+ * The function performs several steps:
+ *   1. Patches tool schemas for strict_tools=true compatibility
+ *   2. Adds `strict_tools: true` header when tools are present
+ *   3. Generates TypeScript logs for debugging (when COHERE_DEBUG_FETCH_LOG=1)
+ *   4. Corrects message-end lines to use billed token counters
+ * 
+ * @param {typeof fetch} baseFetch - The original fetch function to modify
+ * @returns {typeof fetch} - A new fetch function with all corrections applied
  */
 function patchCohereUsageFetch(baseFetch: typeof fetch): typeof fetch {
+
+
+
 	return async (input, init) => {
 		// Patch tool schemas and add strict_tools when tools are present.
 		if (init?.body) {
