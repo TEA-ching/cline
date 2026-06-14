@@ -111,9 +111,8 @@ function patchCohereUsageFetch(baseFetch: typeof fetch): typeof fetch {
 			}
 		}
 
-		// Log as TypeScript fetch script
-		// if (process.env.COHERE_DEBUG_FETCH_LOG === "1") {
-		if (true) { // curently always log
+		// Log as TypeScript fetch script (set COHERE_DEBUG_FETCH_LOG=1 to enable)
+		if (process.env.COHERE_DEBUG_FETCH_LOG === "1") {
 			try {
 				const storagePath = path.join(HostProvider.get().globalStorageFsPath, "cohere")
 				await fs.mkdir(storagePath, { recursive: true })
@@ -161,9 +160,28 @@ function patchCohereUsageFetch(baseFetch: typeof fetch): typeof fetch {
 	}
 }
 
+// Constraints that Cohere strict_tools=true does not support and must be stripped.
+// Verified by testing: minItems, maxItems, minLength, maxLength, pattern, minimum, maximum, multipleOf
+// are rejected; uniqueItems, exclusiveMinimum, default are accepted.
+const COHERE_UNSUPPORTED_CONSTRAINTS = new Set([
+	"minItems", "maxItems",
+	"minLength", "maxLength", "pattern",
+	"minimum", "maximum", "multipleOf",
+])
+
+function stripUnsupportedConstraints(s: Record<string, unknown>): Record<string, unknown> {
+	const result = { ...s }
+	for (const key of COHERE_UNSUPPORTED_CONSTRAINTS) delete result[key]
+	return result
+}
+
 /**
- * Recursively patches object schemas to ensure they have at least one required field.
- * This is necessary for Cohere's strict_tools=true requirement.
+ * Recursively patches tool parameter schemas for Cohere strict_tools=true compatibility:
+ * 1. Strips unsupported JSON Schema constraints (minItems, maxItems, minLength, maxLength,
+ *    pattern, minimum, maximum, multipleOf).
+ * 2. Ensures every non-empty object schema has at least one required field.
+ * 3. Converts empty object schemas ({type:"object", properties:{}}) to {} so Cohere
+ *    accepts no-parameter tools.
  * @param {unknown} schema - The schema to be patched.
  * @returns {unknown} - The patched schema.
  */
@@ -173,20 +191,25 @@ function patchObjectSchemaRequired(schema: unknown): unknown {
 	if (s.type === "object") {
 		const props = s.properties as Record<string, unknown> | undefined
 		const keys = props ? Object.keys(props) : []
-		const existing = (s.required as string[] | undefined) ?? []
-		const patchedProps = props
-			? Object.fromEntries(Object.entries(props).map(([k, v]) => [k, patchObjectSchemaRequired(v)]))
-			: props
-		return {
-			...s,
-			...(patchedProps ? { properties: patchedProps } : {}),
-			...(keys.length > 0 && existing.length === 0 ? { required: [keys[0]] } : {}),
+		// No properties (absent or empty): strict_tools=true rejects object schemas without
+		// at least one required field. For no-parameter tools, {} is the form Cohere accepts.
+		if (keys.length === 0) {
+			return {}
 		}
+		const existing = (s.required as string[] | undefined) ?? []
+		const patchedProps = Object.fromEntries(
+			Object.entries(props!).map(([k, v]) => [k, patchObjectSchemaRequired(v)])
+		)
+		return stripUnsupportedConstraints({
+			...s,
+			properties: patchedProps,
+			...(existing.length === 0 ? { required: [keys[0]] } : {}),
+		})
 	}
 	if (s.items) {
-		return { ...s, items: patchObjectSchemaRequired(s.items) }
+		return stripUnsupportedConstraints({ ...s, items: patchObjectSchemaRequired(s.items) })
 	}
-	return s
+	return stripUnsupportedConstraints(s)
 }
 
 /**
