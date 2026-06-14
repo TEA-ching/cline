@@ -4,6 +4,10 @@
  *
  * export-code-for-llm.ts — Enhanced LLM context exporter for @sctg/sdk
  *
+ * This script exports code and documentation from the SDK in a format optimized for LLM consumption.
+ * It generates a comprehensive markdown file with structured information about the codebase,
+ * making it easier for AI models to understand and work with the SDK.
+ *
  * Improvements over v1:
  *  - Structured YAML front-matter for LLM system context
  *  - Architecture overview section (stack, conventions, key patterns)
@@ -21,6 +25,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { transformSdkReferences } from "./transform-sdk-references.js";
 // ─── CLI flags ────────────────────────────────────────────────────────────────
+/**
+ * Parse command line arguments to configure the export behavior.
+ * Supports various options for customizing the output format and content.
+ */
 const args = process.argv.slice(2);
 if (args.includes("--help") || args.includes("-h")) {
     console.log(`USAGE: npx tsx scripts/export-code-for-llm.ts [options] [output-file]
@@ -41,8 +49,12 @@ const maxTokens     = maxTokensArg ? parseInt(maxTokensArg.split("=")[1]) : Infi
 const withIndex     = !args.includes("--no-index");
 const verbose       = args.includes("--verbose");
 
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+/**
+ * Map file extensions to language identifiers for markdown code blocks
+ * @param ext - File extension (e.g., ".ts", ".js")
+ * @returns Language identifier for markdown code blocks
+ */
 function languageForExt(ext: string): string {
     const map: Record<string, string> = {
         ".ts": "typescript", ".tsx": "typescript",
@@ -52,21 +64,37 @@ function languageForExt(ext: string): string {
     return map[ext] ?? "";
 }
 
-/** Rough token estimator: ~1 token per 4 chars (GPT-4 heuristic) */
+/**
+ * Estimate the number of tokens in a text string
+ * Uses a rough heuristic of 1 token per 4 characters (GPT-4 approximation)
+ * @param text - Text to estimate tokens for
+ * @returns Estimated token count
+ */
 function estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);
 }
 
-/** Strip single-line and block comments + consecutive blank lines */
+/**
+ * Remove comments and blank lines from source code to reduce token count
+ * Used for the --slim mode to create more compact output
+ * @param src - Source code content
+ * @param ext - File extension
+ * @returns Cleaned source code without comments and excessive whitespace
+ */
 function slimify(src: string, ext: string): string {
     if (ext === ".sql") return src;
     return src
-        .replace(/\/\/.*$/gm, "")
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/^\s*[\r\n]/gm, "");
+        .replace(/\/\/.*$/gm, "")          // Remove single-line comments
+        .replace(/\/\*[\s\S]*?\*\//g, "")  // Remove block comments
+        .replace(/^\s*[\r\n]/gm, "");     // Remove blank lines
 }
 
-/** Extract named exports from a TS/TSX file */
+/**
+ * Extract named exports from TypeScript/JavaScript files
+ * Finds all export statements and returns the exported identifiers
+ * @param src - Source code content
+ * @returns Array of exported identifiers
+ */
 function extractExports(src: string): string[] {
     const re =
         /export\s+(?:default\s+)?(?:async\s+)?(?:function|class|const|let|var|type|interface|enum)\s+(\w+)/g;
@@ -76,7 +104,12 @@ function extractExports(src: string): string[] {
     return [...new Set(found)];
 }
 
-/** Build ASCII tree from relative paths */
+/**
+ * Build an ASCII tree representation of the project structure
+ * Creates a visual hierarchy of files and directories
+ * @param paths - Array of file paths
+ * @returns Array of strings representing the ASCII tree
+ */
 function buildTree(paths: string[]): string[] {
     const root = new Map<string, Map<string, any>>();
     for (const p of paths) {
@@ -107,6 +140,10 @@ function buildTree(paths: string[]): string[] {
 }
 
 // ─── Architecture preamble ────────────────────────────────────────────────────
+/**
+ * Predefined architecture overview that gets included in the generated documentation
+ * Provides context about the SDK's purpose, architecture, and key components
+ */
 const ARCHITECTURE_PREAMBLE = `
 ## Architecture overview
 
@@ -118,9 +155,18 @@ const ARCHITECTURE_PREAMBLE = `
 `.trim();
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
+/**
+ * Main execution function that orchestrates the entire export process:
+ * 1. Discovers and reads source files
+ * 2. Processes and categorizes files (code vs config)
+ * 3. Generates markdown documentation with metadata
+ * 4. Writes output files
+ * 5. Provides token usage statistics
+ */
 async function main() {
     const root = process.cwd();
 
+    // Try to read README content for inclusion in output
     let readmeContent = "";
     try {
         readmeContent = await fs.readFile(path.join(root, "README.md"), "utf8");
@@ -128,6 +174,7 @@ async function main() {
         // ignore
     }
 
+    // Define file patterns to include in the export
     const patterns = [
         "packages/**/*.{ts,tsx,js,jsx,json}",
     ];
@@ -136,17 +183,22 @@ async function main() {
         "**/node_modules/**", "**/dist/**", "**/.next/**", "**/*.d.ts",
     ];
 
+    // Find all matching files in the project
     const files = await fg(patterns, { cwd: root, absolute: true, onlyFiles: true, ignore });
 
+    // Define types for different file categories
     type CodeFile = {
-        rel: string; content: string; ext: string;
-        exports: string[];
+        rel: string;       // Relative path
+        content: string;   // File content
+        ext: string;       // File extension
+        exports: string[]; // Exported identifiers
     };
     type ConfigFile = { rel: string; content: string };
 
     const codeFiles:   CodeFile[]   = [];
     const configFiles: ConfigFile[] = [];
 
+    // Process each file and categorize it
     for (const abs of files) {
         const rel = path.relative(root, abs);
         const ext = path.extname(rel).toLowerCase();
@@ -155,6 +207,7 @@ async function main() {
         if (ext === ".json") {
             if (rel.endsWith("package.json")) {
                 try {
+                    // For package.json files, trim to essential fields only
                     const pkg = JSON.parse(raw);
                     const trimmed = {
                         name:            pkg.name,
@@ -173,6 +226,7 @@ async function main() {
                 configFiles.push({ rel, content: raw });
             }
         } else {
+            // For code files, apply slim mode if requested and extract exports
             const content = slim ? slimify(raw, ext) : raw;
             codeFiles.push({
                 rel, content, ext,
@@ -181,6 +235,7 @@ async function main() {
         }
     }
 
+    // Sort files alphabetically for consistent output
     codeFiles.sort((a, b)   => a.rel.localeCompare(b.rel));
     configFiles.sort((a, b) => a.rel.localeCompare(b.rel));
 
@@ -192,8 +247,8 @@ async function main() {
     const now = new Date().toISOString().slice(0, 10);
     let md = "";
 
-    // YAML front-matter
-    md += `---\n`;
+    // Generate YAML front-matter with metadata about the export
+    md += "---\n";
     md += `title: "Backport-agent an ai assistant for backporting"\n`;
     md += `description: "An ai assistant for backporting code changes from upstream repositories"\n`;
     md += `framework: backport-agent\n`;
@@ -201,22 +256,24 @@ async function main() {
     md += `generated: "${now}"\n`;
     md += `slim_mode: ${slim}\n`;
     md += `files_total: ${allPaths.length}\n`;
-    md += `---\n\n`;
+    md += "---\n\n";
 
+    // Include README content if available
     if (readmeContent) {
         md += readmeContent.trim() + "\n\n---\n\n";
     }
 
+    // Add architecture overview
     md += ARCHITECTURE_PREAMBLE + "\n\n---\n\n";
 
+    // Generate and include project structure tree
     const treeLines = buildTree(allPaths);
     if (treeLines.length) {
         md += "## Project structure\n\n";
         md += "```\n" + treeLines.join("\n") + "\n```\n\n";
     }
 
-
-    // Source files with per-file metadata
+    // Process and include source code files with metadata
     if (codeFiles.length) {
         md += "## Source code\n\n";
         let tokenCount = estimateTokens(md);
@@ -225,14 +282,17 @@ async function main() {
             const lang = languageForExt(file.ext);
             let section = `### \`${file.rel}\`\n\n`;
 
+            // Add metadata about exports
             const metaParts: string[] = [];
             if (file.exports.length)
                 metaParts.push(`**Exports:** ${file.exports.join(", ")}`);
             if (metaParts.length) section += metaParts.join("  \n") + "\n\n";
 
+            // Add code block with proper language syntax highlighting
             section += "```" + lang + "\n" + file.content +
                 (file.content.endsWith("\n") ? "" : "\n") + "```\n\n";
 
+            // Check token budget and omit content if necessary
             const sectionTokens = estimateTokens(section);
             if (tokenCount + sectionTokens > maxTokens) {
                 section = `### \`${file.rel}\`\n\n> _Omitted: token budget reached (--max-tokens=${maxTokens})._\n\n`;
@@ -242,7 +302,7 @@ async function main() {
         }
     }
 
-    // Config files
+    // Process and include configuration files
     if (configFiles.length) {
         md += "## Configuration\n\n";
         for (const f of configFiles) {
@@ -251,26 +311,26 @@ async function main() {
         }
     }
 
-
+    // Write the main markdown output file
     await fs.writeFile(outFile, transformSdkReferences(md), "utf8");
     const totalTokens = estimateTokens(md);
     console.log(
         `Exported ${allPaths.length} files → ${outFile}  (~${totalTokens.toLocaleString()} tokens${slim ? ", slim mode" : ""})`
     );
 
+    // Generate companion index file if requested
     if (withIndex) {
-
         const indexFile = path.join(path.dirname(outFile), "llm.txt");
         let idx = `@sctg/sdk — source index (${now})\n`;
         idx += `Stack: @sctg/sdk with name @sctg/cline-sdk\n\n`;
         idx += `FILES\n`;
         for (const p of allPaths) idx += `  ${p}\n`;
 
-
         await fs.writeFile(indexFile, idx, "utf8");
         console.log(`Index written → ${indexFile}`);
     }
 
+    // Show detailed token breakdown if verbose mode is enabled
     if (verbose) {
         console.log(`\nToken breakdown:`);
         console.log(`  README:       ~${estimateTokens(readmeContent).toLocaleString()}`);

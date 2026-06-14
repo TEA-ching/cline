@@ -20,7 +20,9 @@ export const config = createVariant(ModelFamily.NATIVE_COHERE)
 		if (!context.enableNativeToolCalls) {
 			return false
 		}
-		return context.providerInfo.providerId === "cohere"
+		// Match direct cohere provider or keypoollive with a cohere model (id = "cohere/<model>")
+		return context.providerInfo.providerId === "cohere" ||
+			context.providerInfo.model.id.toLowerCase().startsWith("cohere/")
 	})
 	.template(TEMPLATE_OVERRIDES.BASE)
 	.components(

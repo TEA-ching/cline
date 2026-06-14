@@ -24,6 +24,7 @@ export interface VaultModel {
 	usage?: "chat" | "embedding";
 	supportsImages?: boolean;
 	supportsPromptCache?: boolean;
+	supportsTools?: boolean;
 	inputPrice?: number;
 	outputPrice?: number;
 	defaultDimensions?: number;
@@ -121,6 +122,7 @@ export interface AiModel {
 	usage?: "chat" | "embedding";
 	supportsImages?: boolean;
 	supportsPromptCache?: boolean;
+	supportsTools?: boolean;
 	inputPrice?: number;
 	outputPrice?: number;
 	defaultDimensions?: number;

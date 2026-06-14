@@ -1,7 +1,7 @@
 // KeypoolLive — API Handler: delegates to ephemeral Anthropic/OpenAI/Gemini handlers
 // © 2026 Ronan LE MEILLAT — MIT License
 
-import type { ModelInfo } from "@shared/api";
+import type { OpenAiCompatibleModelInfo } from "@shared/api";
 import { getCachedVaultModel, loadAiVault } from "@/core/keypoollive/AiVault";
 import { KeypoolLog } from "@/core/keypoollive/KeypoolLog";
 import { KeypoolUsageDb } from "@/core/keypoollive/KeypoolUsageDb";
@@ -397,7 +397,7 @@ export class KeypoolLiveHandler implements ApiHandler {
 		const vaultModel =
 			this.resolvedConfig?.model ??
 			getCachedVaultModel(vaultProviderName, vaultModelId);
-		const modelInfo: ModelInfo = {
+		const modelInfo: OpenAiCompatibleModelInfo = {
 			contextWindow: vaultModel?.contextWindow ?? 128000,
 			maxTokens:
 				vaultModel?.maxOutputTokens ??
@@ -406,6 +406,7 @@ export class KeypoolLiveHandler implements ApiHandler {
 					: undefined),
 			supportsImages: vaultModel?.supportsImages ?? false,
 			supportsPromptCache: vaultModel?.supportsPromptCache ?? false,
+			supportsTools: vaultModel?.supportsTools ?? false,
 			inputPrice: vaultModel?.inputPrice,
 			outputPrice: vaultModel?.outputPrice,
 		};

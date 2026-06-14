@@ -171,6 +171,7 @@ function transformAiConfigToVaultConfig(aiConfig: AiConfig): AiVaultConfig {
 				usage: m.usage,
 				supportsImages: m.supportsImages,
 				supportsPromptCache: m.supportsPromptCache,
+				supportsTools: m.supportsTools,
 				inputPrice: m.inputPrice,
 				outputPrice: m.outputPrice,
 				defaultDimensions: m.defaultDimensions,
@@ -263,3 +264,4 @@ export function getCachedVaultModel(
 		(modelId ? chatModels.find((m) => m.id === modelId) : chatModels[0]) ?? null
 	);
 }
+
