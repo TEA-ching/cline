@@ -20,6 +20,7 @@
 
 import type {
 	AgentModelEvent,
+	GatewayModelCapability,
 	GatewayProvider,
 	GatewayProviderContext,
 	GatewayProviderFactory,
@@ -87,6 +88,7 @@ interface VaultModel {
 	usage?: "chat" | "embedding";
 	supportsImages?: boolean;
 	supportsPromptCache?: boolean;
+	supportsTools?: boolean;
 	inputPrice?: number;
 	outputPrice?: number;
 }
@@ -132,6 +134,7 @@ interface RawAiModel {
 	usage?: "chat" | "embedding";
 	supportsImages?: boolean;
 	supportsPromptCache?: boolean;
+	supportsTools?: boolean;
 	inputPrice?: number;
 	outputPrice?: number;
 }
@@ -1277,6 +1280,16 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 				modelId,
 			};
 
+			// Derive capabilities from vault model flags, overlaid on the context model's caps
+			let resolvedCapabilities = context.model.capabilities;
+			if (resolvedVaultModel) {
+				const caps = new Set<GatewayModelCapability>(context.model.capabilities ?? []);
+				(resolvedVaultModel.supportsImages ?? false) ? caps.add("images") : caps.delete("images");
+				(resolvedVaultModel.supportsPromptCache ?? false) ? caps.add("prompt-cache") : caps.delete("prompt-cache");
+				(resolvedVaultModel.supportsTools ?? false) ? caps.add("tools") : caps.delete("tools");
+				resolvedCapabilities = Array.from(caps);
+			}
+
 			// Create sub-context with resolved API key, endpoint and vault model metadata
 			const subContext: GatewayProviderContext = {
 				...context,
@@ -1288,6 +1301,7 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 					maxOutputTokens:
 						resolvedVaultModel?.maxOutputTokens ??
 						context.model.maxOutputTokens,
+					capabilities: resolvedCapabilities,
 				},
 				config: {
 					...context.config,
