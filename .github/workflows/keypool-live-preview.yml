@@ -512,21 +512,22 @@ jobs:
 
           for PLATFORM in linux/arm64 linux/armhf linux/amd64; do
             DOCKER_TAG="preview-${DATETIME_SAFE}"
+            # Complete image name with tag
+            if [ "${{ secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}" = "true" ]; then
+              IMAGE_NAME="sctg/clinepool-download:${DOCKER_TAG}"
+              docker pull ${IMAGE_NAME}
+            else
+              exit 1
+            fi
+
             FAMILY=linux
             EXT=""
             ARCH=${PLATFORM_TO_ARCH[$PLATFORM]}
             ARTIFACT_NAME="clinepool-download_${FAMILY}_${ARCH}_${VERSION}${EXT}"
             PLATFORM_SAFE=$(echo "$PLATFORM" | tr '/' '-')
 
-            if [ "${{ secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}" = "true" ]; then
-              docker pull sctg/clinepool-download:${DOCKER_TAG}
-            else
-              # Build locally if Docker Hub credentials are not available
-              docker build --platform $PLATFORM -t clinepool-download:${DOCKER_TAG} apps/clinepool-download/.
-            fi
-
             CONTAINER_NAME="extract-$PLATFORM_SAFE"
-            docker create --platform $PLATFORM --name $CONTAINER_NAME clinepool-download:${DOCKER_TAG}
+            docker create --platform $PLATFORM --name $CONTAINER_NAME ${IMAGE_NAME}
             mkdir -p /tmp/extracted
             docker cp $CONTAINER_NAME:/usr/local/bin/clinepool-download /tmp/extracted/${ARTIFACT_NAME}
             if [ ! -f "/tmp/extracted/${ARTIFACT_NAME}" ]; then
