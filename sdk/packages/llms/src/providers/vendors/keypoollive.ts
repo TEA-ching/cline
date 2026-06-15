@@ -29,24 +29,83 @@ import type {
 } from "@cline/shared";
 import type { CrawlerKeyResolver, ResolvedCrawlerConfig } from "@cline/shared";
 
+/**
+ * KeypoolLive is a sophisticated API key management system that provides:
+ * 1. Automatic key rotation from encrypted vaults
+ * 2. Intelligent key selection based on usage patterns and health status
+ * 3. Failure detection and cooldown mechanisms
+ * 4. Usage tracking and reporting
+ * 5. Support for multiple AI protocols and crawler services
+ *
+ * The system is designed to maximize API availability and minimize costs by:
+ * - Distributing requests across multiple keys
+ * - Automatically detecting and rotating failed keys
+ * - Tracking usage statistics to balance load
+ * - Persisting state between sessions
+ *
+ * Maintenance notes for external contributors:
+ * - This module is intentionally stateful. The maps below cache key health and
+ *   round-robin positions in memory, while a small JSON state file preserves
+ *   those decisions across process restarts.
+ * - The vault is the source of truth for provider/model/key metadata. The local
+ *   state file only stores operational decisions such as failures, cooldowns,
+ *   and round-robin indexes.
+ * - Keep secret material out of logs. The helpers in this file expose only
+ *   key suffixes (the last 8 characters) through logs, events, and persisted
+ *   state.
+ * - When changing the rotation strategy, update both `selectNextKey` and the
+ *   explanatory comments in the provider factory so the documented behavior
+ *   matches the implementation.
+ */
+
 // ─── Vault types ─────────────────────────────────────────────────────────────
+// This section describes the encrypted vault schema. The vault is produced by
+// the Keypool tooling and consumed by this provider. It is deliberately kept
+// separate from Cline's normal provider configuration because it can contain
+// multiple providers, multiple keys per provider, model metadata, and optional
+// crawler configurations.
+//
+// The `Raw*` interfaces mirror the JSON structure stored inside the encrypted
+// vault. The `Vault*` interfaces represent the normalized shape used internally
+// after decryption, because the raw file may omit optional metadata that should
+// receive safe defaults at runtime.
 /**
  * Type definitions for the AI vault configuration system.
  * These types define the structure of the encrypted vault and its components.
+ *
+ * The vault system supports:
+ * - Multiple AI service providers (OpenAI, Anthropic, Gemini, etc.)
+ * - Multiple crawler services (Firecrawl, Exa, ScrapeGraphAI)
+ * - Key tiering for prioritization (expired, free, paid, premium, unlimited)
+ * - Model metadata including capabilities and pricing
+ * - Owner tracking for accountability
  */
 
 /**
- * Supported AI protocols that the vault can handle
+ * Supported AI protocols that the vault can handle.
+ *
+ * These values map to the protocol-specific provider factories imported in
+ * `createSubProvider`. Unknown protocols fall back to the OpenAI-compatible
+ * provider, which is useful for OpenAI-compatible gateways that are not listed
+ * explicitly in the vault.
  */
 type AiProtocol = "openai" | "anthropic" | "gemini" | "mistral" | "cohere";
 
 /**
- * Supported crawler protocols that the vault can handle
+ * Supported crawler protocols that the vault can handle.
+ *
+ * Crawlers are configured separately from AI providers because they use their
+ * own endpoints and key pools. The resolver in this file implements the shared
+ * `CrawlerKeyResolver` interface so other parts of the application can request
+ * a healthy crawler key without knowing vault internals.
  */
 type CrawlerProtocol = "firecrawl" | "exa" | "scrapegraphai";
 
 /**
- * Represents a crawler API key in the vault
+ * Represents a crawler API key in the vault.
+ *
+ * `type` is optional in the raw vault and normalized later. Expired keys are
+ * kept in the vault for auditability but are skipped by the selection logic.
  */
 interface CrawlerKey {
 	key: string;
@@ -55,7 +114,11 @@ interface CrawlerKey {
 }
 
 /**
- * Represents a crawler service configuration in the vault
+ * Represents a crawler service configuration in the vault.
+ *
+ * `endpoint` is the base endpoint consumed by the crawler integration. `keys`
+ * is the pool that this module rotates through using the same health/cooldown
+ * concepts as AI API keys.
  */
 interface VaultCrawler {
 	protocol: CrawlerProtocol;
@@ -64,12 +127,21 @@ interface VaultCrawler {
 }
 
 /**
- * Key tier classification for prioritization and usage tracking
+ * Key tier classification for prioritization and usage tracking.
+ *
+ * The current selector does not directly sort by tier, but the tier is still
+ * useful for operators and future selection strategies. For example, a future
+ * version could prefer `premium` keys for high-priority models while reserving
+ * `free` keys for low-cost experimentation.
  */
 type AiKeyTier = "expired" | "free" | "paid" | "premium" | "unlimited";
 
 /**
- * Represents an API key stored in the vault with metadata
+ * Represents an API key stored in the vault with metadata.
+ *
+ * `owner` is intentionally normalized to a non-empty string so logs and events
+ * can always report "unknown" rather than `undefined`. `key` is the actual
+ * secret and must never be persisted or logged by this module.
  */
 interface VaultKey {
 	key: string;
@@ -78,7 +150,12 @@ interface VaultKey {
 }
 
 /**
- * Represents an AI model configuration in the vault
+ * Represents an AI model configuration in the vault.
+ *
+ * Vault model metadata is used to override the model advertised by the parent
+ * gateway context. This lets the vault describe provider-specific capabilities
+ * such as image support, prompt-cache support, tool support, context window,
+ * and max output tokens.
  */
 interface VaultModel {
 	id: string;
@@ -94,7 +171,12 @@ interface VaultModel {
 }
 
 /**
- * Represents an AI service provider configuration in the vault
+ * Represents an AI service provider configuration in the vault.
+ *
+ * A provider groups keys and models that share the same protocol and optional
+ * endpoint. The provider name is also the prefix used in `modelId` values, for
+ * example `mistral/devstral-latest` selects the `mistral` vault provider and
+ * the `devstral-latest` model inside it.
  */
 interface VaultProvider {
 	protocol: AiProtocol;
@@ -105,7 +187,10 @@ interface VaultProvider {
 }
 
 /**
- * Top-level vault configuration containing all providers
+ * Top-level vault configuration containing all providers.
+ *
+ * The version field is checked by callers that need schema compatibility. At
+ * the time of writing only version `1` is supported.
  */
 interface AiVaultConfig {
 	version: number;
@@ -115,7 +200,10 @@ interface AiVaultConfig {
 
 // Internal raw format from the JSON file
 /**
- * Raw key data as stored in the encrypted JSON file (before transformation)
+ * Raw key data as stored in the encrypted JSON file (before transformation).
+ *
+ * This mirrors the vault JSON exactly. Optional fields are filled by
+ * `transformRawConfig` so the rest of the module can assume stable defaults.
  */
 interface RawAiKey {
 	key: string;
@@ -124,7 +212,10 @@ interface RawAiKey {
 }
 
 /**
- * Raw model data as stored in the encrypted JSON file
+ * Raw model data as stored in the encrypted JSON file.
+ *
+ * Model metadata is copied as-is because missing optional fields remain
+ * optional after transformation.
  */
 interface RawAiModel {
 	id: string;
@@ -140,7 +231,7 @@ interface RawAiModel {
 }
 
 /**
- * Raw provider data as stored in the encrypted JSON file
+ * Raw provider data as stored in the encrypted JSON file.
  */
 interface RawAiProvider {
 	protocol: AiProtocol;
@@ -151,7 +242,11 @@ interface RawAiProvider {
 }
 
 /**
- * Raw vault configuration as stored in the encrypted JSON file
+ * Raw vault configuration as stored in the encrypted JSON file.
+ *
+ * The crawler shape is written inline here because it is only used during the
+ * raw-to-normalized transformation. Do not import this type into runtime code;
+ * prefer `AiVaultConfig` after decryption.
  */
 interface RawAiConfig {
 	version: number;
@@ -174,10 +269,23 @@ interface RawAiConfig {
 /**
  * Vault decryption and caching system.
  * Handles loading, decrypting, and caching the AI vault configuration.
+ *
+ * Security properties:
+ * - The vault is encrypted with AES-256-CBC using the OpenSSL-compatible
+ *   `Salted__` container format.
+ * - The password comes from `KEYPOOL_LIVE_SECRET` and is never stored by this
+ *   module.
+ * - The decrypted config is cached only in memory for a short TTL to avoid
+ *   repeated decryption and network/file reads.
+ * - The cache can be invalidated after a key failure so an operator can update
+ *   the vault and have the next request observe the new key set.
  */
 
 /**
- * Cache structure for vault configurations to avoid repeated decryption
+ * Cache structure for vault configurations to avoid repeated decryption.
+ *
+ * The cache stores the transformed config rather than the raw JSON because the
+ * rest of the module expects normalized defaults such as `owner: "unknown"`.
  */
 interface VaultCache {
 	config: AiVaultConfig;
@@ -185,12 +293,20 @@ interface VaultCache {
 }
 
 /**
- * Cache TTL (Time To Live) in milliseconds
+ * Cache TTL (Time To Live) in milliseconds.
+ *
+ * Five minutes is a compromise between freshness and operational resilience:
+ * vault changes become visible quickly, but a temporary network or file read
+ * failure does not immediately break every request if a recent config exists.
  */
 const VAULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
- * Current vault cache instance
+ * Current vault cache instance.
+ *
+ * This is module-level state because the provider factory creates short-lived
+ * provider objects per request. A single process-wide cache avoids decrypting
+ * the same vault repeatedly while a task is running.
  */
 let vaultCache: VaultCache | null = null;
 
@@ -206,22 +322,34 @@ async function decryptAiConfig(
 	base64Ciphertext: string,
 	password: string,
 ): Promise<RawAiConfig> {
-	// Convert base64 to Uint8Array
+	// Convert base64 to Uint8Array.
+	// The vault file stores the OpenSSL-compatible binary container as base64
+	// text so it can be transported over HTTP or stored in a text file.
 	const raw = Uint8Array.from(atob(base64Ciphertext.trim()), (c) =>
 		c.charCodeAt(0),
 	);
 
-	// Validate vault format by checking for OpenSSL "Salted__" magic header
+	// Validate vault format by checking for OpenSSL "Salted__" magic header.
+	// This is a cheap integrity/schema check before attempting key derivation.
+	// It does not prove the password is correct; a wrong password will fail
+	// later during AES-CBC decryption.
 	const magic = String.fromCharCode(...raw.slice(0, 8));
 	if (magic !== "Salted__") {
 		throw new Error("Invalid vault format: missing 'Salted__' magic header");
 	}
 
-	// Extract salt and ciphertext from the raw data
+	// Extract salt and ciphertext from the raw data.
+	// OpenSSL's salted format is: 8-byte magic header, 8-byte salt, then
+	// ciphertext. The salt is required for PBKDF2 so the same password can
+	// derive different bytes for different vault files.
 	const salt = raw.slice(8, 16);
 	const ciphertext = raw.slice(16);
 
-	// Derive encryption key using PBKDF2 with SHA-256
+	// Derive encryption key using PBKDF2 with SHA-256.
+	// OpenSSL's EVP_BytesToKey historically derives both key and IV from the
+	// password and salt. This implementation follows the current Keypool vault
+	// format by deriving 48 bytes total: 32 bytes for AES-256 plus 16 bytes for
+	// the AES-CBC initialization vector.
 	const enc = new TextEncoder();
 	const keyMaterial = await crypto.subtle.importKey(
 		"raw",
@@ -236,11 +364,15 @@ async function decryptAiConfig(
 		(32 + 16) * 8, // 32 bytes for key + 16 bytes for IV
 	);
 
-	// Extract key and initialization vector
+	// Extract key and initialization vector.
+	// The first 32 bytes are the AES key. The next 16 bytes are the CBC IV.
 	const keyBytes = new Uint8Array(derived, 0, 32);
 	const iv = new Uint8Array(derived, 32, 16);
 
-	// Import key and decrypt the ciphertext
+	// Import key and decrypt the ciphertext.
+	// AES-CBC decryption fails if the password, salt, or ciphertext is wrong.
+	// Let that error surface to `loadAiVault`, where it becomes a user-facing
+	// configuration error.
 	const cryptoKey = await crypto.subtle.importKey(
 		"raw",
 		keyBytes,
@@ -254,7 +386,9 @@ async function decryptAiConfig(
 		ciphertext,
 	);
 
-	// Parse and return the decrypted JSON configuration
+	// Parse and return the decrypted JSON configuration.
+	// The result is still the raw vault shape; callers should pass it through
+	// `transformRawConfig` before using it.
 	return JSON.parse(new TextDecoder().decode(plaintext)) as RawAiConfig;
 }
 
@@ -271,7 +405,10 @@ function transformRawConfig(raw: RawAiConfig): AiVaultConfig {
 		providers: {},
 	};
 
-	// Transform providers
+	// Transform providers.
+	// The vault JSON makes `owner` and `type` optional to keep vault files
+	// concise. This module needs stable values for logging and selection, so it
+	// normalizes them here instead of adding null checks throughout the code.
 	for (const [name, p] of Object.entries(raw.providers)) {
 		vault.providers[name] = {
 			protocol: p.protocol,
@@ -286,7 +423,11 @@ function transformRawConfig(raw: RawAiConfig): AiVaultConfig {
 		};
 	}
 
-	// Transform crawlers if present in the raw config
+	// Transform crawlers if present in the raw config.
+	// Crawlers are optional and are only enabled when the vault contains a
+	// `crawlers` object. This branch uses `any` because the raw schema is
+	// intentionally minimal; after transformation, callers should rely on the
+	// strongly typed `VaultCrawler` shape.
 	if ("crawlers" in raw) {
 		const rawCrawlers = raw as RawAiConfig & { crawlers?: Record<string, any> };
 		if (rawCrawlers.crawlers) {
@@ -316,11 +457,17 @@ function transformRawConfig(raw: RawAiConfig): AiVaultConfig {
  * @throws Error if fetch fails or response is not OK
  */
 async function fetchVaultText(url: string): Promise<string> {
-	// Support file:// for local development
+	// Support file:// for local development and offline deployments.
+	// This lets operators store the encrypted vault next to their config or on
+	// a mounted volume without exposing it over HTTP.
 	if (url.startsWith("file://")) {
 		const fs = await import("node:fs/promises");
 		return fs.readFile(new URL(url), "utf8");
 	}
+
+	// Fetch remote vaults with a short timeout so a stalled provider does not
+	// block the entire request indefinitely. Remote vaults are useful when keys
+	// are managed centrally and need to be rotated without updating each host.
 	const res = await globalThis.fetch(url, {
 		signal: AbortSignal.timeout(10_000),
 	});
@@ -339,29 +486,43 @@ async function fetchVaultText(url: string): Promise<string> {
  * @throws Error if environment variables are missing or decryption fails
  */
 async function loadAiVault(vaultUrl: string): Promise<AiVaultConfig> {
-	// Return cached config if still valid
+	// Return cached config if still valid.
+	// The cache is intentionally process-local and time-based. Operators can
+	// force a refresh by calling `clearVaultCache`, which is done after key
+	// failures so vault updates become visible quickly.
 	if (vaultCache && Date.now() - vaultCache.fetchedAt < VAULT_CACHE_TTL_MS) {
 		return vaultCache.config;
 	}
 
-	// Validate required environment variable
+	// Validate required environment variable.
+	// `KEYPOOL_LIVE_SECRET` is the only secret read directly by this module.
 	const secret = process.env.KEYPOOL_LIVE_SECRET;
 	if (!secret) {
 		throw new Error("KEYPOOL_LIVE_SECRET environment variable is not set");
 	}
 
-	// Fetch, decrypt, and transform the vault
+	// Fetch, decrypt, and transform the vault.
+	// These steps are intentionally kept together so a failed fetch, bad
+	// password, or malformed vault fails fast before any provider key is used.
 	const ciphertext = await fetchVaultText(vaultUrl);
 	const raw = await decryptAiConfig(ciphertext, secret);
 	const config = transformRawConfig(raw);
 
-	// Update cache and return
+	// Update cache and return.
+	// The timestamp is based on wall-clock time, which is sufficient for a
+	// local TTL. If the process clock changes dramatically, the cache may be
+	// refreshed earlier or later, but this does not expose key material.
 	vaultCache = { config, fetchedAt: Date.now() };
 	return config;
 }
 
 /**
  * Clears the vault cache, forcing the next load to fetch and decrypt fresh data.
+ *
+ * This is a conservative invalidation helper. It does not mutate any keys or
+ * state; it only ensures that the next auto-mode request reads the latest vault
+ * contents. The function is called after key-related failures because a vault
+ * update may have already disabled or replaced the failing key.
  */
 function clearVaultCache(): void {
 	vaultCache = null;
@@ -374,26 +535,48 @@ function clearVaultCache(): void {
  */
 
 // ---- Crawler-specific state tracking ----
+// Crawler keys use the same health model as AI keys but do not use the 24h
+// usage-stats optimizer. Crawlers usually do not emit token usage through the
+// gateway model stream, so round-robin plus cooldown is the simplest reliable
+// strategy.
 
 /**
- * Tracks the current round-robin index for each crawler
+ * Tracks the current round-robin index for each crawler.
+ *
+ * The map key is the crawler name from the vault. The stored index is advanced
+ * modulo the currently usable pool size, which means a failed key does not
+ * permanently desynchronize the rotation.
  */
 const crawlerRoundRobinIndexes = new Map<string, number>();
 
 /**
- * Tracks health status for each crawler key
+ * Tracks health status for each crawler key.
+ *
+ * The internal map key is generated by `getCrawlerKeyId`, which includes only
+ * the key suffix. The full key is kept in the value because it is needed when
+ * persisting state and when checking cooldown expiration.
  */
 const crawlerKeyStatuses = new Map<string, KeyStatus>();
 
 /**
- * Generates a unique identifier for a crawler key
+ * Generates a unique identifier for a crawler key.
+ *
+ * The suffix is used instead of the full key to avoid accidentally persisting
+ * or logging complete secrets. Provider names are assumed to be non-secret
+ * configuration labels.
  */
 function getCrawlerKeyId(crawlerName: string, keyValue: string): string {
 	return `${crawlerName}:${keyValue.slice(-8)}`;
 }
 
 /**
- * Checks if a crawler key is currently usable
+ * Checks if a crawler key is currently usable.
+ *
+ * A key with no tracked status is considered usable. Once a key reaches
+ * `MAX_FAILURE_COUNT`, it enters cooldown and is skipped until
+ * `KEY_COOLDOWN_MS` has elapsed. When cooldown expires, the status is removed
+ * and the state file is scheduled for update so a future restart does not keep
+ * the key disabled.
  */
 function isCrawlerKeyUsable(crawlerName: string, keyValue: string): boolean {
 	const status = crawlerKeyStatuses.get(getCrawlerKeyId(crawlerName, keyValue));
@@ -414,7 +597,11 @@ function isCrawlerKeyUsable(crawlerName: string, keyValue: string): boolean {
 }
 
 /**
- * Marks a crawler key as failed
+ * Marks a crawler key as failed.
+ *
+ * Failures are cumulative. The first failures are recorded so a later failure
+ * can trigger cooldown, but the key remains eligible until the threshold is
+ * reached. This avoids removing a key for a single transient provider outage.
  */
 export function markCrawlerKeyAsFailed(
 	crawlerName: string,
@@ -434,7 +621,14 @@ export function markCrawlerKeyAsFailed(
 }
 
 /**
- * Selects the next crawler key to use
+ * Selects the next crawler key to use.
+ *
+ * Selection rules:
+ * 1. Remove keys marked as `expired`.
+ * 2. Prefer keys that are not currently in cooldown.
+ * 3. If every key is cooling down, fall back to round-robin across all
+ *    non-expired keys so the request can still be attempted.
+ * 4. Advance the crawler's round-robin index after selection.
  */
 function selectNextCrawlerKey(
 	crawlerName: string,
@@ -451,10 +645,15 @@ function selectNextCrawlerKey(
 	return pool[idx];
 }
 
-// ---- Implémentation de CrawlerKeyResolver ----
+// ---- CrawlerKeyResolver implementation ----
 
 /**
- * KeypoolCrawlerResolver - implements CrawlerKeyResolver for KeypoolLive
+ * KeypoolCrawlerResolver - implements CrawlerKeyResolver for KeypoolLive.
+ *
+ * This resolver is intentionally small: it loads the vault, iterates through
+ * configured crawlers, and returns the first crawler entry with a selectable
+ * key. The caller owns what to do with the returned key, while this resolver
+ * owns KeypoolLive-specific health tracking.
  */
 export class KeypoolCrawlerResolver implements CrawlerKeyResolver {
 	constructor(private readonly vaultUrl: string) {}
@@ -462,14 +661,19 @@ export class KeypoolCrawlerResolver implements CrawlerKeyResolver {
 	async resolve(): Promise<ResolvedCrawlerConfig | null> {
 		const vault = await loadAiVault(this.vaultUrl);
 
-		// Access crawlers in the vault
+		// Access crawlers in the vault.
+		// If the vault has no crawler section, this resolver cannot contribute a
+		// key and returns `null` instead of throwing. That lets other resolvers
+		// or fallback configuration be tried by the caller.
 		const crawlers = vault.crawlers;
 		if (!crawlers) return null;
 
 		const entries = Object.entries(crawlers);
 		if (!entries.length) return null;
 
-		// Find the first crawler with a usable key
+		// Find the first crawler with a usable key.
+		// The iteration order follows the vault JSON object order. Operators
+		// can influence priority by ordering crawler entries accordingly.
 		for (const [crawlerName, crawler] of entries) {
 			const key = selectNextCrawlerKey(crawlerName, crawler.keys);
 			if (!key) continue;
@@ -488,7 +692,10 @@ export class KeypoolCrawlerResolver implements CrawlerKeyResolver {
 }
 
 /**
- * Creates a CrawlerKeyResolver based on the KeypoolLive vault
+ * Creates a CrawlerKeyResolver based on the KeypoolLive vault.
+ *
+ * This factory keeps the public API small. Callers only need the vault URL and
+ * receive an object implementing the shared resolver interface.
  */
 export function createKeypoolCrawlerResolver(
 	vaultUrl: string,
@@ -497,7 +704,11 @@ export function createKeypoolCrawlerResolver(
 }
 
 /**
- * Tracks the health and usage status of individual API keys
+ * Tracks the health and usage status of individual API keys.
+ *
+ * This is the runtime representation. The `key` field stores the full secret in
+ * memory only so the module can compare cooldown expiration and persist the
+ * correct suffix. It is never serialized directly.
  */
 interface KeyStatus {
 	key: string;
@@ -505,6 +716,12 @@ interface KeyStatus {
 	failureCount: number; // Number of consecutive failures
 }
 
+/**
+ * Disk-safe representation of a key status.
+ *
+ * Unlike `KeyStatus`, this interface stores only the key suffix. This is the
+ * privacy boundary between runtime memory and the local state file.
+ */
 interface PersistedKeyStatus {
 	providerName: string;
 	keySuffix: string;
@@ -512,6 +729,13 @@ interface PersistedKeyStatus {
 	failureCount: number;
 }
 
+/**
+ * Disk-safe representation of the module's operational state.
+ *
+ * This file is not a secret store. It records selection hints and failure
+ * cooldowns so rotation decisions survive process restarts, but it must never
+ * contain full API keys.
+ */
 interface PersistedRoundRobinState {
 	version: 1;
 	roundRobinIndexes: Record<string, number>;
@@ -519,25 +743,41 @@ interface PersistedRoundRobinState {
 }
 
 /**
- * Cooldown period for failed keys (15 minutes)
+ * Cooldown period for failed keys (15 minutes).
+ *
+ * Cooldown is a circuit breaker, not a permanent ban. After three detected
+ * key-related failures, the key is skipped long enough for provider-side rate
+ * limits or temporary account issues to settle.
  */
 const KEY_COOLDOWN_MS = 15 * 60 * 1000;
 
 /**
- * Maximum allowed failures before a key enters cooldown
+ * Maximum allowed failures before a key enters cooldown.
+ *
+ * The threshold is intentionally low enough to protect availability, but high
+ * enough to avoid abandoning a key for a single transient error.
  */
 const MAX_FAILURE_COUNT = 3;
 
 /**
- * Tracks the current round-robin index for each provider
+ * Tracks the current round-robin index for each provider.
+ *
+ * This fallback index is used when all usable keys are cooling down. It is also
+ * persisted so a restarted process does not always start from the first key.
  */
 const roundRobinIndexes = new Map<string, number>();
 
 /**
- * Tracks health status for each key
+ * Tracks health status for each key.
+ *
+ * Keys are identified by provider name plus key suffix. The provider name
+ * prevents a key suffix collision from affecting the wrong vault provider.
  */
 const keyStatuses = new Map<string, KeyStatus>();
 
+// Persistence is lazy-loaded and serialized through a single promise chain.
+// Lazy loading avoids touching the filesystem on startup. The promise chain
+// prevents concurrent writes from interleaving and corrupting the JSON state.
 let persistentStateLoaded = false;
 let persistentStateWriteChain: Promise<void> = Promise.resolve();
 
@@ -569,11 +809,16 @@ function keyStatusIdFromSuffix(providerName: string, suffix: string): string {
 }
 
 async function getPersistentStatePath(): Promise<string> {
+	// Allow tests and advanced deployments to choose an explicit path.
+	// This is useful for hermetic tests, containers, or multi-tenant setups
+	// where the default home-directory location is not appropriate.
 	if (process.env[KEYPOOL_STATE_FILE_ENV]) {
 		return process.env[KEYPOOL_STATE_FILE_ENV] as string;
 	}
 
-	// Default to ~/.cline/data/keypoolliveState.json if not specified
+	// Default to ~/.cline/data/keypoolliveState.json if not specified.
+	// This keeps KeypoolLive operational state next to Cline's other local data
+	// without requiring a provider-specific config file.
 	const os = await import("node:os");
 	const path = await import("node:path");
 	const homeDir = os.homedir();
@@ -591,14 +836,19 @@ async function loadPersistentStateOnce(): Promise<void> {
 		const fs = await import("node:fs/promises");
 		const path = await import("node:path");
 
-		// Create the directory if it doesn't exist
+		// Create the directory if it doesn't exist.
+		// Persistence is best-effort, so filesystem errors are caught by the
+		// outer `try`. In-memory rotation still works if the file cannot be
+		// created.
 		await fs.mkdir(path.dirname(statePath), { recursive: true });
 
-		// Create an empty state file if it doesn't exist
+		// Create an empty state file if it doesn't exist.
+		// An empty file makes future writes deterministic and avoids repeated
+		// attempts to create the same file on every request.
 		try {
 			await fs.access(statePath);
 		} catch {
-			// File doesn't exist, create an empty one
+			// File doesn't exist, create an empty one.
 			await fs.writeFile(
 				statePath,
 				JSON.stringify(
@@ -613,7 +863,10 @@ async function loadPersistentStateOnce(): Promise<void> {
 			);
 		}
 
-		// Load existing state if available
+		// Load existing state if available.
+		// State is treated as advisory. If the file is missing, malformed, or
+		// has an unsupported version, the module simply starts with empty
+		// runtime maps.
 		try {
 			const raw = await fs.readFile(statePath, "utf8");
 			const parsed = JSON.parse(raw) as PersistedRoundRobinState;
@@ -641,6 +894,9 @@ async function loadPersistentStateOnce(): Promise<void> {
 				keyStatuses.set(
 					keyStatusIdFromSuffix(status.providerName, status.keySuffix),
 					{
+						// The persisted value is a suffix, not the full key. The
+						// runtime helper only needs the suffix for ID generation
+						// and for re-persisting the same suffix later.
 						key: status.keySuffix,
 						failureCount: Math.max(0, Math.trunc(status.failureCount)),
 						cooledDownAt:
@@ -659,6 +915,10 @@ async function loadPersistentStateOnce(): Promise<void> {
 }
 
 function persistStateSoon(): void {
+	// Schedule a serialized best-effort write.
+	// Multiple failures can happen quickly while streaming a request. Chaining
+	// writes through a single promise prevents two concurrent writes from
+	// reading/stale state and overwriting each other.
 	persistentStateWriteChain = persistentStateWriteChain
 		.then(async () => {
 			const statePath = await getPersistentStatePath();
@@ -667,6 +927,9 @@ function persistStateSoon(): void {
 
 			await fs.mkdir(path.dirname(statePath), { recursive: true });
 
+			// Convert runtime state into the disk-safe format.
+			// The internal map key is `providerName:keySuffix`; split it before
+			// writing so the file remains easy to inspect without full secrets.
 			const persisted: PersistedRoundRobinState = {
 				version: 1,
 				roundRobinIndexes: Object.fromEntries(roundRobinIndexes.entries()),
@@ -681,6 +944,10 @@ function persistStateSoon(): void {
 				}),
 			};
 
+			// Write through a temporary file and rename atomically.
+			// This avoids leaving a partially written JSON file if the process
+			// crashes during a write. The state is advisory, so write errors are
+			// swallowed and rotation continues in memory.
 			const tmpPath = `${statePath}.tmp`;
 			await fs.writeFile(tmpPath, `${JSON.stringify(persisted)}\n`, "utf8");
 			await fs.rename(tmpPath, statePath);
@@ -691,7 +958,11 @@ function persistStateSoon(): void {
 }
 
 /**
- * Checks if a key is currently usable (not in cooldown and below failure threshold)
+ * Checks if a key is currently usable (not in cooldown and below failure threshold).
+ *
+ * This function is the main health gate used by the key selector. It treats
+ * missing state as healthy, expires cooldowns lazily, and schedules a state
+ * write when a previously disabled key becomes usable again.
  *
  * @param providerName - Name of the vault provider
  * @param keyValue - API key string to check
@@ -701,13 +972,16 @@ function isKeyUsable(providerName: string, keyValue: string): boolean {
 	const status = keyStatuses.get(keyStatusId(providerName, keyValue));
 	if (!status) return true; // No status record means key is usable
 
-	// Check if key has exceeded failure threshold but cooldown has expired
+	// Check if key has exceeded failure threshold but cooldown has expired.
+	// Cooldown expiration is lazy: the key is re-enabled when selection checks
+	// it, not by a background timer. This keeps the module simple and avoids
+	// scheduling work for keys that may never be used again.
 	if (status.failureCount >= MAX_FAILURE_COUNT) {
 		if (
 			status.cooledDownAt &&
 			Date.now() - status.cooledDownAt >= KEY_COOLDOWN_MS
 		) {
-			// Cooldown expired, remove status and allow key to be used again
+			// Cooldown expired, remove status and allow key to be used again.
 			keyStatuses.delete(keyStatusId(providerName, keyValue));
 			persistStateSoon();
 			return true;
@@ -720,13 +994,26 @@ function isKeyUsable(providerName: string, keyValue: string): boolean {
 function markKeyAsHealthy(providerName: string, keyValue: string): void {
 	const id = keyStatusId(providerName, keyValue);
 	if (keyStatuses.has(id)) {
+		// Remove any prior failure/cooldown state for this key.
+		// A successful stream proves that the selected key can currently make
+		// progress, so keeping it marked as failed would unnecessarily reduce
+		// the available pool on the next request.
 		keyStatuses.delete(id);
 		persistStateSoon();
 	}
 }
 
 /**
- * Marks a key as failed and updates its failure count
+ * Marks a key as failed and updates its failure count.
+ *
+ * This is the core failure-recording path for automatic rotation. The first two
+ * failures do not disable the key; they only increase the recorded count. On the
+ * third consecutive failure the key enters cooldown and `isKeyUsable` will skip
+ * it until `KEY_COOLDOWN_MS` has elapsed.
+ *
+ * The function does not throw on persistence errors. State persistence is
+ * best-effort because losing the state file should not break live requests; the
+ * in-memory map remains the authoritative state for the current process.
  *
  * @param providerName - Name of the vault provider
  * @param keyValue - API key string that failed
@@ -746,37 +1033,48 @@ function markKeyAsFailed(providerName: string, keyValue: string): void {
 }
 
 /**
- * Selects the next key to use using round-robin algorithm with health filtering
+ * Selects the next key using 24h usage stats: min output tokens → min input tokens → min requests.
+ * Falls back to round-robin when all keys are in cooldown, and to random selection when no usage
+ * data is available yet.
  *
  * @param providerName - Name of the vault provider
  * @param keys - Array of available keys from the vault
+ * @param statsMap - 24h usage stats keyed by keyHint (keyMask format)
  * @returns Next usable key, or null if no keys are available
  */
 function selectNextKey(
 	providerName: string,
 	keys: VaultKey[],
+	statsMap: Map<string, KeyStats24h>,
 ): VaultKey | null {
-	// Filter out expired keys
 	const eligible = keys.filter((k) => k.type !== "expired");
 	if (eligible.length === 0) return null;
 
-	// Filter out keys that are not currently usable (in cooldown or failed)
 	const usable = eligible.filter((k) => isKeyUsable(providerName, k.key));
 
-	// If no usable keys, fall back to round-robin selection from eligible keys
-	// This allows keys to be tried even if they have some failures
 	if (usable.length === 0) {
+		// All keys in cooldown — fall back to round-robin on eligible
 		const idx = (roundRobinIndexes.get(providerName) ?? 0) % eligible.length;
 		roundRobinIndexes.set(providerName, (idx + 1) % eligible.length);
 		persistStateSoon();
 		return eligible[idx];
 	}
 
-	// Select next key using round-robin from usable keys
-	const idx = (roundRobinIndexes.get(providerName) ?? 0) % usable.length;
-	roundRobinIndexes.set(providerName, (idx + 1) % usable.length);
-	persistStateSoon();
-	return usable[idx];
+	// If no key has any recorded usage, pick randomly
+	const keysWithUsage = usable.filter((k) => statsMap.has(keyMask(k.key)));
+	if (keysWithUsage.length === 0) {
+		return usable[Math.floor(Math.random() * usable.length)];
+	}
+
+	// Sort: min output tokens → min input tokens → min request count
+	const sorted = [...usable].sort((a, b) => {
+		const sa: KeyStats24h = statsMap.get(keyMask(a.key)) ?? { completionTokens: 0, promptTokens: 0, requestCount: 0 };
+		const sb: KeyStats24h = statsMap.get(keyMask(b.key)) ?? { completionTokens: 0, promptTokens: 0, requestCount: 0 };
+		if (sa.completionTokens !== sb.completionTokens) return sa.completionTokens - sb.completionTokens;
+		if (sa.promptTokens !== sb.promptTokens) return sa.promptTokens - sb.promptTokens;
+		return sa.requestCount - sb.requestCount;
+	});
+	return sorted[0];
 }
 
 /**
@@ -804,6 +1102,7 @@ function resolveNextApiConfig(
 	vault: AiVaultConfig,
 	providerName: string,
 	modelId?: string,
+	statsMap: Map<string, KeyStats24h> = new Map(),
 ): ResolvedApiConfig | null {
 	// Get provider from vault
 	const provider = vault.providers[providerName];
@@ -821,7 +1120,7 @@ function resolveNextApiConfig(
 	if (!model) return null;
 
 	// Select the next key to use
-	const key = selectNextKey(providerName, provider.keys);
+	const key = selectNextKey(providerName, provider.keys, statsMap);
 	if (!key) return null;
 
 	// Return complete resolved configuration
@@ -1078,6 +1377,60 @@ async function recordKeypoolErrorToNdjson(
 	await fs.appendFile(path.join(dbDir, "errors.ndjson"), line, "utf8");
 }
 
+// ─── Usage stats for key selection ───────────────────────────────────────────
+
+type KeyStats24h = {
+	completionTokens: number;
+	promptTokens: number;
+	requestCount: number;
+};
+
+/** Reads usage.ndjson and returns a map from keyHint → 24h aggregated stats for the given provider. */
+async function readProviderUsageStats24h(
+	providerName: string,
+): Promise<Map<string, KeyStats24h>> {
+	const map = new Map<string, KeyStats24h>();
+	try {
+		const [fs, path] = await Promise.all([
+			import("node:fs/promises"),
+			import("node:path"),
+		]);
+		const usagePath = path.join(await getUsageDbDir(), "usage.ndjson");
+		let content: string;
+		try {
+			content = await fs.readFile(usagePath, "utf8");
+		} catch {
+			return map;
+		}
+		const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+		for (const line of content.split("\n")) {
+			const trimmed = line.trim();
+			if (!trimmed) continue;
+			try {
+				const r = JSON.parse(trimmed) as NdjsonUsageEntry;
+				if (r.provider !== providerName || r.ts < cutoff) continue;
+				const existing = map.get(r.keyHint);
+				if (existing) {
+					existing.completionTokens += r.completionTokens;
+					existing.promptTokens += r.promptTokens;
+					existing.requestCount++;
+				} else {
+					map.set(r.keyHint, {
+						completionTokens: r.completionTokens,
+						promptTokens: r.promptTokens,
+						requestCount: 1,
+					});
+				}
+			} catch {
+				// skip malformed line
+			}
+		}
+	} catch {
+		// non-fatal: in-memory selection still works
+	}
+	return map;
+}
+
 // ─── Key state query ──────────────────────────────────────────────────────────
 
 /** Snapshot of a tracked key's health state. */
@@ -1152,6 +1505,20 @@ export function rotateKeypoolliveKey(
 /**
  * Main KeypoolLive provider factory.
  * This is the entry point that creates the GatewayProvider instance with automatic key rotation.
+ *
+ * The provider factory implements a sophisticated key rotation algorithm that:
+ * 1. Supports both auto mode (vault-based) and explicit key mode
+ * 2. Implements intelligent key selection based on usage statistics
+ * 3. Automatically detects and handles key-related errors
+ * 4. Provides detailed event logging and telemetry
+ * 5. Persists usage and error data for analysis
+ *
+ * Key rotation strategy:
+ * - Primary: Select key with lowest 24h output tokens (to balance costs)
+ * - Secondary: Select key with lowest 24h input tokens
+ * - Tertiary: Select key with lowest request count
+ * - Fallback: Round-robin selection when all keys are in cooldown
+ * - Emergency: Random selection when no usage data is available
  */
 
 /**
@@ -1205,11 +1572,30 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 			return vaultUrl;
 		};
 
+		// Read 24h usage stats once — used by selectNextKey to balance output tokens
+		const statsMap = isAuto
+			? await readProviderUsageStats24h(providerName)
+			: new Map<string, KeyStats24h>();
+
 		// Maximum number of key rotation attempts before giving up
 		const MAX_KEY_ATTEMPTS = 5;
 		let lastError: unknown;
 
-		// Key rotation loop - try different keys until success or max attempts reached
+		/**
+		 * Key rotation loop - the core of the automatic key rotation system.
+		 *
+		 * This loop implements the following logic:
+		 * 1. Select the next key based on usage statistics and health status
+		 * 2. Attempt to use the selected key to process the request
+		 * 3. If successful, mark the key as healthy and return the result
+		 * 4. If failed with a key-related error, mark the key as failed and try the next one
+		 * 5. If failed with a non-key error, rethrow immediately
+		 * 6. After MAX_KEY_ATTEMPTS failures, throw a comprehensive error
+		 *
+		 * This approach ensures maximum availability by automatically rotating through
+		 * available keys when issues are detected, while preserving non-key errors
+		 * that require different handling.
+		 */
 		for (let attempt = 0; attempt < MAX_KEY_ATTEMPTS; attempt++) {
 			let resolvedApiKey: string;
 			let resolvedEndpoint: string | undefined;
@@ -1232,7 +1618,7 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 			} else {
 				// Auto mode: load vault and resolve next API configuration
 				const vault = await loadAiVault(getRequiredVaultUrl());
-				const resolved = resolveNextApiConfig(vault, providerName, modelId);
+				const resolved = resolveNextApiConfig(vault, providerName, modelId, statsMap);
 				if (!resolved) {
 					throw new Error(
 						`[keypoollive] No usable key found for provider "${providerName}" model "${modelId}"`,
@@ -1249,12 +1635,18 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 
 			const maskedKey = keyMask(resolvedApiKey);
 			if (attempt === 0) {
+				const keyStat = statsMap.get(maskedKey);
 				context.logger?.log("KeypoolLive active key", {
 					providerId: "keypoollive",
 					severity: "info",
 					providerName,
 					modelId,
 					key: maskedKey,
+					keyUsage: {
+						in: keyStat?.promptTokens ?? 0,
+						out: keyStat?.completionTokens ?? 0,
+						requests: keyStat?.requestCount ?? 0,
+					},
 					roundRobin: selectedByRoundRobin,
 				});
 				context.keypoolEventHandler?.({
