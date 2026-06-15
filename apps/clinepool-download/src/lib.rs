@@ -1,10 +1,11 @@
 pub mod github;
 
-use log::{debug, info};
+use log::{info};
 use octocrab::Octocrab;
 use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::env;
 use crate::github::find_latest_release;
 
 /// Supported platforms for Clinepool release assets
@@ -78,6 +79,10 @@ pub enum ClinepoolError {
     NoReleaseFound,
     #[error("Missing required argument: {0}")]
     MissingArgument(String),
+    #[error("File not found: {0}")]
+    FileNotFound(String),
+    #[error("Failed to resolve file path: {0}")]
+    PathResolutionError(String),
 }
 
 /// Writes the downloaded content to the specified output file or stdout.
@@ -143,6 +148,9 @@ pub struct Args {
     /// Output file path; use '-' to write to stdout
     #[arg(long, default_value = "")]
     pub out_file: String,
+    /// Update existing installation by replacing the current file
+    #[arg(long)]
+    pub update: bool,
     /// Enable verbose logging
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
@@ -169,6 +177,68 @@ pub fn detect_platform() -> Result<Platform, ClinepoolError> {
         ("windows", "aarch64") => Ok(Platform::Win32Arm64),
         (os, arch) => Err(ClinepoolError::InvalidPlatform(format!("{}-{}", os, arch))),
     }
+}
+
+/// Finds the path to an existing file in the current directory or PATH
+/// Returns the resolved path if found, or an error if not found
+pub fn find_existing_file(target_name: &str) -> Result<PathBuf, ClinepoolError> {
+    // First, check current directory
+    let current_dir_path = Path::new(".").join(target_name);
+    if current_dir_path.exists() {
+        // Resolve symlinks to get the actual file
+        let resolved_path = fs::canonicalize(&current_dir_path)
+            .map_err(|e| ClinepoolError::PathResolutionError(e.to_string()))?;
+        info!("Found file in current directory: {}", resolved_path.display());
+        return Ok(resolved_path);
+    }
+
+    // Then, check PATH environment variable
+    if let Some(path_env) = env::var_os("PATH") {
+        for path in env::split_paths(&path_env) {
+            let candidate_path = path.join(target_name);
+            if candidate_path.exists() {
+                // Resolve symlinks to get the actual file
+                let resolved_path = fs::canonicalize(&candidate_path)
+                    .map_err(|e| ClinepoolError::PathResolutionError(e.to_string()))?;
+                info!("Found file in PATH: {}", resolved_path.display());
+                return Ok(resolved_path);
+            }
+        }
+    }
+
+    Err(ClinepoolError::FileNotFound(format!(
+        "Could not find '{}' in current directory or PATH",
+        target_name
+    )))
+}
+
+/// Replaces an existing file with new content
+/// Preserves executable permissions if the original file had them
+pub fn replace_existing_file(existing_path: &Path, new_content: &[u8]) -> Result<(), ClinepoolError> {
+    // Check if original file is executable (Unix only)
+    #[cfg(unix)]
+    let was_executable = {
+        use std::os::unix::fs::PermissionsExt;
+        let metadata = fs::metadata(existing_path)?;
+        metadata.permissions().mode() & 0o111 != 0
+    };
+
+    // Write new content
+    fs::write(existing_path, new_content)?;
+
+    // Restore executable permissions if needed
+    #[cfg(unix)]
+    if was_executable {
+        use std::os::unix::fs::PermissionsExt;
+        let metadata = fs::metadata(existing_path)?;
+        let mut permissions = metadata.permissions();
+        permissions.set_mode(permissions.mode() | 0o111); // Add executable bits
+        fs::set_permissions(existing_path, permissions)?;
+        info!("Restored executable permissions on: {}", existing_path.display());
+    }
+
+    info!("Replaced file: {}", existing_path.display());
+    Ok(())
 }
 
 /// Executes the main logic of the application.
@@ -216,7 +286,30 @@ pub async fn main_logic(args: &Args, octocrab: Octocrab) -> Result<(), Clinepool
         .await?
         .to_vec();
 
-    write_output(args, &content)?;
+    if args.update {
+        // Update mode: find and replace existing file
+        let target_name = if args.cli { "cline" } else { "clinepool.vsix" };
+        let existing_path = find_existing_file(target_name)?;
+
+        // Check if we're trying to update a file but output is specified to stdout
+        if args.out_file == "-" {
+            return Err(ClinepoolError::MissingArgument(
+                "Cannot use --update with stdout output (--out-file -)".to_string(),
+            ));
+        }
+
+        // If out_file is specified, use it as the target for replacement
+        let target_path = if args.out_file.is_empty() {
+            existing_path
+        } else {
+            PathBuf::from(&args.out_file)
+        };
+
+        replace_existing_file(&target_path, &content)?;
+    } else {
+        // Normal mode: write to specified output
+        write_output(args, &content)?;
+    }
 
     Ok(())
 }
