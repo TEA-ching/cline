@@ -2,6 +2,8 @@ import { createCohere } from "@ai-sdk/cohere";
 import type { GatewayResolvedProviderConfig } from "@cline/shared";
 import { resolveApiKey } from "../http";
 import type { ProviderFactoryResult } from "./types";
+import fs from "fs/promises";
+import path from "path";
 
 export async function createCohereProviderModule(
 	config: GatewayResolvedProviderConfig,
@@ -66,7 +68,14 @@ function patchObjectSchemaRequired(schema: unknown): unknown {
 		}
 		const existing = (s.required as string[] | undefined) ?? []
 		const patchedProps = Object.fromEntries(
-			Object.entries(props!).map(([k, v]) => [k, patchObjectSchemaRequired(v)])
+			Object.entries(props!).map(([k, v]) => {
+				const patched = patchObjectSchemaRequired(v)
+				// Cohere strict_tools=true requires every property schema to have a 'type'.
+				// Bare {} (any-value catchalls like 'schema: {}' or 'headers: {}') have none —
+				// use "string" as the least-wrong fallback so Cohere accepts the tool.
+				if (isBareSchema(patched)) return [k, { type: "string" }]
+				return [k, patched]
+			})
 		)
 		return stripUnsupportedConstraints({
 			...s,
@@ -78,6 +87,13 @@ function patchObjectSchemaRequired(schema: unknown): unknown {
 		return stripUnsupportedConstraints({ ...s, items: patchObjectSchemaRequired(s.items) })
 	}
 	return stripUnsupportedConstraints(s)
+}
+
+/** Returns true when a schema is a bare {} with no type/anyOf/oneOf/allOf. */
+function isBareSchema(v: unknown): boolean {
+	if (!v || typeof v !== "object" || Array.isArray(v)) return false
+	const s = v as Record<string, unknown>
+	return !s.type && !s.anyOf && !s.oneOf && !s.allOf
 }
 
 function patchMessageEndLine(line: string): string {
@@ -110,6 +126,104 @@ function patchMessageEndLine(line: string): string {
 }
 
 /**
+ * Generates TypeScript code for a fetch request based on the provided parameters.
+ * Used for logging API requests to Cohere.
+ * @param {string} url - The URL of the request.
+ * @param {string} method - The HTTP method of the request.
+ * @param {Record<string, string>} headers - The headers of the request.
+ * @param {any} bodyObj - The body of the request.
+ * @returns {string} - The generated TypeScript code.
+ */
+function generateTypeScriptFetchCode(url: string, method: string, headers: Record<string, string>, bodyObj: any): string {
+	return `// Auto-generated Cohere API request script
+// This script demonstrates how to make the same API request using fetch in TypeScript
+
+/**
+ * Makes a Cohere API request using fetch
+ * @returns Promise that resolves with the API response
+ */
+async function makeCohereRequest(): Promise<Response> {
+    const url = "${url}";
+    const method = "${method}";
+
+    // Request headers
+    const headers = new Headers();
+${Object.entries(headers).map(([key, value]) => `    headers.append("${key}", "${value.replace(/"/g, '\\"')}");`).join("\n")}
+
+    // Request body (if present)
+${bodyObj ? `    const body = ${JSON.stringify(bodyObj, null, 2)};` : `    const body = undefined;`}
+
+    // Execute the fetch request
+    const response = await fetch(url, {
+        method: method,
+        headers: headers,
+${bodyObj ? `        body: JSON.stringify(body),` : ""}
+    });
+
+    return response;
+}
+
+// Execute the request
+makeCohereRequest()
+    .then(response => {
+        console.log("Request successful:", response.status, response.statusText);
+        return response.json();
+    })
+    .then(data => {
+        console.log("Response data:", data);
+    })
+    .catch(error => {
+        console.error("Request failed:", error);
+    });
+
+// Export for programmatic use
+export { makeCohereRequest };
+`
+}
+
+/**
+ * Cleans up old log files, keeping only the most recent ones.
+ * @param {string} directoryPath - Path to the directory containing log files.
+ * @param {number} maxFilesToKeep - Maximum number of files to keep.
+ */
+async function cleanupOldLogFiles(directoryPath: string, maxFilesToKeep: number): Promise<void> {
+	try {
+		// Read all files in the directory
+		const files: string[] = await fs.readdir(directoryPath)
+
+		// Filter out only .ts files and extract timestamps from filenames
+		const tsFiles = files
+			.filter(file => file.endsWith('.ts'))
+			.map(file => {
+				const timestamp = parseInt(file.replace('.ts', ''))
+				return { filename: file, timestamp: isNaN(timestamp) ? 0 : timestamp }
+			})
+			.filter(file => file.timestamp > 0) // Only keep files with valid timestamps
+
+		// Sort by timestamp (oldest first)
+		tsFiles.sort((a, b) => a.timestamp - b.timestamp)
+
+		// Calculate how many files to delete
+		const filesToDelete = tsFiles.length - maxFilesToKeep
+		if (filesToDelete <= 0) {
+			return // No cleanup needed
+		}
+
+		// Delete the oldest files
+		const filesToDeleteNames = tsFiles.slice(0, filesToDelete).map(f => f.filename)
+		for (const filename of filesToDeleteNames) {
+			try {
+				await fs.unlink(path.join(directoryPath, filename))
+			} catch (error) {
+				console.error(`Failed to delete old log file ${filename}:`, error)
+			}
+		}
+	} catch (error) {
+		console.error("Failed to cleanup old log files:", error)
+	}
+}
+
+/**
  * Returns a modified fetch function that:
  * 1. Patches tool schemas for strict_tools=true compatibility (strips unsupported constraints,
  *    ensures required fields on object schemas).
@@ -119,9 +233,12 @@ function patchMessageEndLine(line: string): string {
  */
 function patchCohereUsageFetch(baseFetch: typeof fetch): typeof fetch {
 	return async (input, init) => {
+		// Patch tool schemas and add strict_tools when tools are present.
 		if (init?.body) {
 			const body = typeof init.body === "string" ? JSON.parse(init.body) : init.body
 			if (body?.tools && body?.tools.length > 0) {
+				// strict_tools=true requires every object-typed parameter schema to have
+				// at least one required field — patch schemas that violate this before sending.
 				body.tools = body.tools.map((tool: any) => {
 					if (tool?.function?.parameters) {
 						return { ...tool, function: { ...tool.function, parameters: patchObjectSchemaRequired(tool.function.parameters) } }
@@ -132,6 +249,32 @@ function patchCohereUsageFetch(baseFetch: typeof fetch): typeof fetch {
 					body.strict_tools = true
 				}
 				init.body = JSON.stringify(body)
+			}
+		}
+
+		// Log as TypeScript fetch script (set COHERE_DEBUG_FETCH_LOG=1 to enable)
+		const debugLogEnabled = process.env.COHERE_DEBUG_FETCH_LOG === "1"
+		if (debugLogEnabled) {
+			try {
+				const storagePath = process.env.COHERE_DEBUG_FETCH_DIR || path.join(process.cwd(), "cohere-logs")
+
+				await fs.mkdir(storagePath, { recursive: true })
+
+				const timestamp = Date.now()
+				const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as any).url
+				const method = init?.method || "POST"
+				const headers = (init?.headers as Record<string, string>) || {}
+				const bodyObj = init?.body ? (typeof init.body === "string" ? JSON.parse(init.body) : init.body) : undefined
+				// Generate TypeScript fetch code
+				const tsCode = generateTypeScriptFetchCode(url, method, headers, bodyObj);
+
+				const filePath = path.join(storagePath, `${timestamp}.ts`)
+				await fs.writeFile(filePath, tsCode)
+
+				// Keep only the 100 most recent files
+				await cleanupOldLogFiles(storagePath, 100)
+			} catch (error) {
+				console.error("Failed to write cohere TypeScript log:", error)
 			}
 		}
 

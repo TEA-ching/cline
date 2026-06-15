@@ -268,7 +268,14 @@ function patchObjectSchemaRequired(schema: unknown): unknown {
 		}
 		const existing = (s.required as string[] | undefined) ?? []
 		const patchedProps = Object.fromEntries(
-			Object.entries(props!).map(([k, v]) => [k, patchObjectSchemaRequired(v)])
+			Object.entries(props!).map(([k, v]) => {
+				const patched = patchObjectSchemaRequired(v)
+				// Cohere strict_tools=true requires every property schema to have a 'type'.
+				// Bare {} (any-value catchalls like 'schema: {}' or 'headers: {}') have none —
+				// use "string" as the least-wrong fallback so Cohere accepts the tool.
+				if (isBareSchema(patched)) return [k, { type: "string" }]
+				return [k, patched]
+			})
 		)
 		return stripUnsupportedConstraints({
 			...s,
@@ -280,6 +287,13 @@ function patchObjectSchemaRequired(schema: unknown): unknown {
 		return stripUnsupportedConstraints({ ...s, items: patchObjectSchemaRequired(s.items) })
 	}
 	return stripUnsupportedConstraints(s)
+}
+
+/** Returns true when a schema is a bare {} with no type/anyOf/oneOf/allOf. */
+function isBareSchema(v: unknown): boolean {
+	if (!v || typeof v !== "object" || Array.isArray(v)) return false
+	const s = v as Record<string, unknown>
+	return !s.type && !s.anyOf && !s.oneOf && !s.allOf
 }
 
 /**
