@@ -457,9 +457,10 @@ export function createWebSearchTool(
 		name: "search_web",
 		description:
 			"Search the web to find information, documentation, or specific content. " +
-			"Provide either a URL to analyze a specific webpage or a search query to perform a web search. " +
-			"Each request includes a prompt describing what information to extract or analyze from the results. " +
-			"Use for researching topics, finding documentation, or gathering information from the web.",
+			"Provide a search query to perform a web search. " +
+			"Optionally filter results by allowed or blocked domains. " +
+			"Use for researching topics, finding documentation, or gathering information from the web. " +
+			"For fetching specific URLs, use fetch_web_content instead.",
 		inputSchema: zodToJsonSchema(SearchWebInputSchema),
 		timeoutMs: timeoutMs * 2,
 		retryable: true,
@@ -467,38 +468,34 @@ export function createWebSearchTool(
 		execute: async (input, context) => {
 			// Validate input with Zod schema
 			const validatedInput = validateWithZod(SearchWebInputUnionSchema, input);
-			const requests = Array.isArray(validatedInput)
-				? validatedInput
-				: "requests" in validatedInput
-					? validatedInput.requests
-					: [validatedInput];
 
-			return Promise.all(
-				requests.map(
-					async (request: { url?: string; query?: string; prompt: string }): Promise<ToolOperationResult> => {
-						try {
-							const content = await withTimeout(
-								executor(request, context),
-								timeoutMs,
-								`Web search timed out after ${timeoutMs}ms`,
-							);
-							return {
-								query: request.query || request.url || "web search",
-								result: content,
-								success: true,
-							};
-						} catch (error) {
-							const msg = formatError(error);
-							return {
-								query: request.query || request.url || "web search",
-								result: "",
-								error: `Error searching web: ${msg}`,
-								success: false,
-							};
-						}
-					},
-				),
-			);
+			// Handle both string query and object input
+			const query = typeof validatedInput === 'string'
+				? validatedInput
+				: validatedInput.query;
+			const allowedDomains = typeof validatedInput === 'object' ? validatedInput.allowed_domains : undefined;
+			const blockedDomains = typeof validatedInput === 'object' ? validatedInput.blocked_domains : undefined;
+
+			try {
+				const content = await withTimeout(
+					executor({ query, allowed_domains: allowedDomains, blocked_domains: blockedDomains }, context),
+					timeoutMs,
+					`Web search timed out after ${timeoutMs}ms`,
+				);
+				return [{
+					query: query,
+					result: content,
+					success: true,
+				}];
+			} catch (error) {
+				const msg = formatError(error);
+				return [{
+					query: query,
+					result: "",
+					error: `Error searching web: ${msg}`,
+					success: false,
+				}];
+			}
 		},
 	});
 }

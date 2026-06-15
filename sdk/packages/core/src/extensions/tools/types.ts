@@ -5,15 +5,15 @@
  */
 
 import type {
-    AgentToolContext,
-    ImageContent,
-    TextContent,
+	AgentToolContext,
+	ImageContent,
+	TextContent,
 } from "@cline/shared";
 import type {
-    ApplyPatchInput,
-    EditFileInput,
-    ReadFileRequest,
-    StructuredCommandInput,
+	ApplyPatchInput,
+	EditFileInput,
+	ReadFileRequest,
+	StructuredCommandInput,
 } from "./schemas";
 
 // =============================================================================
@@ -99,12 +99,12 @@ export type WebFetchExecutor = (
 /**
  * Executor for searching the web
  *
- * @param request - Web search request with optional URL or query, and analysis prompt
+ * @param request - Web search request with query and optional domain filters
  * @param context - Tool execution context
  * @returns Searched/extracted content
  */
 export type WebSearchExecutor = (
-	request: { url?: string; query?: string; prompt: string },
+	request: { query: string; allowed_domains?: string[]; blocked_domains?: string[] },
 	context: AgentToolContext,
 ) => Promise<string>;
 

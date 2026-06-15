@@ -167,41 +167,29 @@ export const StructuredCommandsInputUnionSchema = z.union([
 ]);
 
 /**
- * Schema for a single web search request
- */
-export const WebSearchRequestSchema = z.object({
-	url: z
-		.string()
-		.url()
-		.optional()
-		.describe("The URL to search or specific webpage to analyze"),
-	query: z
-		.string()
-		.min(3)
-		.optional()
-		.describe("Optional search query to use for web search"),
-	prompt: z
-		.string()
-		.min(2)
-		.describe("Analysis prompt for the search results or webpage content"),
-});
-
-/**
  * Schema for search_web tool input
  */
 export const SearchWebInputSchema = z.object({
-	requests: z
-		.array(WebSearchRequestSchema)
-		.describe("Array of web search requests to execute"),
+	query: z
+		.string()
+		.min(2)
+		.describe("The search query to use"),
+	allowed_domains: z
+		.array(z.string())
+		.optional()
+		.describe("JSON array of domains to restrict results to"),
+	blocked_domains: z
+		.array(z.string())
+		.optional()
+		.describe("JSON array of domains to exclude from results"),
 });
 
 /**
- * Union schema for search_web tool input, allowing either a single object, an array of objects, or the full object schema
+ * Union schema for search_web tool input, allowing either a single string query or the full object schema
  */
 export const SearchWebInputUnionSchema = z.union([
 	SearchWebInputSchema,
-	z.array(WebSearchRequestSchema),
-	WebSearchRequestSchema,
+	z.string(),
 ]);
 
 /**

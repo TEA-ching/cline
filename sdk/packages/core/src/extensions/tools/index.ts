@@ -94,7 +94,6 @@ export {
 	WebFetchRequestSchema,
 	type SearchWebInput,
 	SearchWebInputSchema,
-	WebSearchRequestSchema,
 } from "./schemas";
 export { TEAM_TOOL_NAMES } from "./team/team-tools";
 // Types

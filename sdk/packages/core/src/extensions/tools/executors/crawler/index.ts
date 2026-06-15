@@ -80,7 +80,7 @@ export function createWebSearchExecutor(
   resolver: CrawlerKeyResolver,
   timeoutMs = 30000,
 ): WebSearchExecutor {
-  return async (request: { url?: string; query?: string; prompt: string }, _context: AgentToolContext): Promise<string> => {
+  return async (request: { query: string; allowed_domains?: string[]; blocked_domains?: string[] }, _context: AgentToolContext): Promise<string> => {
     // 1. Ask the resolver for a key
     let config;
     try {
@@ -98,15 +98,17 @@ export function createWebSearchExecutor(
     // 2. Use Firecrawl for web search
     try {
       if (config.protocol === 'firecrawl') {
-        console.log(`[WebSearch] Using Firecrawl (${config.crawlerName}) for ${request.query || request.url}`);
+        console.log(`[WebSearch] Using Firecrawl (${config.crawlerName}) for query: ${request.query}`);
 
-        if (request.url) {
-          return await fetchWithFirecrawl(request.url, request.prompt, config, timeoutMs);
-        } else if (request.query) {
-          return await searchWithFirecrawl(request.query, request.prompt, config, timeoutMs);
-        } else {
-          throw new Error('Either url or query must be provided for web search');
-        }
+        // Always use search (not fetch) since we only have query now
+        return await searchWithFirecrawl(
+          request.query,
+          'Extract relevant information from search results',
+          config,
+          timeoutMs,
+          request.allowed_domains,
+          request.blocked_domains
+        );
       } else {
         throw new Error(`Unsupported protocol for web search: ${String(config.protocol)}`);
       }

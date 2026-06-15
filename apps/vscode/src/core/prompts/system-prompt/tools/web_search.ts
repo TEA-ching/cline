@@ -15,7 +15,8 @@ const GENERIC: ClineToolSpec = {
 - The query must be at least 2 characters
 - You may provide either allowed_domains OR blocked_domains, but NOT both
 - Domains should be provided as a JSON array of strings
-- This tool is read-only and does not modify any files`,
+- This tool is read-only and does not modify any files
+- For fetching specific URLs, use fetch_web_content instead`,
 	contextRequirements: (context) => context.providerInfo.providerId !== "cline" || context.clineWebToolsEnabled === true,
 	parameters: [
 		{

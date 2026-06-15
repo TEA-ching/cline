@@ -5,6 +5,8 @@ export async function searchWithFirecrawl(
   prompt: string,
   config: ResolvedCrawlerConfig,
   timeoutMs = 30000,
+  allowedDomains?: string[],
+  blockedDomains?: string[],
 ): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -16,14 +18,16 @@ export async function searchWithFirecrawl(
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${config.apiKey}`,
       },
-      body: JSON.stringify({
-        query,
-        limit: 5,
-        scrapeOptions: {
-          formats: [{ type: 'markdown' }],
-          onlyMainContent: true,
-        },
-      }),
+    body: JSON.stringify({
+      query,
+      limit: 5,
+      ...(allowedDomains && allowedDomains.length > 0 ? { includeDomains: allowedDomains } : {}),
+      ...(blockedDomains && blockedDomains.length > 0 ? { excludeDomains: blockedDomains } : {}),
+      scrapeOptions: {
+        formats: [{ type: 'markdown' }],
+        onlyMainContent: true,
+      },
+    }),
       signal: controller.signal,
     });
 
