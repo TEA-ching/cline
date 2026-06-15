@@ -32,6 +32,8 @@ import type {
 
 /**
  * Tracks the health and failure status of a specific API key.
+ * This interface stores metadata about key performance including failure counts,
+ * cooldown periods, and usage statistics for load balancing decisions.
  */
 interface KeyStatus {
 	/** The full API key string. */
@@ -48,6 +50,8 @@ interface KeyStatus {
 
 /**
  * Interface for persisted key status data.
+ * Used for serialization to disk, containing only the essential information
+ * needed to restore key status without storing sensitive full API keys.
  */
 interface PersistedKeyStatus {
 	providerName: string;
@@ -60,6 +64,8 @@ interface PersistedKeyStatus {
 
 /**
  * Interface for the complete persisted state.
+ * Represents the entire state that gets saved to and loaded from disk,
+ * including round-robin indexes and key health statuses.
  */
 interface PersistedRoundRobinState {
 	version: 1;
@@ -70,53 +76,63 @@ interface PersistedRoundRobinState {
 /**
  * Duration for which a key is put on "cooldown" after reaching MAX_FAILURE_COUNT.
  * During this time, the key is avoided unless no other keys are available.
+ * This prevents repeatedly trying failed keys while giving them time to recover.
  */
 const KEY_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes
 
 /**
  * Threshold of consecutive failures before a key is marked as unhealthy.
+ * Once a key reaches this threshold, it's placed on cooldown to prevent
+ * further failures from affecting the user experience.
  */
 const MAX_FAILURE_COUNT = 3;
 
 /**
  * Keeps track of the current index for round-robin selection per provider.
  * The key is the provider name, and the value is the last used index.
+ * This ensures even distribution of requests across available keys.
  */
 const roundRobinIndexes = new Map<string, number>();
 
 /**
  * Stores health information for keys that have encountered failures.
  * The map key is a unique ID generated from the provider and a hint of the API key.
+ * This allows tracking key health without storing sensitive full API keys in memory.
  */
 const keyStatuses = new Map<string, KeyStatus>();
 
 /**
  * Tracks if persistent state has been loaded.
+ * Prevents multiple concurrent loads and ensures state is loaded before use.
  */
 let persistentStateLoaded = false;
 
 /**
  * Cached path to the persistent state file, set after loadPersistentStateOnce resolves it.
+ * This avoids repeated path resolution and provides consistent file location.
  */
 let cachedStatePath: string | null = null;
 
 /**
  * Environment variable name for custom state file path.
+ * Allows users to override the default state file location for testing or special configurations.
  */
 const KEYPOOL_STATE_FILE_ENV = "KEYPOOL_STATE_FILE";
 
 /**
  * Default state file name.
+ * Used when no custom path is specified via environment variable.
  */
 const DEFAULT_KEYPOOL_STATE_FILE = "keypoollive-state.json";
 
 /**
  * Generates a unique identifier for a key's health status.
  * We use the last 8 characters of the key as a hint to avoid storing full keys as map keys.
+ * This provides a balance between security (not storing full keys) and functionality (tracking individual keys).
  *
  * @param providerName - The AI provider (e.g., 'anthropic').
  * @param keyValue - The full API key string.
- * @returns A unique identifier string.
+ * @returns A unique identifier string in the format "provider:last8chars".
  */
 function getKeyStatusId(providerName: string, keyValue: string): string {
 	return `${providerName}:${keyValue.slice(-8)}`;
@@ -126,6 +142,9 @@ function getKeyStatusId(providerName: string, keyValue: string): string {
  * Gets the path to the persistent state file.
  * Uses KEYPOOL_STATE_FILE environment variable if set,
  * otherwise defaults to ~/.cline/data/keypoollive-state.json
+ *
+ * The state file stores round-robin indexes and key health statuses to persist
+ * load balancing decisions across application restarts.
  *
  * @returns Path to the state file
  */
@@ -138,7 +157,15 @@ function getPersistentStatePath(): string {
 
 /**
  * Loads persistent state from file if it exists.
- * This should be called once at startup.
+ * This should be called once at startup to restore round-robin indexes and key health statuses.
+ *
+ * The function handles several scenarios:
+ * 1. Creates the state file if it doesn't exist
+ * 2. Loads existing state if available and valid
+ * 3. Validates the state version and data integrity
+ * 4. Gracefully handles any errors (file not found, corrupt data, etc.)
+ *
+ * This ensures that load balancing decisions persist across application restarts.
  */
 export async function loadPersistentStateOnce(): Promise<void> {
 	if (persistentStateLoaded) {
@@ -230,6 +257,10 @@ export async function loadPersistentStateOnce(): Promise<void> {
  * Writes the current state to disk synchronously.
  * Synchronous I/O guarantees the state survives process exit, matching the
  * behaviour of KeypoolUsageDb.recordUsage() which also uses appendFileSync.
+ *
+ * This function uses an atomic write pattern (write to temp file, then rename)
+ * to prevent corruption and ensure data integrity. If the write fails,
+ * the system continues to work with in-memory state, providing graceful degradation.
  */
 function persistStateSoon(): void {
 	try {
