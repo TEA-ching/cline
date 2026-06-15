@@ -24,6 +24,7 @@ jobs:
       datetime_safe: ${{ steps.meta.outputs.datetime_safe }}
       release_tag: ${{ steps.get_release.outputs.release_tag }}
       release_id: ${{ steps.get_release.outputs.release_id }}
+      docker_tag: ${{ steps.get_release.outputs.docker_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,8 +65,10 @@ jobs:
               exit 1
             fi
           fi
+          DOCKER_TAG=$(echo "$RELEASE_TAG" | tr '/' '-')
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
+          echo "docker_tag=$DOCKER_TAG" >> "$GITHUB_OUTPUT"
           echo "Found release: $RELEASE_TAG (ID: $RELEASE_ID)"
 
   build-binaries:
@@ -175,7 +178,7 @@ jobs:
         with:
           images: sctg/clinepool-download
           tags: |
-            type=raw,value=${{ needs.setup.outputs.release_tag }}
+            type=raw,value=${{ needs.setup.outputs.docker_tag }}
             type=raw,value=latest
 
       - name: Build and push Docker image
@@ -229,13 +232,14 @@ jobs:
           for PLATFORM in linux/arm64 linux/armhf linux/amd64; do
             VERSION=${{ needs.setup.outputs.version }}
             RELEASE_TAG=${{ needs.setup.outputs.release_tag }}
+            DOCKER_TAG=${{ needs.setup.outputs.docker_tag }}
             FAMILY=linux
             EXT=""
             ARCH=${PLATFORM_TO_ARCH[$PLATFORM]}
             ARTIFACT_NAME="clinepool-download_${FAMILY}_${ARCH}_${VERSION}${EXT}"
-            docker pull sctg/clinepool-download:${RELEASE_TAG}
+            docker pull sctg/clinepool-download:${DOCKER_TAG}
             CONTAINER_NAME="extract-$PLATFORM"
-            docker create --platform $PLATFORM --name $CONTAINER_NAME sctg/clinepool-download:${RELEASE_TAG}
+            docker create --platform $PLATFORM --name $CONTAINER_NAME sctg/clinepool-download:${DOCKER_TAG}
             mkdir -p /tmp/extracted
             docker cp $CONTAINER_NAME:/usr/local/bin/clinepool-download /tmp/extracted/${ARTIFACT_NAME}
             if [ ! -f "/tmp/extracted/${ARTIFACT_NAME}" ]; then
