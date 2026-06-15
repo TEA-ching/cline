@@ -237,8 +237,9 @@ jobs:
             EXT=""
             ARCH=${PLATFORM_TO_ARCH[$PLATFORM]}
             ARTIFACT_NAME="clinepool-download_${FAMILY}_${ARCH}_${VERSION}${EXT}"
+            PLATFORM_SAFE=$(echo "$PLATFORM" | tr '/' '-')
             docker pull sctg/clinepool-download:${DOCKER_TAG}
-            CONTAINER_NAME="extract-$PLATFORM"
+            CONTAINER_NAME="extract-$PLATFORM_SAFE"
             docker create --platform $PLATFORM --name $CONTAINER_NAME sctg/clinepool-download:${DOCKER_TAG}
             mkdir -p /tmp/extracted
             docker cp $CONTAINER_NAME:/usr/local/bin/clinepool-download /tmp/extracted/${ARTIFACT_NAME}
