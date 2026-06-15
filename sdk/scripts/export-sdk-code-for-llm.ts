@@ -249,10 +249,10 @@ async function main() {
 
     // Generate YAML front-matter with metadata about the export
     md += "---\n";
-    md += `title: "Backport-agent an ai assistant for backporting"\n`;
-    md += `description: "An ai assistant for backporting code changes from upstream repositories"\n`;
-    md += `framework: backport-agent\n`;
-    md += `stack: "cline sdk"\n`;
+    md += `title: "@sctg/cline-sdk AI SDK"\n`;
+    md += `description: "@sctg/cline-sdk is a TypeScript SDK for building AI-powered code assistants"\n`;
+    md += `framework: typescript\n`;
+    md += `stack: "@sctg/cline-sdk"\n`;
     md += `generated: "${now}"\n`;
     md += `slim_mode: ${slim}\n`;
     md += `files_total: ${allPaths.length}\n`;

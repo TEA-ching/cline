@@ -1,9 +1,9 @@
 ---
-title: "Backport-agent an ai assistant for backporting"
-description: "An ai assistant for backporting code changes from upstream repositories"
-framework: backport-agent
-stack: "cline sdk"
-generated: "2026-06-14"
+title: "@sctg/cline-sdk AI SDK"
+description: "@sctg/cline-sdk is a TypeScript SDK for building AI-powered code assistants"
+framework: typescript
+stack: "@sctg/cline-sdk"
+generated: "2026-06-15"
 slim_mode: false
 files_total: 602
 ---
