@@ -22,6 +22,7 @@ import { accessSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { homedir } from "os";
 import path from "path";
 import { Logger } from "@/shared/services/Logger";
+import { KeypoolUsageDb } from "./KeypoolUsageDb";
 import type {
 	AiVaultConfig,
 	KeypoolLiveConfig,
@@ -376,36 +377,49 @@ function selectNextKey(
 		return eligible[idx];
 	}
 
-	// If all usable keys have 0 requests in the last 24h, choose randomly
-	const keysWithUsage = usable.filter((key) => {
-		const status = keyStatuses.get(getKeyStatusId(providerName, key.key));
-		return status?.requestCount24h && status.requestCount24h > 0;
-	});
+	// Get 24h usage stats from the persistent DB and build a per-keyHint lookup
+	const dayStats = KeypoolUsageDb.getUsageStats("day");
+	type KeyStats24h = { completionTokens: number; promptTokens: number; requestCount: number };
+	const statsMap = new Map<string, KeyStats24h>();
+	for (const stat of dayStats) {
+		if (stat.provider !== providerName) continue;
+		const existing = statsMap.get(stat.keyHint);
+		if (existing) {
+			existing.completionTokens += stat.completionTokens;
+			existing.promptTokens += stat.promptTokens;
+			existing.requestCount += stat.requestCount;
+		} else {
+			statsMap.set(stat.keyHint, {
+				completionTokens: stat.completionTokens,
+				promptTokens: stat.promptTokens,
+				requestCount: stat.requestCount,
+			});
+		}
+	}
 
+	// If no key has any recorded usage, pick randomly
+	const keysWithUsage = usable.filter((k) => statsMap.has(k.key.slice(-8)));
 	if (keysWithUsage.length === 0) {
-		// All keys have 0 requests, choose randomly
 		const randomIdx = Math.floor(Math.random() * usable.length);
 		Logger.debug(
-			`[KeypoolLive] All keys for ${providerName} have 0 requests in the last 24h, selecting randomly key ...${usable[randomIdx].key.slice(-8)} owner ${usable[randomIdx].owner}`,
+			`[KeypoolLive] All keys for ${providerName} have no usage in the last 24h, selecting randomly key ...${usable[randomIdx].key.slice(-8)} owner ${usable[randomIdx].owner}`,
 		);
 		return usable[randomIdx];
 	}
 
-	// Find the key with the least requests in the last 24h
-	let selectedKey = usable[0];
-	let minRequests = Infinity;
+	// Sort: min output tokens → min input tokens → min request count
+	const sorted = [...usable].sort((a, b) => {
+		const sa: KeyStats24h = statsMap.get(a.key.slice(-8)) ?? { completionTokens: 0, promptTokens: 0, requestCount: 0 };
+		const sb: KeyStats24h = statsMap.get(b.key.slice(-8)) ?? { completionTokens: 0, promptTokens: 0, requestCount: 0 };
+		if (sa.completionTokens !== sb.completionTokens) return sa.completionTokens - sb.completionTokens;
+		if (sa.promptTokens !== sb.promptTokens) return sa.promptTokens - sb.promptTokens;
+		return sa.requestCount - sb.requestCount;
+	});
 
-	for (const key of usable) {
-		const status = keyStatuses.get(getKeyStatusId(providerName, key.key));
-		const requests = status?.requestCount24h ?? 0;
-
-		if (requests < minRequests) {
-			minRequests = requests;
-			selectedKey = key;
-		}
-	}
+	const selectedKey = sorted[0];
+	const sel = statsMap.get(selectedKey.key.slice(-8));
 	Logger.debug(
-		`[KeypoolLive] Selected key with least requests for ${providerName}: ...${selectedKey.key.slice(-8)} (requests in last 24h: ${minRequests})`,
+		`[KeypoolLive] Selected key with min output tokens for ${providerName}: ...${selectedKey.key.slice(-8)} (out=${sel?.completionTokens ?? 0}, in=${sel?.promptTokens ?? 0}, requests=${sel?.requestCount ?? 0})`,
 	);
 	return selectedKey;
 }

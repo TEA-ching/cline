@@ -287,9 +287,17 @@ export class KeypoolLiveHandler implements ApiHandler {
 		}
 
 		this.resolvedConfig = config;
-		Logger.log(
-			`[KeypoolLive] Using key owner=${config.keyOwner}, key=${formatKeyHint(config.apiKey)}, model=${config.model.id}`,
-		);
+		{
+			const keyHint = config.apiKey.slice(-8);
+			const resolvedProvider = config.providerName;
+			const dayStats = KeypoolUsageDb.getUsageStats("day");
+			const keyStat = dayStats.find(
+				(s) => s.provider === resolvedProvider && s.keyHint === keyHint,
+			);
+			Logger.log(
+				`[KeypoolLive] Using key owner=${config.keyOwner}, key=${formatKeyHint(config.apiKey)}, key usage (in=${keyStat?.promptTokens ?? 0}, out=${keyStat?.completionTokens ?? 0}, requests=${keyStat?.requestCount ?? 0}) model=${config.model.id}`,
+			);
+		}
 
 		let lastError: any;
 		for (let attempt = 0; attempt < 2; attempt++) {
