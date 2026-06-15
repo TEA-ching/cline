@@ -56,6 +56,17 @@ export const toolParamNames = [
 	"prompt_5",
 	"start_line",
 	"end_line",
+	"formats",
+	"onlyMainContent",
+	"onlyCleanContent",
+	"waitFor",
+	"mobile",
+	"proxy",
+	"headers",
+	"includeTags",
+	"excludeTags",
+	"location",
+	"actions",
 ] as const
 
 export type ToolParamName = (typeof toolParamNames)[number]

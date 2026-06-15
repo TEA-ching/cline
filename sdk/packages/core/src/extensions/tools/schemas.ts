@@ -195,10 +195,74 @@ export const SearchWebInputUnionSchema = z.union([
 /**
  * Schema for a single web fetch request
  */
+
+const WebFetchFormatSchema = z.union([
+	z.object({ type: z.literal("markdown") }),
+	z.object({ type: z.literal("html") }),
+	z.object({ type: z.literal("rawHtml") }),
+	z.object({ type: z.literal("links") }),
+	z.object({ type: z.literal("summary") }),
+	z.object({
+		type: z.literal("screenshot"),
+		fullPage: z.boolean().optional(),
+		quality: z.number().int().min(0).max(100).optional(),
+	}),
+	z.object({
+		type: z.literal("json"),
+		schema: z.record(z.string(), z.unknown()).optional(),
+		prompt: z.string().optional(),
+	}),
+	z.object({ type: z.literal("question"), question: z.string() }),
+	z.object({ type: z.literal("highlights"), query: z.string() }),
+]);
+
+// z.union instead of discriminatedUnion: "wait" has two variants with same discriminant
+const WebFetchActionSchema = z.union([
+	z.object({ type: z.literal("click"), selector: z.string() }),
+	z.object({ type: z.literal("write"), text: z.string() }),
+	z.object({ type: z.literal("press"), key: z.string() }),
+	z.object({ type: z.literal("wait"), milliseconds: z.number().int().positive() }),
+	z.object({ type: z.literal("wait"), selector: z.string() }),
+	z.object({ type: z.literal("scroll"), direction: z.enum(["up", "down"]), selector: z.string().optional() }),
+	z.object({ type: z.literal("screenshot") }),
+	z.object({ type: z.literal("executeJavascript"), script: z.string() }),
+]);
+
 export const WebFetchRequestSchema = z.object({
 	url: z.string().describe("The URL to fetch"),
 	prompt: z.string().min(2).describe("Analysis prompt for the fetched content"),
+	formats: z.array(WebFetchFormatSchema).optional()
+		.describe("Output formats to request. Defaults to [{type:'markdown'}]. Supports markdown, html, rawHtml, links, screenshot, summary, json (with schema/prompt), question (with question), highlights (with query)."),
+	onlyMainContent: z.boolean().optional()
+		.describe("Strip navigation, ads, and footers. Defaults to true. Set false to include full page content."),
+	onlyCleanContent: z.boolean().optional()
+		.describe("LLM-based boilerplate removal pass (beta). Can be combined with onlyMainContent."),
+	waitFor: z.number().int().nonnegative().optional()
+		.describe("Milliseconds to wait for JavaScript-rendered content before scraping. Use for SPAs and lazy-loaded pages."),
+	mobile: z.boolean().optional()
+		.describe("Emulate a mobile device viewport when scraping."),
+	proxy: z.enum(["basic", "enhanced", "auto"]).optional()
+		.describe("Anti-bot proxy level: basic (fast), enhanced (stronger, costs 5 credits), auto (retry with enhanced on failure)."),
+	headers: z.record(z.string(), z.string()).optional()
+		.describe("Custom HTTP headers to send with the request, e.g. {\"Authorization\":\"Bearer token\"}."),
+	includeTags: z.array(z.string()).optional()
+		.describe("HTML tags to include in the output, e.g. [\"article\",\"main\"]."),
+	excludeTags: z.array(z.string()).optional()
+		.describe("HTML tags to exclude from the output, e.g. [\"nav\",\"footer\",\"aside\"]."),
+	location: z.object({
+		country: z.string().describe("ISO 3166-1 alpha-2 country code, e.g. 'US', 'DE', 'JP'."),
+		languages: z.array(z.string()).optional().describe("Preferred languages in order, e.g. ['en-US']."),
+	}).optional().describe("Geographic context for locale-specific content."),
+	actions: z.array(WebFetchActionSchema).optional()
+		.describe("Browser automation steps to run before scraping: click, write, press, wait, scroll, screenshot, executeJavascript."),
 });
+
+export type WebFetchOptions = Pick<
+	z.infer<typeof WebFetchRequestSchema>,
+	| "formats" | "onlyMainContent" | "onlyCleanContent" | "waitFor"
+	| "mobile" | "proxy" | "headers" | "includeTags" | "excludeTags"
+	| "location" | "actions"
+>;
 
 /**
  * Schema for fetch_web_content tool input

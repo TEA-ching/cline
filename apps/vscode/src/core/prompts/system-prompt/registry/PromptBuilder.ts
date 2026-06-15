@@ -150,7 +150,7 @@ export class PromptBuilder {
 		}
 		const displayName = config.name || config.id
 		const title = `## ${displayName}`
-		const description = [`Description: ${config.description}`]
+		const description = [`Description: ${resolveInstruction(config.description, context)}`]
 
 		if (!config.parameters?.length) {
 			config.parameters = []

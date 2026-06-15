@@ -23,19 +23,19 @@ export function createSmartWebFetchExecutor(
   nativeExecutor: WebFetchExecutor,
   timeoutMs = 30000,
 ): WebFetchExecutor {
-  return async (url: string, prompt: string, context: AgentToolContext): Promise<string> => {
+  return async (url, prompt, context, options) => {
     // 1. Ask the resolver for a key (cache handled by resolver implementation)
     let config;
     try {
       config = await resolver.resolve();
     } catch (resolverErr) {
       console.warn('[SmartWebFetch] Resolver threw, native fallback:', resolverErr instanceof Error ? resolverErr.message : String(resolverErr));
-      return nativeExecutor(url, prompt, context);
+      return nativeExecutor(url, prompt, context, options);
     }
 
     if (!config) {
       console.warn('[SmartWebFetch] Resolver returned null (no crawler key available), native fallback');
-      return nativeExecutor(url, prompt, context);
+      return nativeExecutor(url, prompt, context, options);
     }
 
     // 2. Dispatch based on protocol
@@ -43,18 +43,18 @@ export function createSmartWebFetchExecutor(
       switch (config.protocol) {
         case 'firecrawl':
           console.log(`[SmartWebFetch] Using Firecrawl (${config.crawlerName}) for ${url}`);
-          return await fetchWithFirecrawl(url, prompt, config, timeoutMs);
+          return await fetchWithFirecrawl(url, prompt, config, timeoutMs, options);
         case 'exa':
           console.log(`[SmartWebFetch] Using Exa (${config.crawlerName}) for ${url}`);
           return await fetchWithExa(url, prompt, config, timeoutMs);
         case 'scrapegraphai':
           // Adapter not implemented in this version
           console.warn('[SmartWebFetch] scrapegraphai not implemented, native fallback');
-          return nativeExecutor(url, prompt, context);
+          return nativeExecutor(url, prompt, context, options);
         default: {
           // Runtime protection if an out-of-contract protocol appears
           console.warn(`[SmartWebFetch] Unsupported protocol: ${String(config.protocol)}, fallback`);
-          return nativeExecutor(url, prompt, context);
+          return nativeExecutor(url, prompt, context, options);
         }
       }
     } catch (crawlerError) {
@@ -64,7 +64,7 @@ export function createSmartWebFetchExecutor(
         `[SmartWebFetch] ${config.protocol}/${config.crawlerName} (...${hint}) failed:`,
         crawlerError instanceof Error ? crawlerError.message : String(crawlerError),
       );
-      return nativeExecutor(url, prompt, context);
+      return nativeExecutor(url, prompt, context, options);
     }
   };
 }

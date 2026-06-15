@@ -50,6 +50,7 @@ import {
 	getSavedClineMessages,
 } from "@core/storage/disk";
 import { releaseTaskLock } from "@core/task/TaskLockUtils";
+import { createVaultCrawlerResolver } from "@core/keypoollive/CrawlerKeyResolver";
 import { isMultiRootEnabled } from "@core/workspace/multi-root-utils";
 import type { WorkspaceRootManager } from "@core/workspace/WorkspaceRootManager";
 import {
@@ -2333,6 +2334,7 @@ export class Task {
 				!!(providerInfo.model.info as any).supportsTools,
 			enableParallelToolCalling: this.isParallelToolCallingEnabled(),
 			terminalExecutionMode: this.terminalExecutionMode,
+			firecrawlEnabled: createVaultCrawlerResolver() !== null,
 		};
 
 		// Notify user if any conditional rules were applied for this request

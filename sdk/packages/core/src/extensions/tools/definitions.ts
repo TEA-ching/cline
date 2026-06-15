@@ -530,13 +530,14 @@ export function createWebFetchTool(
 				validatedInput.requests.map(
 					async (request): Promise<ToolOperationResult> => {
 						try {
+							const { url, prompt, ...options } = request;
 							const content = await withTimeout(
-								executor(request.url, request.prompt, context),
+								executor(url, prompt, context, options),
 								timeoutMs,
 								`Web fetch timed out after ${timeoutMs}ms`,
 							);
 							return {
-								query: request.url,
+								query: url,
 								result: content,
 								success: true,
 							};

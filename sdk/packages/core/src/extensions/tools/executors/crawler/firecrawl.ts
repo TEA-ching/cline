@@ -1,4 +1,116 @@
+import type { WebFetchOptions } from '../../schemas';
 import type { ResolvedCrawlerConfig } from './types';
+
+interface FirecrawlScrapeData {
+  markdown?: string;
+  html?: string;
+  rawHtml?: string;
+  links?: string[];
+  screenshot?: string;
+  summary?: string;
+  answer?: string;
+  highlights?: string;
+  metadata?: { title?: string };
+  actions?: {
+    screenshots?: string[];
+    javascriptReturns?: Array<{ type: string; value: unknown }>;
+  };
+}
+
+function formatFirecrawlResponse(
+  url: string,
+  prompt: string,
+  config: ResolvedCrawlerConfig,
+  data: FirecrawlScrapeData,
+  creditsInfo: string,
+): string {
+  const sections: string[] = [
+    `URL: ${url}`,
+    `Title: ${data.metadata?.title ?? 'N/A'}`,
+    `Source: Firecrawl (${config.crawlerName})`,
+    '',
+  ];
+
+  if (data.markdown) {
+    sections.push('--- Content (Markdown) ---');
+    sections.push(data.markdown.slice(0, 50000));
+    if (data.markdown.length > 50000) {
+      sections.push(`[Truncated: ${data.markdown.length} total characters]`);
+    }
+    sections.push('');
+  }
+
+  if (data.html) {
+    sections.push('--- Content (HTML) ---');
+    sections.push(data.html.slice(0, 20000));
+    if (data.html.length > 20000) {
+      sections.push(`[Truncated: ${data.html.length} total characters]`);
+    }
+    sections.push('');
+  }
+
+  if (data.rawHtml) {
+    sections.push('--- Content (Raw HTML) ---');
+    sections.push(data.rawHtml.slice(0, 20000));
+    if (data.rawHtml.length > 20000) {
+      sections.push(`[Truncated: ${data.rawHtml.length} total characters]`);
+    }
+    sections.push('');
+  }
+
+  if (data.links && data.links.length > 0) {
+    sections.push('--- Links ---');
+    sections.push(data.links.join('\n'));
+    sections.push('');
+  }
+
+  if (data.screenshot) {
+    sections.push('--- Screenshot (URL expires after 24h) ---');
+    sections.push(data.screenshot);
+    sections.push('');
+  }
+
+  if (data.summary) {
+    sections.push('--- Summary ---');
+    sections.push(data.summary);
+    sections.push('');
+  }
+
+  if (data.answer) {
+    sections.push('--- Answer ---');
+    sections.push(data.answer);
+    sections.push('');
+  }
+
+  if (data.highlights) {
+    sections.push('--- Highlights ---');
+    sections.push(data.highlights);
+    sections.push('');
+  }
+
+  if (data.actions?.screenshots && data.actions.screenshots.length > 0) {
+    sections.push('--- Action Screenshots (URLs expire after 24h) ---');
+    sections.push(data.actions.screenshots.map((s, i) => `[${i + 1}] ${s}`).join('\n'));
+    sections.push('');
+  }
+
+  if (data.actions?.javascriptReturns && data.actions.javascriptReturns.length > 0) {
+    sections.push('--- JavaScript Returns ---');
+    sections.push(
+      data.actions.javascriptReturns
+        .map((r, i) => `[${i + 1}] (${r.type}) ${JSON.stringify(r.value)}`)
+        .join('\n'),
+    );
+    sections.push('');
+  }
+
+  sections.push(
+    `--- Analysis Prompt with Firecrawl (remaining key: ${config.apiKey.slice(0, 5)}...${config.apiKey.slice(-5)}${creditsInfo}) ---`,
+    `Prompt: ${prompt}`,
+  );
+
+  return sections.join('\n');
+}
 
 export async function searchWithFirecrawl(
   query: string,
@@ -99,22 +211,35 @@ export async function fetchWithFirecrawl(
   prompt: string,
   config: ResolvedCrawlerConfig,
   timeoutMs = 30000,
+  options?: WebFetchOptions,
 ): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    const requestBody: Record<string, unknown> = {
+      url,
+      formats: options?.formats ?? [{ type: 'markdown' }],
+      onlyMainContent: options?.onlyMainContent ?? true,
+    };
+
+    if (options?.onlyCleanContent !== undefined) requestBody.onlyCleanContent = options.onlyCleanContent;
+    if (options?.waitFor !== undefined) requestBody.waitFor = options.waitFor;
+    if (options?.mobile !== undefined) requestBody.mobile = options.mobile;
+    if (options?.proxy) requestBody.proxy = options.proxy;
+    if (options?.headers && Object.keys(options.headers).length > 0) requestBody.headers = options.headers;
+    if (options?.includeTags?.length) requestBody.includeTags = options.includeTags;
+    if (options?.excludeTags?.length) requestBody.excludeTags = options.excludeTags;
+    if (options?.location) requestBody.location = options.location;
+    if (options?.actions?.length) requestBody.actions = options.actions;
+
     const response = await fetch(`${config.endpoint}/scrape`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${config.apiKey}`,
       },
-      body: JSON.stringify({
-        url,
-        formats: ['markdown'],
-        onlyMainContent: true,
-      }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
 
@@ -126,15 +251,15 @@ export async function fetchWithFirecrawl(
 
     const data = await response.json() as {
       success: boolean;
-      data?: { markdown?: string; metadata?: { title?: string } };
+      data?: FirecrawlScrapeData;
       error?: string;
     };
 
-    if (!data.success || !data.data?.markdown) {
+    if (!data.success || !data.data) {
       throw new Error(data.error ?? 'Firecrawl: empty response');
     }
 
-    // Get remaining credits from GET /team/credit-usage
+    // Get remaining credits
     const creditResponse = await fetch(`${config.endpoint}/team/credit-usage`, {
       headers: { 'Authorization': `Bearer ${config.apiKey}` },
       signal: controller.signal,
@@ -143,25 +268,11 @@ export async function fetchWithFirecrawl(
     if (creditResponse.ok) {
       const creditData = await creditResponse.json() as { success: boolean; data?: { remainingCredits: number } };
       if (creditData.success && creditData.data) {
-        creditsInfo = ` (remaining credits: ${creditData.data.remainingCredits})`;
+        creditsInfo = ` remaining credits: ${creditData.data.remainingCredits}`;
       }
     }
 
-    const { markdown, metadata } = data.data;
-    return [
-      `URL: ${url}`,
-      `Title: ${metadata?.title ?? 'N/A'}`,
-      `Source: Firecrawl (${config.crawlerName})`,
-      ``,
-      `--- Content (Markdown) ---`,
-      markdown.slice(0, 50000),
-      ...(markdown.length > 50000
-        ? [`\n[Truncated: ${markdown.length} total characters]`]
-        : []),
-      ``,
-      `--- Analysis Prompt with Firecrawl (remaining key: ${config.apiKey.slice(0, 5)}...${config.apiKey.slice(-5)} credits: ${creditsInfo})---`,
-      `Prompt: ${prompt}`,
-    ].join('\n');
+    return formatFirecrawlResponse(url, prompt, config, data.data, creditsInfo);
 
   } finally {
     clearTimeout(timer);

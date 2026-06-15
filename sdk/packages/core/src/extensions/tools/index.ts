@@ -114,6 +114,7 @@ export type {
 	ToolOperationResult,
 	VerifySubmitExecutor,
 	WebFetchExecutor,
+	WebFetchOptions,
 	WebSearchExecutor,
 } from "./types";
 

@@ -14,7 +14,10 @@ import type {
 	EditFileInput,
 	ReadFileRequest,
 	StructuredCommandInput,
+	WebFetchOptions,
 } from "./schemas";
+
+export type { WebFetchOptions };
 
 // =============================================================================
 // Tool Result Types
@@ -94,6 +97,7 @@ export type WebFetchExecutor = (
 	url: string,
 	prompt: string,
 	context: AgentToolContext,
+	options?: WebFetchOptions,
 ) => Promise<string>;
 
 /**

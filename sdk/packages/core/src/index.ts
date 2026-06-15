@@ -694,6 +694,8 @@ export {
 	type ToolPolicyPresetName,
 	type ToolPresetName,
 	ToolPresets,
+	type WebFetchExecutor,
+	type WebFetchOptions,
 } from "./extensions/tools";
 export {
 	type ClineRecommendedModel,
