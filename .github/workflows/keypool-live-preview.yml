@@ -16,8 +16,10 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
   id-token: write  # Required for OIDC
+  attestations: write
+  packages: write
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
@@ -430,14 +432,127 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: modified-repo
-          path: . 
+          path: .
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 3.7. Build clinepool-download binaries for all platforms
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-clinepool-download:
+    name: Build clinepool-download
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Get clinepool-download version
+        id: clinepool-version
+        run: |
+          VERSION=$(grep '^version' ./apps/clinepool-download/Cargo.toml | cut -d '"' -f 2)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: 'linux/arm64,linux/armhf,linux/amd64'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+        continue-on-error: true
+
+      - name: Extract metadata for Docker
+        id: docker-meta
+        uses: docker/metadata-action@v6
+        with:
+          images: sctg/clinepool-download
+          tags: |
+            type=raw,value=preview-${{ needs.setup.outputs.datetime_safe }}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: apps/clinepool-download/.
+          file: apps/clinepool-download/Dockerfile
+          platforms: linux/arm64, linux/amd64, linux/armhf
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          push: ${{ secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}
+          tags: ${{ steps.docker-meta.outputs.tags }}
+          labels: ${{ steps.docker-meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.clinepool-version.outputs.version }}
+            BUILD_DATE=${{ needs.setup.outputs.datetime }}
+
+      - name: Extract binaries from Docker images
+        env:
+          VERSION: ${{ steps.clinepool-version.outputs.version }}
+          DATETIME_SAFE: ${{ needs.setup.outputs.datetime_safe }}
+        run: |
+          # Define platform to architecture mapping
+          declare -A PLATFORM_TO_ARCH=(
+            ["linux/arm64"]="arm64"
+            ["linux/armhf"]="armhf"
+            ["linux/amd64"]="amd64"
+          )
+
+          mkdir -p clinepool-download-binaries
+
+          for PLATFORM in linux/arm64 linux/armhf linux/amd64; do
+            DOCKER_TAG="preview-${DATETIME_SAFE}"
+            FAMILY=linux
+            EXT=""
+            ARCH=${PLATFORM_TO_ARCH[$PLATFORM]}
+            ARTIFACT_NAME="clinepool-download_${FAMILY}_${ARCH}_${VERSION}${EXT}"
+            PLATFORM_SAFE=$(echo "$PLATFORM" | tr '/' '-')
+
+            if [ "${{ secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}" = "true" ]; then
+              docker pull sctg/clinepool-download:${DOCKER_TAG}
+            else
+              # Build locally if Docker Hub credentials are not available
+              docker build --platform $PLATFORM -t clinepool-download:${DOCKER_TAG} apps/clinepool-download/.
+            fi
+
+            CONTAINER_NAME="extract-$PLATFORM_SAFE"
+            docker create --platform $PLATFORM --name $CONTAINER_NAME clinepool-download:${DOCKER_TAG}
+            mkdir -p /tmp/extracted
+            docker cp $CONTAINER_NAME:/usr/local/bin/clinepool-download /tmp/extracted/${ARTIFACT_NAME}
+            if [ ! -f "/tmp/extracted/${ARTIFACT_NAME}" ]; then
+              echo "Error: Binary not found for $PLATFORM"
+              exit 1
+            fi
+            chmod +x "/tmp/extracted/${ARTIFACT_NAME}"
+            cp "/tmp/extracted/${ARTIFACT_NAME}" "clinepool-download-binaries/"
+            echo "Extracted $PLATFORM binary: $ARTIFACT_NAME"
+            docker rm $CONTAINER_NAME || true
+            rm -f /tmp/extracted/${ARTIFACT_NAME} || true
+          done
+
+      - name: Upload clinepool-download binaries as artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: clinepool-download-binaries
+          path: clinepool-download-binaries/*
+          if-no-files-found: error
 
   # ─────────────────────────────────────────────────────────────────────────────
   # 4. Gather artifacts, generate release notes, and publish a GitHub pre-release.
   # ─────────────────────────────────────────────────────────────────────────────
   release:
     name: Publish GitHub pre-release
-    needs: [setup, build-vsix, build-cli-and-sdk]
+    needs: [setup, build-vsix, build-cli-and-sdk, build-clinepool-download]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -493,6 +608,12 @@ jobs:
           name: cli-binaries
           path: cli-binaries/
 
+      - name: Download clinepool-download binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: clinepool-download-binaries
+          path: clinepool-download-binaries/
+
       - name: Rename CLI binaries with version and datetime
         env:
           VERSION: ${{ needs.setup.outputs.version }}
@@ -510,6 +631,11 @@ jobs:
           # Rename macOS binaries
           mv cli-binaries/cli-darwin-arm64/bin/cline "release-assets/cli/clinepool-cli-${VERSION}-preview-${DATETIME_SAFE}-darwin-arm64"
           mv cli-binaries/cli-darwin-x64/bin/cline "release-assets/cli/clinepool-cli-${VERSION}-preview-${DATETIME_SAFE}-darwin-x64"
+
+      - name: Move clinepool-download binaries to release assets
+        run: |
+          mkdir -p release-assets/clinepool-download
+          mv clinepool-download-binaries/* release-assets/clinepool-download/
 
       - name: List release assets
         run: ls -lh release-assets/
@@ -530,4 +656,5 @@ jobs:
             release-assets/*.vsix \
             release-assets/*.tar.gz \
             release-assets/cli/* \
+            release-assets/clinepool-download/* \
             llm-files/*
