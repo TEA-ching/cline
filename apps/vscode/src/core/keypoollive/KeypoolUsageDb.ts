@@ -2,37 +2,38 @@
  * KeypoolLive — KeypoolUsageDb: NDJSON persistence for per-key usage + errors
  * © 2026 Ronan LE MEILLAT — MIT License
  *
- * Detailed description of the KeypoolUsageDb class:
+ * This module stores lightweight API-key usage and error statistics for the
+ * KeypoolLive provider. It intentionally uses newline-delimited JSON (NDJSON)
+ * files instead of SQLite:
  *
- * This class provides persistent storage for API key usage and error tracking using
- * newline-delimited JSON (NDJSON) files. It maintains two separate files:
- *   - `usage.ndjson`: Records successful API requests with token usage metrics
- *   - `errors.ndjson`: Records failed requests with error codes
+ * - `usage.ndjson` stores successful requests and token usage metrics.
+ * - `errors.ndjson` stores failed requests and error codes.
  *
- * Key features include:
+ * The design is append-oriented and dependency-free. Records are written as one
+ * JSON object per line, which keeps the implementation simple, avoids native
+ * module ABI issues with Electron, and remains easy to inspect manually when
+ * debugging keypool behavior.
  *
- * 1. **Data Persistence**: Each record is stored as a JSON object on a separate line,
- *    with a timestamp for chronological ordering. This format is lightweight and
- *    avoids the native module dependency on better-sqlite3 that was incompatible
- *    with recent Electron ABI versions.
- * 2. **Automatic Size Management**: The database monitors combined file size and
- *    automatically trims the oldest 25% of records from each file when the total
- *    exceeds a configurable limit (default 50MB). This prevents unbounded growth
- *    while preserving recent usage patterns.
- * 3. **Aggregated Statistics**: Provides methods to compute usage and error
- *    statistics over configurable time periods (hour, day, week, month). Usage
- *    stats aggregate prompt/completion tokens and request counts per key. Error
- *    stats calculate error rates and track the most recent error code per key.
- * 4. **Data Access**: Supports retrieval of raw records for detailed analysis and
- *    aggregated views for reporting. Records are filtered by timestamp ranges and
- *    grouped by period, provider, key owner, and key hint.
- * 5. **Data Management**: Includes a purge function to delete all statistics and
- *    a configuration method to adjust the maximum storage size based on user
- *    settings.
- * The implementation ensures atomic file operations, handles malformed lines
- *    gracefully, and maintains backward compatibility with the original SQLite
- *    schema through equivalent query logic.
- **/
+ * Important maintenance notes for external contributors:
+ *
+ * 1. Do not expose raw API keys in these files. All persistence paths use
+ *    `keyOwner` and `keyHint` only; `keyHint` should remain a short, non-secret
+ *    identifier such as a fingerprint suffix or provider-side label.
+ *
+ * 2. The files are append-only except for size trimming. Because records are
+ *    always appended with an increasing timestamp, the physical line order is
+ *    also the chronological insertion order. Trimming therefore removes the
+ *    oldest lines from each file without parsing JSON.
+ *
+ * 3. The aggregation methods are meant to mirror the behavior of the former
+ *    SQLite implementation closely enough for UI reporting. When changing
+ *    grouping keys, sorting, or error-rate calculations, verify that the
+ *    KeypoolLive dashboard still receives the expected fields.
+ *
+ * 4. The implementation is synchronous and deliberately small. It is optimized
+ *    for maintainability and predictable behavior in the extension host rather
+ *    than high-throughput analytics.
+ */
 
 import {
 	appendFileSync,
@@ -48,12 +49,20 @@ import { HostProvider } from "@/hosts/host-provider";
 import { Logger } from "@/shared/services/Logger";
 
 /**
- * Defines the time granularity for usage statistics.
+ * Time granularity used when grouping successful request usage into statistics.
+ *
+ * These values are exposed to callers and must stay in sync with the UI/reporting
+ * layer that asks for hourly, daily, weekly, or monthly key usage.
  */
 export type UsagePeriod = "hour" | "day" | "week" | "month";
 
 /**
- * Represents a single usage event (typically one successful request).
+ * Represents a successful API request that consumed tokens from a pooled key.
+ *
+ * `provider`, `modelId`, `keyOwner`, and `keyHint` identify where the request was
+ * sent and which logical key was used. Token fields are raw model token counts,
+ * not cost values. The model id is persisted for debugging/context even though
+ * the current aggregation methods group by provider/key only.
  */
 export interface KeyUsageEntry {
 	provider: string;
@@ -65,7 +74,11 @@ export interface KeyUsageEntry {
 }
 
 /**
- * Represents a single error event recorded for an API key.
+ * Represents a failed API request associated with a pooled key.
+ *
+ * `errorCode` is nullable because some failures are not HTTP errors or do not
+ * expose a numeric status code. Keeping the field nullable lets callers
+ * distinguish "unknown/non-HTTP error" from an actual HTTP status.
  */
 export interface KeyErrorEntry {
 	provider: string;
@@ -76,7 +89,11 @@ export interface KeyErrorEntry {
 }
 
 /**
- * Aggregated usage statistics for a specific key within a time period.
+ * Aggregated usage statistics for one key within one period bucket.
+ *
+ * `period` is a formatted UTC label such as `2026-06-15T08:00` or
+ * `2026-W24`. `requestCount` is the number of successful usage records that
+ * contributed to the totals.
  */
 export interface KeyUsageStat {
 	period: string;
@@ -89,7 +106,11 @@ export interface KeyUsageStat {
 }
 
 /**
- * Aggregated error statistics for a specific key, including calculated error rates.
+ * Aggregated error statistics for one key over the retained error history.
+ *
+ * `totalRequests` is the number of successful usage records for the same
+ * provider/key pair. The error rate is calculated as `errorCount / totalRequests`
+ * with a denominator floor of 1, matching the previous SQL behavior.
  */
 export interface KeyErrorStat {
 	provider: string;
@@ -103,27 +124,57 @@ export interface KeyErrorStat {
 
 // ─── Internal record shapes written to NDJSON files ──────────────────────────
 
+/**
+ * On-disk usage record.
+ *
+ * The public `KeyUsageEntry` interface intentionally does not include `ts`; the
+ * database layer owns timestamps so callers cannot accidentally backdate or
+ * duplicate records.
+ */
 interface UsageRecord extends KeyUsageEntry {
 	ts: number;
 }
 
+/**
+ * On-disk error record.
+ *
+ * Like usage records, error records receive an append timestamp when persisted.
+ */
 interface ErrorRecord extends KeyErrorEntry {
 	ts: number;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/**
+ * Formats a number as two digits.
+ *
+ * This helper keeps date/week labels aligned with the string format previously
+ * produced by SQLite `strftime()` calls.
+ */
 function pad2(n: number): string {
 	return n.toString().padStart(2, "0");
 }
 
-/** Returns a UTC week number (0–53) matching SQLite's %W. */
+/**
+ * Returns a UTC week number in the 0–53 range.
+ *
+ * This intentionally mirrors SQLite's `%W` convention: weeks start on Monday
+ * and days before the first Monday of the year belong to week 0. Keeping this
+ * behavior unchanged avoids surprising changes in weekly report labels.
+ */
 function utcWeek(d: Date): number {
 	const jan1 = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
 	return Math.floor((d.getTime() - jan1.getTime()) / 86_400_000 / 7);
 }
 
-/** Formats a timestamp into the period label that matches the old SQLite strftime output. */
+/**
+ * Formats a millisecond timestamp into the period label used by aggregation.
+ *
+ * All labels are UTC-based to keep reporting deterministic across machines in
+ * different local time zones. The returned strings match the former SQLite
+ * `strftime()` output closely enough that existing UI code can remain stable.
+ */
 function formatPeriodLabel(ts: number, period: UsagePeriod): string {
 	const d = new Date(ts);
 	switch (period) {
@@ -139,7 +190,11 @@ function formatPeriodLabel(ts: number, period: UsagePeriod): string {
 }
 
 /**
- * Returns the cutoff timestamp (ms) for the given period relative to now.
+ * Returns the start cutoff for the requested rolling period.
+ *
+ * This is intentionally a rolling window relative to `Date.now()`, not a
+ * calendar-aligned window. For example, `day` keeps the last 24 hours rather
+ * than the current UTC day.
  */
 function periodCutoffMs(period: UsagePeriod): number {
 	const now = Date.now();
@@ -159,9 +214,10 @@ function periodCutoffMs(period: UsagePeriod): number {
  * Returns the directory containing both NDJSON files.
  *
  * Resolution order:
- * 1. `KEYPOOL_USAGE_DB_DIR` environment variable — allows sharing the database
- *    with the SDK keypoollive provider (set the same path in both environments).
- * 2. VS Code extension global storage (per-extension, platform-specific):
+ *
+ * 1. `KEYPOOL_USAGE_DB_DIR` environment variable — useful for tests and for
+ *    sharing the same database directory with the SDK keypoollive provider.
+ * 2. VS Code extension global storage, which is platform-specific:
  *    - Windows: %APPDATA%\Code\User\globalStorage\<extension-id>
  *    - macOS:   ~/Library/Application Support/Code/User/globalStorage/<extension-id>
  *    - Linux:   ~/.config/Code/User/globalStorage/<extension-id>
@@ -177,42 +233,58 @@ function getDbDir(): string {
 // ─── KeypoolUsageDb ───────────────────────────────────────────────────────────
 
 /**
- * Handles persistent storage of API key usage and error history using
- * newline-delimited JSON (NDJSON) files. Each line in the file is one
- * JSON object with a `ts` (millisecond timestamp) field. This avoids the
- * native module dependency on better-sqlite3, which is incompatible with
- * recent Electron ABI versions.
+ * Persistent storage for KeypoolLive API-key usage and error history.
  *
- * Two files are maintained:
- *   - `usage.ndjson`  — one line per successful request
- *   - `errors.ndjson` — one line per error event
+ * The class exposes a static file-backed database API. It is not instantiated
+ * because the extension host treats these files as a single shared append log
+ * per installation. The storage format is intentionally simple:
  *
- * When the combined size of both files exceeds `maxSizeMb`, the oldest 25 %
- * of lines are trimmed from each file before the next write.
+ * - every line is an independent JSON object;
+ * - every record includes `ts`, a millisecond epoch timestamp;
+ * - malformed or blank lines are ignored when reading;
+ * - old records are trimmed by file size to prevent unbounded disk growth.
+ *
+ * This implementation replaced the previous SQLite-backed schema to avoid the
+ * `better-sqlite3` native dependency and Electron ABI compatibility issues.
  */
 export class KeypoolUsageDb {
-	/** Default maximum combined size of both NDJSON files (bytes). */
+	/**
+	 * Default maximum combined size of `usage.ndjson` and `errors.ndjson`.
+	 *
+	 * The limit is shared across both files. If it is exceeded before an append,
+	 * each file independently drops its oldest 25% of lines.
+	 */
 	private static maxSizeBytes: number = 50 * 1024 * 1024;
 
 	/**
-	 * Override the maximum combined file size.  Called by the extension host
-	 * whenever the `keypoolliveMaxDbSizeMb` setting changes.
+	 * Updates the maximum combined database size.
+	 *
+	 * The extension calls this when the `keypoolliveMaxDbSizeMb` setting changes.
+	 * Values below 1 MB are raised to 1 MB to avoid creating an unusably small
+	 * log that would trim aggressively on every write.
 	 */
 	static setMaxSizeMb(mb: number): void {
 		KeypoolUsageDb.maxSizeBytes = Math.max(1, mb) * 1024 * 1024;
 	}
 
-	/** Absolute path to usage.ndjson. */
+	/** Absolute path to `usage.ndjson`. */
 	private static usagePath(): string {
 		return path.join(getDbDir(), "usage.ndjson");
 	}
 
-	/** Absolute path to errors.ndjson. */
+	/** Absolute path to `errors.ndjson`. */
 	private static errorsPath(): string {
 		return path.join(getDbDir(), "errors.ndjson");
 	}
 
-	/** Ensures the storage directory exists. Returns false on failure. */
+	/**
+	 * Ensures the database directory exists.
+	 *
+	 * `recursive: true` lets the extension create both the host global-storage
+	 * directory and the nested `keypoollive` directory in one call. Failures are
+	 * logged and surfaced as `false` so callers can skip the write instead of
+	 * throwing through request-handling code.
+	 */
 	private static ensureDir(): boolean {
 		try {
 			mkdirSync(getDbDir(), { recursive: true });
@@ -223,7 +295,13 @@ export class KeypoolUsageDb {
 		}
 	}
 
-	/** Returns the size in bytes of a file, or 0 if it does not exist. */
+	/**
+	 * Returns the size in bytes of a file, or `0` if it does not exist.
+	 *
+	 * Exceptions are swallowed because size checks are best-effort guards for
+	 * trimming; a read/write failure is already logged by the operation that
+	 * needs the file.
+	 */
 	private static fileSize(filePath: string): number {
 		try {
 			return existsSync(filePath) ? statSync(filePath).size : 0;
@@ -232,7 +310,12 @@ export class KeypoolUsageDb {
 		}
 	}
 
-	/** Returns the combined size of both NDJSON files in bytes. */
+	/**
+	 * Returns the combined size of both NDJSON files.
+	 *
+	 * This is used by `trimIfNeeded()` to enforce the shared disk budget across
+	 * successful-request and error-record logs.
+	 */
 	static getFileSizeBytes(): number {
 		return (
 			KeypoolUsageDb.fileSize(KeypoolUsageDb.usagePath()) +
@@ -241,8 +324,13 @@ export class KeypoolUsageDb {
 	}
 
 	/**
-	 * Reads all valid JSON lines from an NDJSON file.
-	 * Silently skips blank or malformed lines.
+	 * Reads all valid JSON objects from an NDJSON file.
+	 *
+	 * Blank lines are ignored, which makes the reader tolerant of a trailing
+	 * newline. Malformed lines are skipped instead of failing the entire read;
+	 * this protects reporting from a partially written or manually edited file.
+	 * The method does not repair the file, so repeated malformed writes should
+	 * be investigated through logs.
 	 */
 	private static readLines<T>(filePath: string): T[] {
 		if (!existsSync(filePath)) return [];
@@ -255,7 +343,7 @@ export class KeypoolUsageDb {
 				try {
 					results.push(JSON.parse(trimmed) as T);
 				} catch {
-					// skip malformed line
+					// Skip malformed line to keep reporting resilient.
 				}
 			}
 			return results;
@@ -266,8 +354,15 @@ export class KeypoolUsageDb {
 	}
 
 	/**
-	 * Trims the oldest `fraction` of lines from a file (by line order, which
-	 * equals insertion/time order since records are always appended).
+	 * Drops the oldest fraction of lines from a file.
+	 *
+	 * The `fraction` parameter is the amount to remove, not the amount to keep.
+	 * For example, `0.25` removes the oldest 25% of lines and keeps the newest
+	 * 75%. This works because records are appended in chronological order.
+	 *
+	 * Trimming is line-based rather than JSON-aware for performance and
+	 * simplicity. Since each line is independently parseable, cutting between
+	 * lines cannot corrupt a JSON record.
 	 */
 	private static trimFile(filePath: string, fraction: number): void {
 		if (!existsSync(filePath)) return;
@@ -287,8 +382,12 @@ export class KeypoolUsageDb {
 	}
 
 	/**
-	 * Checks combined file size and trims the oldest 25 % of each file if the
-	 * combined size exceeds the configured maximum.
+	 * Trims both files when the shared size budget is exceeded.
+	 *
+	 * The check happens before appending a new record. As a result, a single
+	 * append may temporarily leave the database slightly above the configured
+	 * limit, but subsequent writes will continue trimming until the budget is
+	 * respected again.
 	 */
 	private static trimIfNeeded(): void {
 		if (KeypoolUsageDb.getFileSizeBytes() <= KeypoolUsageDb.maxSizeBytes)
@@ -301,7 +400,12 @@ export class KeypoolUsageDb {
 	}
 
 	/**
-	 * Appends a single JSON record as one NDJSON line.
+	 * Appends one JSON object as a single NDJSON line.
+	 *
+	 * This method performs the common write path for both usage and error logs:
+	 * create the directory, trim if needed, then append the serialized record.
+	 * JSON serialization is intentionally performed close to the write so any
+	 * unexpected serialization failure is logged with the append failure.
 	 */
 	private static appendLine(filePath: string, record: object): void {
 		if (!KeypoolUsageDb.ensureDir()) return;
@@ -316,7 +420,10 @@ export class KeypoolUsageDb {
 	// ─── Public API ────────────────────────────────────────────────────────────
 
 	/**
-	 * Persists a new usage entry.
+	 * Persists a successful API-key usage event.
+	 *
+	 * The timestamp is assigned by the database layer to preserve append-order
+	 * semantics. Callers should not include timestamps in `KeyUsageEntry`.
 	 */
 	static recordUsage(entry: KeyUsageEntry): void {
 		const record: UsageRecord = { ts: Date.now(), ...entry };
@@ -324,7 +431,11 @@ export class KeypoolUsageDb {
 	}
 
 	/**
-	 * Persists a new error entry.
+	 * Persists a failed API-key request.
+	 *
+	 * Errors are stored separately from successful usage so the error log can
+	 * retain non-HTTP failures and status-code details without bloating the
+	 * usage aggregation path.
 	 */
 	static recordError(entry: KeyErrorEntry): void {
 		const record: ErrorRecord = { ts: Date.now(), ...entry };
@@ -332,7 +443,14 @@ export class KeypoolUsageDb {
 	}
 
 	/**
-	 * Retrieves aggregated usage statistics for the specified period.
+	 * Returns usage statistics grouped by period, provider, owner, and key hint.
+	 *
+	 * The time filter is a rolling window based on the requested period. Inside
+	 * that window, records are bucketed into calendar-style UTC labels. Token
+	 * counts and request counts are summed for each group.
+	 *
+	 * The sort order mirrors the previous SQL query: newest period first, then
+	 * provider, key owner, and key hint lexicographically.
 	 */
 	static getUsageStats(period: UsagePeriod): KeyUsageStat[] {
 		try {
@@ -341,7 +459,8 @@ export class KeypoolUsageDb {
 				KeypoolUsageDb.usagePath(),
 			).filter((r) => r.ts >= cutoff);
 
-			// Group by period-label + provider + keyOwner + keyHint
+			// Group by period-label + provider + keyOwner + keyHint.
+			// The NUL separator avoids collisions between readable string parts.
 			const map = new Map<
 				string,
 				{
@@ -376,7 +495,7 @@ export class KeypoolUsageDb {
 				}
 			}
 
-			// Sort: period DESC, provider, keyOwner, keyHint (mirrors old SQL ORDER BY)
+			// Sort: period DESC, provider, keyOwner, keyHint (mirrors old SQL ORDER BY).
 			return Array.from(map.values()).sort((a, b) => {
 				if (b.period !== a.period) return b.period.localeCompare(a.period);
 				if (a.provider !== b.provider)
@@ -392,8 +511,16 @@ export class KeypoolUsageDb {
 	}
 
 	/**
-	 * Retrieves aggregated error statistics for all keys (full history, no time
-	 * filter — mirrors the original SQL query that had no WHERE clause on ts).
+	 * Returns error statistics grouped by provider, owner, and key hint.
+	 *
+	 * Unlike usage stats, this method uses the full retained error history and
+	 * does not apply a time cutoff. That mirrors the original SQL query, which
+	 * had no `WHERE ts >= ...` clause for errors.
+	 *
+	 * The denominator for `errorRate` is the number of successful usage records
+	 * for the same key. This means the rate is an error-to-success ratio rather
+	 * than a strict percentage of all attempts. The denominator is floored at 1
+	 * to preserve the previous SQL behavior of `MAX(total_requests, 1)`.
 	 */
 	static getErrorStats(): KeyErrorStat[] {
 		try {
@@ -404,14 +531,14 @@ export class KeypoolUsageDb {
 				KeypoolUsageDb.usagePath(),
 			);
 
-			// Accumulate usage counts per key
+			// Accumulate successful usage counts per provider/key pair.
 			const usageMap = new Map<string, number>();
 			for (const r of usageRecords) {
 				const key = `${r.provider}\x00${r.keyOwner}\x00${r.keyHint}`;
 				usageMap.set(key, (usageMap.get(key) ?? 0) + 1);
 			}
 
-			// Accumulate error counts per key
+			// Accumulate error counts and the latest non-null numeric error code.
 			const errorMap = new Map<
 				string,
 				{
@@ -448,13 +575,13 @@ export class KeypoolUsageDb {
 					keyHint: e.keyHint,
 					totalRequests,
 					errorCount: e.errorCount,
-					// Avoid division by zero — mirror: MAX(total_requests, 1)
+					// Avoid division by zero and mirror the former SQL MAX(total_requests, 1).
 					errorRate: e.errorCount / Math.max(totalRequests, 1),
 					lastErrorCode: e.lastErrorCode,
 				});
 			}
 
-			// Sort by descending error rate (mirrors old SQL ORDER BY errorRate DESC)
+			// Sort by descending error rate, matching the previous SQL ORDER BY.
 			return result.sort((a, b) => b.errorRate - a.errorRate);
 		} catch (e) {
 			Logger.error("[KeypoolUsageDb] Failed to get error stats:", e);
@@ -463,8 +590,10 @@ export class KeypoolUsageDb {
 	}
 
 	/**
-	 * Deletes both NDJSON files, effectively purging all statistics.
-	 * Returns the total number of bytes freed.
+	 * Deletes both NDJSON files and returns the number of bytes freed.
+	 *
+	 * This purges stored statistics but intentionally leaves the containing
+	 * directory in place so future writes can recreate the files normally.
 	 */
 	static purge(): number {
 		let freed = 0;
@@ -484,8 +613,14 @@ export class KeypoolUsageDb {
 		return freed;
 	}
 
-	/** No-op: kept for API compatibility with the former SQLite implementation. */
+	/**
+	 * Compatibility no-op.
+	 *
+	 * The former SQLite implementation needed an explicit close path. NDJSON
+	 * files do not hold persistent file handles, so this method remains for API
+	 * compatibility with callers that still invoke `close()`.
+	 */
 	static close(): void {
-		// NDJSON files do not hold open file handles
+		// NDJSON files do not hold open file handles.
 	}
 }
