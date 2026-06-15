@@ -18,6 +18,9 @@ use crate::ClinepoolError;
 /// # Examples
 ///
 /// ```
+/// rustls::crypto::ring::default_provider()
+///        .install_default()
+///        .ok();
 /// let rt = tokio::runtime::Runtime::new().unwrap();
 /// rt.block_on(async {
 ///     let client = octocrab::Octocrab::builder().build().unwrap();

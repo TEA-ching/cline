@@ -47,6 +47,9 @@ fn make_release(tag: &str, published_at: &str) -> serde_json::Value {
 
 #[tokio::test]
 async fn test_find_latest_preview_release() {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .ok();
     let mut server = Server::new_async().await;
     let body = json!([
         make_release("preview/2026-06-09T13-43-44Z", "2026-06-09T13:43:44Z"),
@@ -78,6 +81,9 @@ async fn test_find_latest_preview_release() {
 
 #[tokio::test]
 async fn test_find_latest_of_specific_version() {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .ok();
     let mut server = Server::new_async().await;
     let body = json!([
         make_release("preview/2026-06-09T13-43-44Z", "2026-06-09T13:43:44Z"),
@@ -111,6 +117,9 @@ async fn test_find_latest_of_specific_version() {
 
 #[tokio::test]
 async fn test_no_preview_releases_returns_error() {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .ok();
     let mut server = Server::new_async().await;
     let body = json!([
         make_release("stable/2026-06-09T13-43-44Z", "2026-06-09T13:43:44Z"),
@@ -138,6 +147,9 @@ async fn test_no_preview_releases_returns_error() {
 
 #[tokio::test]
 async fn test_requested_version_not_found_returns_error() {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .ok();
     let mut server = Server::new_async().await;
     let body = json!([
         make_release("preview/2026-06-09T13-43-44Z", "2026-06-09T13:43:44Z"),

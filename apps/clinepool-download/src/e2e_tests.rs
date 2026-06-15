@@ -1,4 +1,4 @@
-use super::{Args, ClinepoolError, Platform};
+use super::{Args};
 use clap::Parser;
 use octocrab::Octocrab;
 use std::fs;
