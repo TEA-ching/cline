@@ -288,11 +288,10 @@ export class KeypoolLiveHandler implements ApiHandler {
 
 		this.resolvedConfig = config;
 		{
-			const keyHint = config.apiKey.slice(-8);
-			const resolvedProvider = config.providerName;
+			const keyHint = `...${config.apiKey.slice(-8)}`;
 			const dayStats = KeypoolUsageDb.getUsageStats("day");
 			const keyStat = dayStats.find(
-				(s) => s.provider === resolvedProvider && s.keyHint === keyHint,
+				(s) => s.provider === vaultProviderName && s.keyHint === keyHint,
 			);
 			Logger.log(
 				`[KeypoolLive] Using key owner=${config.keyOwner}, key=${formatKeyHint(config.apiKey)}, key usage (in=${keyStat?.promptTokens ?? 0}, out=${keyStat?.completionTokens ?? 0}, requests=${keyStat?.requestCount ?? 0}) model=${config.model.id}`,
