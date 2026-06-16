@@ -214,6 +214,12 @@ jobs:
           path: "apps/vscode/clinepool-*.vsix"
           if-no-files-found: error
 
+      - name: Attest VSIX build
+        uses: actions/attest-build-provenance@v4
+        continue-on-error: true
+        with:
+          subject-path: "apps/vscode/clinepool-*.vsix"
+
 
   # ─────────────────────────────────────────────────────────────────────────────
   # 3.5. Build CLI binaries for all platforms
@@ -282,6 +288,18 @@ jobs:
           cd apps/cli
           bun run build
           bun run build:platforms
+
+      - name: Attest CLI binaries
+        uses: actions/attest-build-provenance@v4
+        continue-on-error: true
+        with:
+          subject-path: |
+            apps/cli/dist/cli-windows-arm64/bin/cline.exe
+            apps/cli/dist/cli-windows-x64/bin/cline.exe
+            apps/cli/dist/cli-linux-arm64/bin/cline
+            apps/cli/dist/cli-darwin-arm64/bin/cline
+            apps/cli/dist/cli-linux-x64/bin/cline
+            apps/cli/dist/cli-darwin-x64/bin/cline
 
       - name: Create LLM files
         run: |
@@ -542,6 +560,15 @@ jobs:
             docker rm $CONTAINER_NAME || true
             rm -f /tmp/extracted/${ARTIFACT_NAME} || true
           done
+
+      - name: Attest clinepool-download Linux binaries
+        uses: actions/attest-build-provenance@v4
+        continue-on-error: true
+        with:
+          subject-path: |
+            clinepool-download-binaries/clinepool-download_linux_arm64_*
+            clinepool-download-binaries/clinepool-download_linux_armhf_*
+            clinepool-download-binaries/clinepool-download_linux_amd64_*
 
       - name: Upload clinepool-download binaries as artifacts
         uses: actions/upload-artifact@v7
