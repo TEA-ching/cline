@@ -103,13 +103,74 @@ function aggregateErrorsByProvider(stats: KeypoolErrorStat[]): Record<
 }
 
 /**
- * Component to display provider totals
+ * Aggregates usage statistics by model (using provider as model proxy)
  */
-const ProviderTotalsSection: React.FC<{
+function aggregateUsageByModel(stats: KeypoolUsageStat[]): Record<
+	string,
+	{
+		promptTokens: number
+		completionTokens: number
+		requestCount: number
+	}
+> {
+	return stats.reduce(
+		(acc, stat) => {
+			const model = stat.provider // Using provider as model proxy
+			if (!acc[model]) {
+				acc[model] = {
+					promptTokens: 0,
+					completionTokens: 0,
+					requestCount: 0,
+				}
+			}
+			acc[model].promptTokens += Number(stat.promptTokens)
+			acc[model].completionTokens += Number(stat.completionTokens)
+			acc[model].requestCount += Number(stat.requestCount)
+			return acc
+		},
+		{} as Record<string, { promptTokens: number; completionTokens: number; requestCount: number }>,
+	)
+}
+
+/**
+ * Aggregates error statistics by model (using provider as model proxy)
+ */
+function aggregateErrorsByModel(stats: KeypoolErrorStat[]): Record<
+	string,
+	{
+		totalRequests: number
+		errorCount: number
+		errorRate: number
+	}
+> {
+	return stats.reduce(
+		(acc, stat) => {
+			const model = stat.provider // Using provider as model proxy
+			if (!acc[model]) {
+				acc[model] = {
+					totalRequests: 0,
+					errorCount: 0,
+					errorRate: 0,
+				}
+			}
+			acc[model].totalRequests += Number(stat.totalRequests)
+			acc[model].errorCount += Number(stat.errorCount)
+			acc[model].errorRate = acc[model].errorCount / acc[model].totalRequests
+			return acc
+		},
+		{} as Record<string, { totalRequests: number; errorCount: number; errorRate: number }>,
+	)
+}
+
+/**
+ * Component to display aggregated totals (by provider or model)
+ */
+const AggregatedTotalsSection: React.FC<{
 	title: string
 	aggregatedData: Record<string, any>
 	columns: { key: string; label: string; align?: string; format?: (value: any) => string }[]
-}> = ({ title, aggregatedData, columns }) => {
+	label: string
+}> = ({ title, aggregatedData, columns, label }) => {
 	if (Object.keys(aggregatedData).length === 0) return null
 
 	return (
@@ -118,7 +179,7 @@ const ProviderTotalsSection: React.FC<{
 			<table className="w-full text-xs border-collapse">
 				<thead>
 					<tr className="text-muted-foreground text-left">
-						<th className="py-0.5 pr-2 font-medium">Provider</th>
+						<th className="py-0.5 pr-2 font-medium">{label}</th>
 						{columns.map((col, i) => (
 							<th className={`py-0.5 pr-2 font-medium ${col.align === "right" ? "text-right" : ""}`} key={i}>
 								{col.label}
@@ -127,9 +188,9 @@ const ProviderTotalsSection: React.FC<{
 					</tr>
 				</thead>
 				<tbody>
-					{Object.entries(aggregatedData).map(([provider, data]) => (
-						<tr className="border-t border-border/50" key={provider}>
-							<td className="py-0.5 pr-2 font-medium">{provider}</td>
+					{Object.entries(aggregatedData).map(([key, data]) => (
+						<tr className="border-t border-border/50" key={key}>
+							<td className="py-0.5 pr-2 font-medium">{key}</td>
 							{columns.map((col, i) => {
 								const value = data[col.key]
 								const formattedValue = col.format ? col.format(value) : String(value)
@@ -185,7 +246,7 @@ function downloadCsv(content: string, filename: string): void {
 }
 
 // Export des fonctions et composants pour les tests
-export { aggregateUsageByProvider, aggregateErrorsByProvider, formatTokens, toUsageCsv, toErrorCsv, ProviderTotalsSection }
+export { aggregateUsageByProvider, aggregateErrorsByProvider, aggregateUsageByModel, aggregateErrorsByModel, formatTokens, toUsageCsv, toErrorCsv, AggregatedTotalsSection }
 
 const KeypoolLiveDashboard: React.FC = () => {
 	// Visibility and navigation state
@@ -398,7 +459,7 @@ const KeypoolLiveDashboard: React.FC = () => {
 								</div>
 
 								{/* Provider Totals Section */}
-								<ProviderTotalsSection
+								<AggregatedTotalsSection
 									aggregatedData={aggregateUsageByProvider(usageStats)}
 									columns={[
 										{ key: "promptTokens", label: "Prompt Tokens", align: "right", format: formatTokens },
@@ -411,6 +472,24 @@ const KeypoolLiveDashboard: React.FC = () => {
 										{ key: "requestCount", label: "Requests", align: "right" },
 									]}
 									title="Totals by Provider"
+									label="Provider"
+								/>
+
+								{/* Model Totals Section */}
+								<AggregatedTotalsSection
+									aggregatedData={aggregateUsageByModel(usageStats)}
+									columns={[
+										{ key: "promptTokens", label: "Prompt Tokens", align: "right", format: formatTokens },
+										{
+											key: "completionTokens",
+											label: "Completion Tokens",
+											align: "right",
+											format: formatTokens,
+										},
+										{ key: "requestCount", label: "Requests", align: "right" },
+									]}
+									title="Totals by Model"
+									label="Model"
 								/>
 							</>
 						)}
@@ -462,7 +541,7 @@ const KeypoolLiveDashboard: React.FC = () => {
 								</div>
 
 								{/* Provider Totals Section */}
-								<ProviderTotalsSection
+								<AggregatedTotalsSection
 									aggregatedData={aggregateErrorsByProvider(errorStats)}
 									columns={[
 										{ key: "totalRequests", label: "Requests", align: "right" },
@@ -470,6 +549,19 @@ const KeypoolLiveDashboard: React.FC = () => {
 										{ key: "errorRate", label: "Error Rate", align: "right" },
 									]}
 									title="Totals by Provider"
+									label="Provider"
+								/>
+
+								{/* Model Totals Section */}
+								<AggregatedTotalsSection
+									aggregatedData={aggregateErrorsByModel(errorStats)}
+									columns={[
+										{ key: "totalRequests", label: "Requests", align: "right" },
+										{ key: "errorCount", label: "Errors", align: "right" },
+										{ key: "errorRate", label: "Error Rate", align: "right" },
+									]}
+									title="Totals by Model"
+									label="Model"
 								/>
 							</>
 						)}
