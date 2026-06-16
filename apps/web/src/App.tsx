@@ -11,7 +11,7 @@ import Footer from './components/layout/Footer'
  */
 export default function App() {
   const { i18n } = useTranslation()
-  const [language, setLanguage] = useState(i18n.language)
+  const [ , setLanguage] = useState(i18n.language)
 
   // Handle language change
   const handleLanguageChange = (lng: string) => {

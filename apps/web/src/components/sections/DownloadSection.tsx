@@ -3,13 +3,31 @@ import { useTranslation } from 'react-i18next'
 import { Button, Card, Typography, Spinner, Pagination } from '@heroui/react'
 import { Octokit } from '@octokit/rest'
 
+type UserPlatform = 'ios' | 'darwin' | 'win32' | 'alpine' | 'linux'
+type UserArchitecture = 'arm64' | 'armhf' | 'x64'
+
+type ReleaseAsset = {
+  id: number
+  name: string
+  size: number
+  browser_download_url: string
+}
+
+type Release = {
+  id: number
+  tag_name: string
+  published_at: string
+  prerelease: boolean
+  assets: ReleaseAsset[]
+}
+
 /**
  * Download section component for the ClinePool website
  * Handles fetching and displaying downloadable assets from GitHub releases
  */
 export default function DownloadSection() {
   const { t } = useTranslation('common')
-  const [releases, setReleases] = useState<any[]>([])
+  const [releases, setReleases] = useState<Release[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showAllPlatforms, setShowAllPlatforms] = useState(false)
@@ -35,11 +53,11 @@ export default function DownloadSection() {
       if (userAgent.includes('alpine')) return 'alpine'
       return 'linux'
     }
-    return 'win32' // default
+    return 'win32' satisfies UserPlatform
   }
 
   // Get user's architecture
-  const getUserArchitecture = () => {
+  const getUserArchitecture = (): UserArchitecture => {
     const userAgent = navigator.userAgent.toLowerCase()
     
     // Specific detection for iPad
@@ -51,30 +69,29 @@ export default function DownloadSection() {
     
     if (userAgent.includes('arm64') || userAgent.includes('aarch64')) return 'arm64'
     if (userAgent.includes('armhf')) return 'armhf'
-    return 'x64' // default
+    return 'x64'
   }
 
   // Fetch releases from GitHub with pagination to avoid API spam
   const fetchReleases = async (page = 1) => {
     try {
-      setLoading(true)
-      setError(null)
-
       const octokit = new Octokit()
-      
+
       // First, get total count by fetching first page only
       const firstPageResponse = await octokit.rest.repos.listReleases({
         owner: 'TEA-ching',
         repo: 'cline',
         per_page: itemsPerPage,
-        page: 1
+        page: page
       })
 
+      void firstPageResponse
+
       // Filter preview releases on first page to get total count
-      const allPreviewReleases: any[] = []
+      const allPreviewReleases: Release[] = []
       let currentPage = 1
       let hasMore = true
-      
+
       // Fetch all pages to get total count (only once when component mounts)
       // This is necessary to know total pages for pagination UI
       while (hasMore && currentPage <= 10) { // Limit to 10 pages max to prevent API spam
@@ -84,13 +101,31 @@ export default function DownloadSection() {
           per_page: itemsPerPage,
           page: currentPage
         })
-        
-        const previewReleasesOnPage = response.data.filter((release: any) =>
-          release.prerelease && release.tag_name.startsWith('preview/')
-        )
-        
+
+        const previewReleasesOnPage = response.data
+          .filter((release) =>
+            'prerelease' in release &&
+            'tag_name' in release &&
+            'published_at' in release &&
+            typeof release.tag_name === 'string' &&
+            release.prerelease &&
+            release.tag_name.startsWith('preview/')
+          )
+          .map((release): Release => ({
+            id: release.id,
+            tag_name: release.tag_name,
+            published_at: release.published_at ?? new Date().toISOString(),
+            prerelease: release.prerelease,
+            assets: release.assets.map((asset) => ({
+              id: asset.id,
+              name: asset.name,
+              size: asset.size,
+              browser_download_url: asset.browser_download_url,
+            })),
+          }))
+
         allPreviewReleases.push(...previewReleasesOnPage)
-        
+
         // Check if we've reached the end
         if (response.data.length < itemsPerPage) {
           hasMore = false
@@ -98,34 +133,50 @@ export default function DownloadSection() {
           currentPage++
         }
       }
-      
+
       // Sort by published_at date (newest first)
-      allPreviewReleases.sort((a: any, b: any) =>
+      allPreviewReleases.sort((a, b) =>
         new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
       )
-      
-      setTotalReleasesCount(allPreviewReleases.length)
-      setReleases(allPreviewReleases)
-      setCurrentPage(1)
+
+      // Return the data instead of setting state directly
+      return {
+        releases: allPreviewReleases,
+        totalCount: allPreviewReleases.length
+      }
     } catch (err) {
       console.error('Error fetching releases:', err)
-      setError('Failed to fetch releases. Please try again later.')
-    } finally {
-      setLoading(false)
+      throw err
     }
   }
 
   // Fetch releases on component mount
   useEffect(() => {
-    fetchReleases()
+    const loadReleases = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const result = await fetchReleases()
+        setReleases(result.releases)
+        setTotalReleasesCount(result.totalCount)
+        setCurrentPage(1)
+      } catch (err) {
+        console.error('Error fetching releases:', err)
+        setError('Failed to fetch releases. Please try again later.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadReleases()
   }, [])
 
   // Get platform-specific assets based on naming convention
-  const getPlatformAssets = (release: any) => {
+  const getPlatformAssets = (release: Release) => {
     const userPlatform = getUserPlatform()
     const userArch = getUserArchitecture()
 
-    return release.assets.filter((asset: any) => {
+    return release.assets.filter((asset) => {
       const assetName = asset.name
       
       // Handle iOS/iPad special case
@@ -144,8 +195,8 @@ export default function DownloadSection() {
   }
 
   // Get all platform assets for a release
-  const getAllPlatformAssets = (release: any) => {
-    return release.assets.filter((asset: any) =>
+  const getAllPlatformAssets = (release: Release) => {
+    return release.assets.filter((asset) =>
       asset.name.includes('clinepool-cli') || 
       (asset.name.includes('clinepool-') && asset.name.endsWith('.vsix'))
     )
@@ -177,10 +228,10 @@ export default function DownloadSection() {
 
   // Generate pagination items for HeroUI v3 Pagination component
   const getPaginationItems = () => {
-    const items = []
+    const items: number[] = []
     const maxVisible = 5
     let start = Math.max(1, currentPage - Math.floor(maxVisible / 2))
-    let end = Math.min(totalPages, start + maxVisible - 1)
+    const end = Math.min(totalPages, start + maxVisible - 1)
     
     if (end - start + 1 < maxVisible) {
       start = Math.max(1, end - maxVisible + 1)
@@ -218,7 +269,21 @@ export default function DownloadSection() {
             <Typography type="body" className="mb-4 text-danger">
               {error}
             </Typography>
-            <Button onPress={() => fetchReleases()} variant="secondary">
+            <Button onPress={async () => {
+              try {
+                setLoading(true)
+                setError(null)
+                const result = await fetchReleases()
+                setReleases(result.releases)
+                setTotalReleasesCount(result.totalCount)
+                setCurrentPage(1)
+              } catch (err) {
+                console.error('Error fetching releases:', err)
+                setError('Failed to fetch releases. Please try again later.')
+              } finally {
+                setLoading(false)
+              }
+            }} variant="secondary">
               Retry
             </Button>
           </div>
@@ -318,10 +383,10 @@ export default function DownloadSection() {
               const allPlatformAssets = getAllPlatformAssets(release)
               
               // Separate VSIX and CLI assets
-              const vsixAssets = platformAssets.filter((asset: any) => 
+              const vsixAssets = platformAssets.filter((asset) => 
                 asset.name.endsWith('.vsix')
               )
-              const cliAssets = platformAssets.filter((asset: any) => 
+              const cliAssets = platformAssets.filter((asset) => 
                 asset.name.includes('clinepool-cli')
               )
 
@@ -347,7 +412,7 @@ export default function DownloadSection() {
                       {t('download.vsixTitle')}
                     </Typography>
                     <div className="space-y-2">
-                      {vsixAssets.map((asset: any) => (
+                      {vsixAssets.map((asset) => (
                         <div key={asset.id} className="flex items-center justify-between rounded-lg border p-3">
                           <div>
                             <Typography type="body" className="font-medium">
@@ -370,7 +435,7 @@ export default function DownloadSection() {
                       ))}
 
                       {/* Show all platforms button for VSIX */}
-                      {allPlatformAssets.filter((asset: any) => asset.name.endsWith('.vsix')).length > 1 && (
+                      {allPlatformAssets.filter((asset) => asset.name.endsWith('.vsix')).length > 1 && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -383,8 +448,8 @@ export default function DownloadSection() {
 
                       {/* All platforms VSIX (when expanded) */}
                       {showAllPlatforms && allPlatformAssets
-                        .filter((asset: any) => asset.name.endsWith('.vsix'))
-                        .map((asset: any) => (
+                        .filter((asset) => asset.name.endsWith('.vsix'))
+                        .map((asset) => (
                           <div key={asset.id} className="flex items-center justify-between rounded-lg border p-3">
                             <div>
                               <Typography type="body" className="font-medium">
@@ -414,7 +479,7 @@ export default function DownloadSection() {
                       {t('download.cliTitle')}
                     </Typography>
                     <div className="space-y-2">
-                      {cliAssets.map((asset: any) => (
+                      {cliAssets.map((asset) => (
                         <div key={asset.id} className="flex items-center justify-between rounded-lg border p-3">
                           <div>
                             <Typography type="body" className="font-medium">
@@ -437,7 +502,7 @@ export default function DownloadSection() {
                       ))}
 
                       {/* Show all platforms button for CLI */}
-                      {allPlatformAssets.filter((asset: any) => asset.name.includes('clinepool-cli')).length > 1 && (
+                      {allPlatformAssets.filter((asset) => asset.name.includes('clinepool-cli')).length > 1 && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -450,8 +515,8 @@ export default function DownloadSection() {
 
                       {/* All platforms CLI (when expanded) */}
                       {showAllPlatforms && allPlatformAssets
-                        .filter((asset: any) => asset.name.includes('clinepool-cli'))
-                        .map((asset: any) => (
+                        .filter((asset) => asset.name.includes('clinepool-cli'))
+                        .map((asset) => (
                           <div key={asset.id} className="flex items-center justify-between rounded-lg border p-3">
                             <div>
                               <Typography type="body" className="font-medium">

@@ -35,5 +35,6 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       open: true,
     },
+    mode: mode, // Pass the mode to the configuration for conditional settingss
   };
 });
