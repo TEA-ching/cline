@@ -1749,6 +1749,18 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 				let cacheReadTokens = 0;
 				let cacheWriteTokens = 0;
 				for await (const event of iterable) {
+					// The AI SDK sub-provider (ai-sdk.ts) converts HTTP errors (e.g. 429 rate
+					// limit) into a finish event with reason="error" instead of throwing.
+					// If we yield it as-is, the try/catch below never fires, isKeyError is
+					// never called, and markKeyAsHealthy() is called incorrectly.
+					// Convert the error finish to a thrown exception so key rotation triggers.
+					if (event.type === "finish" && event.reason === "error") {
+						throw new Error(
+							typeof event.error === "string" && event.error
+								? event.error
+								: "Stream finished with error",
+						);
+					}
 					yield event;
 					if (event.type === "usage") {
 						inputTokens += event.usage.inputTokens ?? 0;

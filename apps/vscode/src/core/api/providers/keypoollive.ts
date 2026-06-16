@@ -91,7 +91,11 @@ function tryShowVscodeInfo(message: string): void {
  */
 function isKeyError(e: any): boolean {
 	const code = e?.status ?? e?.statusCode ?? e?.error?.status ?? 0;
-	return [401, 403, 429].includes(Number(code));
+	if ([401, 403, 429].includes(Number(code))) return true;
+	// Also match message-based rate-limit signals: sub-handlers (Mistral, OpenAI, etc.)
+	// sometimes wrap 429s without a numeric status field.
+	const msg = ((e?.message ?? "") + " " + (e?.error?.message ?? "")).toLowerCase();
+	return /rate.?limit|too many requests|quota|throttle/.test(msg);
 }
 
 interface KeypoolLiveHandlerOptions extends CommonApiHandlerOptions {
@@ -388,6 +392,14 @@ export class KeypoolLiveHandler implements ApiHandler {
 			}
 		}
 
+		// Purge the session key cache so the next createMessage() call is forced to
+		// pick a fresh key from the vault rather than reusing the rate-limited one.
+		await rotateSessionKey(
+			KEYPOOLLIVE_SESSION_ID,
+			vaultProviderName,
+			vaultModelId || undefined,
+			"key_failure",
+		).catch(() => {});
 		throw lastError;
 	}
 
