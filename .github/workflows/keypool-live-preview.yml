@@ -589,6 +589,7 @@ jobs:
           submodules: recursive
 
       - name: Get clinepool-download version
+        shell: bash
         id: clinepool-version
         run: |
           VERSION=$(grep '^version' ./apps/clinepool-download/Cargo.toml | cut -d '"' -f 2)
