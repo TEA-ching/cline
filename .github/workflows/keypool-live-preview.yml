@@ -191,14 +191,16 @@ jobs:
         run: npm install
         shell: bash
 
-      - name: Build and Package VSIX
-        # @electron/rebuild downloads Electron headers for VSCODE_ELECTRON_VERSION and
-        # compiles better-sqlite3 from the patched source against the correct ABI.
+      - name: Rebuild native modules (skip on Windows)
+        if: runner.os != 'Windows'
         env:
           VSCODE_ELECTRON_VERSION: "42.2.0"
           TARGET_ARCH: ${{ matrix.native_arch }}
+        run: npx --yes @electron/rebuild -f -v "$VSCODE_ELECTRON_VERSION" -a "$TARGET_ARCH"
+        shell: bash
+
+      - name: Build and Package VSIX
         run: |
-          npx --yes @electron/rebuild -f -v "$VSCODE_ELECTRON_VERSION" -a "$TARGET_ARCH"
           npx vsce package \
             --target ${{ matrix.platform }}-${{ matrix.arch }} \
             --allow-package-secrets sendgrid \
