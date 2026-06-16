@@ -71,6 +71,10 @@ service ModelsService {
   rpc keypoolGetLogMarkdown(KeypoolLogTimestampRequest) returns (KeypoolLogMarkdownResponse);
   // KeypoolLive: save a log entry as a markdown file via VS Code save dialog
   rpc keypoolSaveLogMarkdown(KeypoolLogTimestampRequest) returns (KeypoolSaveLogResponse);
+  // KeypoolLive: check if a newer VSIX release is available on GitHub
+  rpc keypoolCheckUpdate(EmptyRequest) returns (KeypoolCheckUpdateResponse);
+  // KeypoolLive: download and install a VSIX release from GitHub
+  rpc keypoolInstallUpdate(KeypoolInstallUpdateRequest) returns (KeypoolInstallUpdateResponse);
 }
 
 // List of VS Code LM models
@@ -832,6 +836,30 @@ message KeypoolLogMarkdownResponse {
 
 // Response for keypoolSaveLogMarkdown
 message KeypoolSaveLogResponse {
+  bool success = 1;
+  optional string error = 2;
+}
+
+// Response for keypoolCheckUpdate
+message KeypoolCheckUpdateResponse {
+  string current_version = 1;
+  string latest_version = 2;
+  bool update_available = 3;
+  string download_url = 4;
+  string asset_name = 5;
+  string tag_name = 6;
+  string published_at = 7;
+  optional string error = 8;
+}
+
+// Request for keypoolInstallUpdate
+message KeypoolInstallUpdateRequest {
+  string download_url = 1;
+  string asset_name = 2;
+}
+
+// Response for keypoolInstallUpdate
+message KeypoolInstallUpdateResponse {
   bool success = 1;
   optional string error = 2;
 }

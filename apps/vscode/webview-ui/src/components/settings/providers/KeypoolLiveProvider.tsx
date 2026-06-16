@@ -2,7 +2,7 @@
 // © 2026 Ronan LE MEILLAT — MIT License
 
 import { useState, useEffect } from "react";
-import { UpdateApiConfigurationRequestNew, EmptyRequest, KeypoolLogsRequest, KeypoolLogTimestampRequest, KeypoolLogEntry } from "@shared/proto/index.cline";
+import { UpdateApiConfigurationRequestNew, EmptyRequest, KeypoolLogsRequest, KeypoolLogTimestampRequest, KeypoolLogEntry, KeypoolCheckUpdateResponse, KeypoolInstallUpdateRequest } from "@shared/proto/index.cline";
 import { Mode } from "@shared/storage/types";
 import { useExtensionState } from "@/context/ExtensionStateContext";
 import { ModelsServiceClient } from "@/services/grpc-client";
@@ -23,6 +23,13 @@ export const KeypoolLiveProvider = ({ isPopup: _isPopup, currentMode: _currentMo
 	const [selectedLogEntry, setSelectedLogEntry] = useState<number | null>(null)
 	const [loadingLogs, setLoadingLogs] = useState(false)
 	const [downloadError, setDownloadError] = useState<string | null>(null)
+
+	type CheckState = "idle" | "checking" | "update_available" | "up_to_date" | "error"
+	type InstallState = "idle" | "installing" | "done" | "error"
+	const [checkState, setCheckState] = useState<CheckState>("idle")
+	const [installState, setInstallState] = useState<InstallState>("idle")
+	const [updateInfo, setUpdateInfo] = useState<KeypoolCheckUpdateResponse | null>(null)
+	const [updateError, setUpdateError] = useState<string | null>(null)
 
 	const handlePurge = async () => {
 		setPurging(true)
@@ -53,6 +60,49 @@ export const KeypoolLiveProvider = ({ isPopup: _isPopup, currentMode: _currentMo
 
 		fetchLogEntries()
 	}, [])
+
+	const handleCheckUpdate = async () => {
+		setCheckState("checking")
+		setUpdateError(null)
+		setUpdateInfo(null)
+		setInstallState("idle")
+		try {
+			const res = await ModelsServiceClient.keypoolCheckUpdate(EmptyRequest.create({}))
+			if (res.error) {
+				setUpdateError(res.error)
+				setCheckState("error")
+			} else if (res.updateAvailable) {
+				setUpdateInfo(res)
+				setCheckState("update_available")
+			} else {
+				setUpdateInfo(res)
+				setCheckState("up_to_date")
+			}
+		} catch (e) {
+			setUpdateError(e instanceof Error ? e.message : String(e))
+			setCheckState("error")
+		}
+	}
+
+	const handleInstallUpdate = async () => {
+		if (!updateInfo?.downloadUrl) return
+		setInstallState("installing")
+		setUpdateError(null)
+		try {
+			const res = await ModelsServiceClient.keypoolInstallUpdate(
+				KeypoolInstallUpdateRequest.create({ downloadUrl: updateInfo.downloadUrl, assetName: updateInfo.assetName })
+			)
+			if (res.success) {
+				setInstallState("done")
+			} else {
+				setUpdateError(res.error ?? "Installation failed")
+				setInstallState("error")
+			}
+		} catch (e) {
+			setUpdateError(e instanceof Error ? e.message : String(e))
+			setInstallState("error")
+		}
+	}
 
 	const handleDownloadLogEntry = async () => {
 		if (!selectedLogEntry) {
@@ -229,6 +279,66 @@ export const KeypoolLiveProvider = ({ isPopup: _isPopup, currentMode: _currentMo
 						</div>
 					 </>
 				)}
+			</div>
+
+			{/* Extension update */}
+			<div style={{ marginBottom: 12 }}>
+				<div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>Extension Update</div>
+				<div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+					<button
+						disabled={checkState === "checking" || installState === "installing"}
+						onClick={handleCheckUpdate}
+						style={{
+							background: "var(--vscode-button-secondaryBackground)",
+							border: "none",
+							color: "var(--vscode-button-secondaryForeground)",
+							cursor: (checkState === "checking" || installState === "installing") ? "not-allowed" : "pointer",
+							fontSize: 12,
+							padding: "4px 10px",
+						}}>
+						{checkState === "checking" ? "Checking…" : "Check for update"}
+					</button>
+
+					{checkState === "up_to_date" && updateInfo && (
+						<span style={{ fontSize: 11, color: "var(--vscode-descriptionForeground)" }}>
+							You have the latest version ({updateInfo.currentVersion})
+						</span>
+					)}
+
+					{checkState === "update_available" && updateInfo && installState === "idle" && (
+						<>
+							<span style={{ fontSize: 11, color: "var(--vscode-descriptionForeground)" }}>
+								{updateInfo.currentVersion} → {updateInfo.latestVersion} ({updateInfo.assetName})
+							</span>
+							<button
+								onClick={handleInstallUpdate}
+								style={{
+									background: "var(--vscode-button-background)",
+									border: "none",
+									color: "var(--vscode-button-foreground)",
+									cursor: "pointer",
+									fontSize: 12,
+									padding: "4px 10px",
+								}}>
+								Install update
+							</button>
+						</>
+					)}
+
+					{installState === "installing" && (
+						<span style={{ fontSize: 11, color: "var(--vscode-descriptionForeground)" }}>Installing…</span>
+					)}
+
+					{installState === "done" && (
+						<span style={{ fontSize: 11, color: "var(--vscode-descriptionForeground)" }}>
+							Update installed. Restart the extension host to apply (Developer: Restart Extension Host).
+						</span>
+					)}
+
+					{(checkState === "error" || installState === "error") && updateError && (
+						<span style={{ fontSize: 11, color: "var(--vscode-errorForeground)" }}>{updateError}</span>
+					)}
+				</div>
 			</div>
 
 			{/* Optional: Cloudflare AI Gateway */}
