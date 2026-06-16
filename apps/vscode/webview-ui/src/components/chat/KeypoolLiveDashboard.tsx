@@ -474,23 +474,6 @@ const KeypoolLiveDashboard: React.FC = () => {
 									title="Totals by Provider"
 									label="Provider"
 								/>
-
-								{/* Model Totals Section */}
-								<AggregatedTotalsSection
-									aggregatedData={aggregateUsageByModel(usageStats)}
-									columns={[
-										{ key: "promptTokens", label: "Prompt Tokens", align: "right", format: formatTokens },
-										{
-											key: "completionTokens",
-											label: "Completion Tokens",
-											align: "right",
-											format: formatTokens,
-										},
-										{ key: "requestCount", label: "Requests", align: "right" },
-									]}
-									title="Totals by Model"
-									label="Model"
-								/>
 							</>
 						)}
 
@@ -550,18 +533,6 @@ const KeypoolLiveDashboard: React.FC = () => {
 									]}
 									title="Totals by Provider"
 									label="Provider"
-								/>
-
-								{/* Model Totals Section */}
-								<AggregatedTotalsSection
-									aggregatedData={aggregateErrorsByModel(errorStats)}
-									columns={[
-										{ key: "totalRequests", label: "Requests", align: "right" },
-										{ key: "errorCount", label: "Errors", align: "right" },
-										{ key: "errorRate", label: "Error Rate", align: "right" },
-									]}
-									title="Totals by Model"
-									label="Model"
 								/>
 							</>
 						)}
