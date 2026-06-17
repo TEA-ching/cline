@@ -456,6 +456,7 @@ export function resolveNextApiConfig(
 		providerName,
 		protocol: provider.protocol,
 		endpoint: provider.endpoint,
+		userAgent: provider.userAgent,
 		apiKey: key.key,
 		keyOwner: key.owner,
 		model,

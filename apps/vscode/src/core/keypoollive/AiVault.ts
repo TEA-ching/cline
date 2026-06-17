@@ -265,3 +265,10 @@ export function getCachedVaultModel(
 	);
 }
 
+export function getCachedVaultProvider(
+	providerName: string,
+): import("./types").VaultProvider | null {
+	if (!vaultCache) return null;
+	return vaultCache.config.providers[providerName] ?? null;
+}
+

@@ -38,6 +38,8 @@ export interface VaultProvider {
 	protocol: AiProtocol;
 	/** Optional custom API endpoint URL. */
 	endpoint?: string;
+	/** Optional User-Agent header value required by the provider's API. */
+	userAgent?: string;
 	/** Collection of API keys available for this provider. */
 	keys: VaultKey[];
 	/** List of models supported by this provider. */
@@ -70,6 +72,8 @@ export interface ResolvedApiConfig {
 	keyOwner: string;
 	/** Details of the model to be used. */
 	model: VaultModel;
+	/** Optional User-Agent header value required by the provider's API. */
+	userAgent?: string;
 }
 
 export type AiProtocol =
@@ -77,7 +81,9 @@ export type AiProtocol =
 	| "anthropic"
 	| "gemini"
 	| "cohere"
-	| "mistral";
+	| "mistral"
+	| "poolside"
+	| (string & {});
 export type AiKeyTier = "expired" | "free" | "paid" | "premium" | "unlimited";
 
 // ─── Crawler types ────────────────────────────────────────────────────────────
@@ -131,6 +137,7 @@ export interface AiModel {
 export interface AiProvider {
 	protocol: AiProtocol;
 	endpoint?: string;
+	userAgent?: string;
 	keys: AiKey[];
 	models: AiModel[];
 }

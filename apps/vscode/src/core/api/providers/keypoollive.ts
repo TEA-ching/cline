@@ -2,7 +2,7 @@
 // © 2026 Ronan LE MEILLAT — MIT License
 
 import type { OpenAiCompatibleModelInfo } from "@shared/api";
-import { getCachedVaultModel, loadAiVault } from "@/core/keypoollive/AiVault";
+import { getCachedVaultModel, getCachedVaultProvider, loadAiVault } from "@/core/keypoollive/AiVault";
 import { KeypoolLog } from "@/core/keypoollive/KeypoolLog";
 import { KeypoolUsageDb } from "@/core/keypoollive/KeypoolUsageDb";
 import { markKeyAsUsed } from "@/core/keypoollive/KeyPool";
@@ -117,6 +117,11 @@ interface KeypoolLiveHandlerOptions extends CommonApiHandlerOptions {
  * This class manages API requests to various AI providers using keys from a KeypoolLive vault.
  * It handles key rotation, usage tracking, and Cloudflare AI Gateway integration.
  */
+
+// Protocols that correctly return tool calls via delta.tool_calls in the streaming response.
+// Unknown protocols (e.g. "poolside") must use XML system-prompt mode instead.
+const NATIVE_TOOL_PROTOCOLS: string[] = ["openai", "anthropic", "gemini", "cohere", "mistral"];
+
 export class KeypoolLiveHandler implements ApiHandler {
 	private options: KeypoolLiveHandlerOptions;
 	private resolvedConfig: ResolvedApiConfig | null = null;
@@ -210,15 +215,30 @@ export class KeypoolLiveHandler implements ApiHandler {
 					apiModelId: model.id,
 					onRetryAttempt: this.options.onRetryAttempt,
 				});
+			case "poolside":
 			case "openai":
-			default:
+			default: {
+				const openAiHeaders: Record<string, string> = {
+					...this.buildGatewayHeaders(),
+					...(config.userAgent ? { "User-Agent": config.userAgent } : {}),
+				};
 				return new OpenAiHandler({
 					openAiApiKey: apiKey,
 					openAiBaseUrl: baseUrl ?? "https://api.openai.com/v1",
 					openAiModelId: model.id,
-					openAiHeaders: this.buildGatewayHeaders(),
+					openAiModelInfo: {
+						contextWindow: model.contextWindow ?? 128_000,
+						maxTokens: model.maxOutputTokens,
+						supportsImages: model.supportsImages ?? false,
+						supportsPromptCache: model.supportsPromptCache ?? false,
+						supportsTools: model.supportsTools ?? false,
+						inputPrice: model.inputPrice,
+						outputPrice: model.outputPrice,
+					},
+					openAiHeaders,
 					onRetryAttempt: this.options.onRetryAttempt,
 				});
+			}
 		}
 	}
 
@@ -416,6 +436,15 @@ export class KeypoolLiveHandler implements ApiHandler {
 		const vaultModel =
 			this.resolvedConfig?.model ??
 			getCachedVaultModel(vaultProviderName, vaultModelId);
+		const vaultProtocol =
+			this.resolvedConfig?.protocol ??
+			getCachedVaultProvider(vaultProviderName)?.protocol;
+		// Only enable native OpenAI function-calling for protocols known to return
+		// delta.tool_calls in the streaming response. Unknown protocols (e.g. "poolside")
+		// use XML system-prompt mode so the model follows Cline's <read_file> format.
+		const supportsTools = NATIVE_TOOL_PROTOCOLS.includes(vaultProtocol ?? "")
+			? (vaultModel?.supportsTools ?? false)
+			: false;
 		const modelInfo: OpenAiCompatibleModelInfo = {
 			contextWindow: vaultModel?.contextWindow ?? 128000,
 			maxTokens:
@@ -425,7 +454,7 @@ export class KeypoolLiveHandler implements ApiHandler {
 					: undefined),
 			supportsImages: vaultModel?.supportsImages ?? false,
 			supportsPromptCache: vaultModel?.supportsPromptCache ?? false,
-			supportsTools: vaultModel?.supportsTools ?? false,
+			supportsTools,
 			inputPrice: vaultModel?.inputPrice,
 			outputPrice: vaultModel?.outputPrice,
 		};
