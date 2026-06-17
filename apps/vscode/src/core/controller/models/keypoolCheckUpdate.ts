@@ -123,15 +123,16 @@ export async function keypoolCheckUpdate(
 
 	// First check if versions are different
 	if (latestVersion !== currentVersion) {
-		Logger.info(`[keypoolCheckUpdate] Update available: ${currentVersion} -> ${latestVersion} full tag: ${latest.tag_name}`)
+		Logger.info(`[keypoolCheckUpdate] Update available: ${currentVersion}, current build date: ${buildDate} -> ${latestVersion} full tag: ${latest.tag_name}`)
 		updateAvailable = true
 	}
 
+	const buildDateObj = new Date(buildDate)
+	const tagBuildDate = extractBuildDate(latest.tag_name)
+	const tagBuildDateObj = tagBuildDate ? new Date(tagBuildDate) : null
+	
 	// If buildDate is not "dirty", compare with release published date
 	if (buildDate !== "dirty") {
-		const buildDateObj = new Date(buildDate)
-		const tagBuildDate = extractBuildDate(latest.tag_name)
-		const tagBuildDateObj = tagBuildDate ? new Date(tagBuildDate) : null
 
 		// If current build is the same or newer than the release, no update needed
 		if (buildDateObj >= tagBuildDateObj!) {
@@ -139,7 +140,7 @@ export async function keypoolCheckUpdate(
 			updateAvailable = false
 		}
 	}
-	Logger.info(`[keypoolCheckUpdate] Current version: ${currentVersion}, Latest version: ${latestVersion}, Update available: ${updateAvailable}, Build date: ${buildDate}, Full tag: ${latest.tag_name}, Published at: ${latest.published_at}, VSIX asset: ${vsixAsset.name}`)
+	Logger.info(`[keypoolCheckUpdate] Current version: ${currentVersion}, Latest version: ${latestVersion}, Update available: ${updateAvailable}, Build date: ${buildDate}, Full tag: ${latest.tag_name}, Published  build date: ${tagBuildDateObj?.toISOString()}, VSIX asset: ${vsixAsset.name}`)
 	return KeypoolCheckUpdateResponse.create({
 		currentVersion,
 		latestVersion,
