@@ -189,7 +189,7 @@ export function getSessionKeyInfo(sessionId: string): {
 			return {
 				providerName: config.providerName,
 				keyOwner: config.keyOwner,
-				keyHint: `...${config.apiKey.slice(-8)}`,
+				keyHint: `***${config.apiKey.slice(-8)}`,
 				modelId: config.model.id,
 			};
 		}

@@ -347,7 +347,7 @@ export async function markKeyAsFailed(
 		requestCount24h: existing?.requestCount24h,
 	});
 	Logger.warn(
-		`[KeypoolLive] Key ...${keyValue.slice(-8)} for ${providerName} failed (count: ${failureCount})`,
+		`[KeypoolLive] Key ***${keyValue.slice(-8)} for ${providerName} failed (count: ${failureCount})`,
 	);
 	persistStateSoon();
 }
@@ -419,7 +419,7 @@ function selectNextKey(
 	const selectedKey = sorted[0];
 	const sel = statsMap.get(selectedKey.key.slice(-8));
 	Logger.debug(
-		`[KeypoolLive] Selected key with min output tokens for ${providerName}: ...${selectedKey.key.slice(-8)} (out=${sel?.completionTokens ?? 0}, in=${sel?.promptTokens ?? 0}, requests=${sel?.requestCount ?? 0})`,
+		`[KeypoolLive] Selected key with min output tokens for ${providerName}: ***${selectedKey.key.slice(-8)} (out=${sel?.completionTokens ?? 0}, in=${sel?.promptTokens ?? 0}, requests=${sel?.requestCount ?? 0})`,
 	);
 	return selectedKey;
 }

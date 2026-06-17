@@ -55,15 +55,15 @@ function toCfGatewaySlug(protocol: AiProtocol, fallback: string): string {
 const KEYPOOLLIVE_SESSION_ID = "kpl-global";
 
 /**
- * Returns first 6 chars + "..." + last 6 chars of an API key for safe logging.
+ * Returns "***" + last 8 chars of an API key for safe logging.
  * This prevents exposing full API keys in logs while still providing identifiable information.
  *
  * @param apiKey - The full API key to format
- * @returns Formatted key hint (e.g., "abc123...xyz789")
+ * @returns Formatted key hint (e.g., "***xyz78901ab")
  */
 function formatKeyHint(apiKey: string): string {
-	if (apiKey.length <= 12) return apiKey;
-	return `${apiKey.slice(0, 6)}...${apiKey.slice(-6)}`;
+	if (apiKey.length <= 8) return apiKey;
+	return `***${apiKey.slice(-8)}`;
 }
 
 /**
@@ -312,7 +312,7 @@ export class KeypoolLiveHandler implements ApiHandler {
 
 		this.resolvedConfig = config;
 		{
-			const keyHint = `...${config.apiKey.slice(-8)}`;
+			const keyHint = `***${config.apiKey.slice(-8)}`;
 			const dayStats = KeypoolUsageDb.getUsageStats("day");
 			const keyStat = dayStats.find(
 				(s) => s.provider === vaultProviderName && s.keyHint === keyHint,

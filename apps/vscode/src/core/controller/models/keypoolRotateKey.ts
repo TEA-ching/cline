@@ -41,7 +41,7 @@ export async function keypoolRotateKey(
 			})
 		}
 
-		const hint = `${resolved.apiKey.slice(0, 6)}...${resolved.apiKey.slice(-6)}`
+		const hint = `***${resolved.apiKey.slice(-8)}`
 		try {
 			// eslint-disable-next-line @typescript-eslint/no-require-imports
 			const vsc = require("vscode") as typeof import("vscode")
