@@ -14,6 +14,7 @@
 import { EmptyRequest } from "@shared/proto/cline/common"
 import { KeypoolErrorStat, KeypoolStatsRequest, KeypoolUsageStat } from "@shared/proto/cline/models"
 import { VSCodeButton } from "@vscode/webview-ui-toolkit/react"
+import * as XLSX from "xlsx"
 import React, { useCallback, useEffect, useRef, useState } from "react"
 import { useClickAway, useWindowSize } from "react-use"
 import PopupModalContainer from "@/components/common/PopupModalContainer"
@@ -103,7 +104,7 @@ function aggregateErrorsByProvider(stats: KeypoolErrorStat[]): Record<
 }
 
 /**
- * Aggregates usage statistics by model (using provider as model proxy)
+ * Aggregates usage statistics by model.
  */
 function aggregateUsageByModel(stats: KeypoolUsageStat[]): Record<
 	string,
@@ -115,7 +116,7 @@ function aggregateUsageByModel(stats: KeypoolUsageStat[]): Record<
 > {
 	return stats.reduce(
 		(acc, stat) => {
-			const model = stat.provider // Using provider as model proxy
+			const model = stat.modelId || stat.provider
 			if (!acc[model]) {
 				acc[model] = {
 					promptTokens: 0,
@@ -133,7 +134,7 @@ function aggregateUsageByModel(stats: KeypoolUsageStat[]): Record<
 }
 
 /**
- * Aggregates error statistics by model (using provider as model proxy)
+ * Aggregates error statistics by model.
  */
 function aggregateErrorsByModel(stats: KeypoolErrorStat[]): Record<
 	string,
@@ -145,7 +146,7 @@ function aggregateErrorsByModel(stats: KeypoolErrorStat[]): Record<
 > {
 	return stats.reduce(
 		(acc, stat) => {
-			const model = stat.provider // Using provider as model proxy
+			const model = stat.modelId || stat.provider
 			if (!acc[model]) {
 				acc[model] = {
 					totalRequests: 0,
@@ -212,10 +213,10 @@ const AggregatedTotalsSection: React.FC<{
  * Converts usage statistics into a CSV string.
  */
 function toUsageCsv(stats: KeypoolUsageStat[]): string {
-	const header = "period,provider,key_owner,key_hint,prompt_tokens,completion_tokens,requests"
+	const header = "period,provider,model_id,key_owner,key_hint,prompt_tokens,completion_tokens,requests"
 	const rows = stats.map(
 		(r) =>
-			`${r.periodLabel},${r.provider},${r.keyOwner},${r.keyHint},${r.promptTokens},${r.completionTokens},${r.requestCount}`,
+			`${r.periodLabel},${r.provider},${r.modelId},${r.keyOwner},${r.keyHint},${r.promptTokens},${r.completionTokens},${r.requestCount}`,
 	)
 	return [header, ...rows].join("\n")
 }
@@ -233,6 +234,37 @@ function toErrorCsv(stats: KeypoolErrorStat[]): string {
 }
 
 /**
+ * Converts usage statistics into worksheet rows.
+ */
+function usageRows(stats: KeypoolUsageStat[]): Array<Record<string, string | number>> {
+	return stats.map((r) => ({
+		period: r.periodLabel,
+		provider: r.provider,
+		model_id: r.modelId,
+		key_owner: r.keyOwner,
+		key_hint: r.keyHint,
+		prompt_tokens: Number(r.promptTokens),
+		completion_tokens: Number(r.completionTokens),
+		requests: Number(r.requestCount),
+	}))
+}
+
+/**
+ * Converts error statistics into worksheet rows.
+ */
+function errorRows(stats: KeypoolErrorStat[]): Array<Record<string, string | number>> {
+	return stats.map((r) => ({
+		provider: r.provider,
+		key_owner: r.keyOwner,
+		key_hint: r.keyHint,
+		total_requests: Number(r.totalRequests),
+		error_count: Number(r.errorCount),
+		error_rate: Number(r.errorRate.toFixed(3)),
+		last_error_code: r.lastErrorCode ?? "",
+	}))
+}
+
+/**
  * Triggers a browser download for a generated CSV file.
  */
 function downloadCsv(content: string, filename: string): void {
@@ -245,8 +277,29 @@ function downloadCsv(content: string, filename: string): void {
 	URL.revokeObjectURL(url)
 }
 
+/**
+ * Triggers a browser download for a generated XLSX workbook.
+ */
+function downloadXlsx(rows: Array<Record<string, string | number>>, filename: string): void {
+	const worksheet = XLSX.utils.json_to_sheet(rows)
+	const workbook = XLSX.utils.book_new()
+	XLSX.utils.book_append_sheet(workbook, worksheet, "Stats")
+	XLSX.writeFile(workbook, filename)
+}
+
 // Export des fonctions et composants pour les tests
-export { aggregateUsageByProvider, aggregateErrorsByProvider, aggregateUsageByModel, aggregateErrorsByModel, formatTokens, toUsageCsv, toErrorCsv, AggregatedTotalsSection }
+export {
+	aggregateUsageByProvider,
+	aggregateErrorsByProvider,
+	aggregateUsageByModel,
+	aggregateErrorsByModel,
+	formatTokens,
+	toUsageCsv,
+	toErrorCsv,
+	usageRows,
+	errorRows,
+	AggregatedTotalsSection,
+}
 
 const KeypoolLiveDashboard: React.FC = () => {
 	// Visibility and navigation state
@@ -449,12 +502,18 @@ const KeypoolLiveDashboard: React.FC = () => {
 										</tbody>
 									</table>
 								)}
-								<div className="mt-2">
+								<div className="mt-2 flex gap-1">
 									<VSCodeButton
 										appearance="secondary"
 										className="text-[10px]"
 										onClick={() => downloadCsv(toUsageCsv(usageStats), `kpl-usage-${period}.csv`)}>
 										Export CSV
+									</VSCodeButton>
+									<VSCodeButton
+										appearance="secondary"
+										className="text-[10px]"
+										onClick={() => downloadXlsx(usageRows(usageStats), `kpl-usage-${period}.xlsx`)}>
+										Export XLSx
 									</VSCodeButton>
 								</div>
 
@@ -473,6 +532,23 @@ const KeypoolLiveDashboard: React.FC = () => {
 									]}
 									title="Totals by Provider"
 									label="Provider"
+								/>
+
+								{/* Model Totals Section */}
+								<AggregatedTotalsSection
+									aggregatedData={aggregateUsageByModel(usageStats)}
+									columns={[
+										{ key: "promptTokens", label: "Prompt Tokens", align: "right", format: formatTokens },
+										{
+											key: "completionTokens",
+											label: "Completion Tokens",
+											align: "right",
+											format: formatTokens,
+										},
+										{ key: "requestCount", label: "Requests", align: "right" },
+									]}
+									title="Totals by Model"
+									label="Model"
 								/>
 							</>
 						)}
@@ -514,12 +590,18 @@ const KeypoolLiveDashboard: React.FC = () => {
 										</tbody>
 									</table>
 								)}
-								<div className="mt-2">
+								<div className="mt-2 flex gap-1">
 									<VSCodeButton
 										appearance="secondary"
 										className="text-[10px]"
 										onClick={() => downloadCsv(toErrorCsv(errorStats), `kpl-errors-${period}.csv`)}>
 										Export CSV
+									</VSCodeButton>
+									<VSCodeButton
+										appearance="secondary"
+										className="text-[10px]"
+										onClick={() => downloadXlsx(errorRows(errorStats), `kpl-errors-${period}.xlsx`)}>
+										Export XLSx
 									</VSCodeButton>
 								</div>
 
@@ -533,6 +615,18 @@ const KeypoolLiveDashboard: React.FC = () => {
 									]}
 									title="Totals by Provider"
 									label="Provider"
+								/>
+
+								{/* Model Totals Section */}
+								<AggregatedTotalsSection
+									aggregatedData={aggregateErrorsByModel(errorStats)}
+									columns={[
+										{ key: "totalRequests", label: "Requests", align: "right" },
+										{ key: "errorCount", label: "Errors", align: "right" },
+										{ key: "errorRate", label: "Error Rate", align: "right" },
+									]}
+									title="Totals by Model"
+									label="Model"
 								/>
 							</>
 						)}

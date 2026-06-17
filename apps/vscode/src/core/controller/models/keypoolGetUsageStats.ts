@@ -29,6 +29,7 @@ export async function keypoolGetUsageStats(
 			KeypoolUsageStat.create({
 				periodLabel: r.period,
 				provider: r.provider,
+				modelId: r.modelId,
 				keyOwner: r.keyOwner,
 				keyHint: r.keyHint,
 				promptTokens: r.promptTokens,

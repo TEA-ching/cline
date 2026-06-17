@@ -98,6 +98,7 @@ export interface KeyErrorEntry {
 export interface KeyUsageStat {
 	period: string;
 	provider: string;
+	modelId: string;
 	keyOwner: string;
 	keyHint: string;
 	promptTokens: number;
@@ -466,6 +467,7 @@ export class KeypoolUsageDb {
 				{
 					period: string;
 					provider: string;
+					modelId: string;
 					keyOwner: string;
 					keyHint: string;
 					promptTokens: number;
@@ -486,6 +488,7 @@ export class KeypoolUsageDb {
 					map.set(key, {
 						period: label,
 						provider: r.provider,
+						modelId: r.modelId,
 						keyOwner: r.keyOwner,
 						keyHint: r.keyHint,
 						promptTokens: r.promptTokens,
@@ -502,6 +505,8 @@ export class KeypoolUsageDb {
 					return a.provider.localeCompare(b.provider);
 				if (a.keyOwner !== b.keyOwner)
 					return a.keyOwner.localeCompare(b.keyOwner);
+				if (a.modelId !== b.modelId)
+					return a.modelId.localeCompare(b.modelId);
 				return a.keyHint.localeCompare(b.keyHint);
 			});
 		} catch (e) {

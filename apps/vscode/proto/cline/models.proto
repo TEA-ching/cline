@@ -772,11 +772,12 @@ message KeypoolStatsRequest {
 message KeypoolUsageStat {
   string period_label = 1;
   string provider = 2;
-  string key_owner = 3;
-  string key_hint = 4;
-  int64 prompt_tokens = 5;
-  int64 completion_tokens = 6;
-  int64 request_count = 7;
+  string model_id = 3;
+  string key_owner = 4;
+  string key_hint = 5;
+  int64 prompt_tokens = 6;
+  int64 completion_tokens = 7;
+  int64 request_count = 8;
 }
 
 // Response for keypoolGetUsageStats
@@ -787,12 +788,13 @@ message KeypoolUsageStatsResponse {
 // One error-stats row
 message KeypoolErrorStat {
   string provider = 1;
-  string key_owner = 2;
-  string key_hint = 3;
-  int64 total_requests = 4;
-  int64 error_count = 5;
-  double error_rate = 6;
-  optional int64 last_error_code = 7;
+  string model_id = 2;
+  string key_owner = 3;
+  string key_hint = 4;
+  int64 total_requests = 5;
+  int64 error_count = 6;
+  double error_rate = 7;
+  optional int64 last_error_code = 8;
 }
 
 // Response for keypoolGetErrorStats
