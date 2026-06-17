@@ -125,7 +125,8 @@ jobs:
               .author.name = "Cline Bot Inc. & Ronan Le Meillat - SCTG Development"' package.json > package.json.tmp && mv package.json.tmp package.json
         shell: bash
 
-      - name: Patch AboutSection build date
+      - name: Patch AboutSection and KeypoolLiveProvider build date
+        id: patch-about-section
         env:
           BUILD_DATETIME: ${{ needs.setup.outputs.datetime }}
         run: |
@@ -151,6 +152,15 @@ jobs:
           new_text, count = pattern.subn(repl, text, count=1)
           if count != 1:
               raise SystemExit('Failed to patch AboutSection.tsx: could not find the about_title header')
+          path.write_text(new_text, encoding='utf-8')
+
+          path = Path('webview-ui/src/components/settings/providers/KeypoolLiveProvider.tsx')
+          text = path.read_text(encoding='utf-8')
+          old_line = 'const buildDate = "dirty" ;// Injected at build time'
+          new_line = f'const buildDate = "{build_date}" ;// Injected at build time'
+          new_text = text.replace(old_line, new_line, 1)
+          if new_text == text:
+              raise SystemExit('Failed to patch KeypoolLiveProvider.tsx: could not find buildDate placeholder')
           path.write_text(new_text, encoding='utf-8')
           PY
         shell: bash

@@ -402,7 +402,7 @@ function selectNextKey(
 	if (keysWithUsage.length === 0) {
 		const randomIdx = Math.floor(Math.random() * usable.length);
 		Logger.debug(
-			`[KeypoolLive] All keys for ${providerName} have no usage in the last 24h, selecting randomly key ...${usable[randomIdx].key.slice(-8)} owner ${usable[randomIdx].owner}`,
+			`[KeypoolLive] All keys for ${providerName} have no usage in the last 24h, selecting randomly key ***${usable[randomIdx].key.slice(-8)} owner ${usable[randomIdx].owner}`,
 		);
 		return usable[randomIdx];
 	}
