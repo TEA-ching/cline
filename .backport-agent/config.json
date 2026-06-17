@@ -24,6 +24,7 @@
         "initialFetchDepth": 200,
         "maxFetchDepth": 2000,
         "batchSize": 3,
+        "maxIterations": 250,
         "dryRun": false,
         "createPullRequest": false,
         "branchPrefix": "sync/upstream-",
