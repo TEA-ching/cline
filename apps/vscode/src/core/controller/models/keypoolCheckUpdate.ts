@@ -54,6 +54,21 @@ function extractVersion(tagName: string): string {
 	return tagName.replace(/^preview\//, "")
 }
 
+/**
+ * Extracts the build date from a GitHub release tag name.
+ * Tags are expected to be in the format "preview/YYYY-MM-DDTHH-MM-SSZ".
+ * @param tagName 
+ * @returns 
+ */
+function extractBuildDate(tagName: string): string | null {
+	// Tags are like "preview/2026-06-17T11-23-05Z" — extract the date part and convert to ISO format
+	const match = tagName.match(/^preview\/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)$/)
+	if (match) {
+		return match[1].replace(/-/g, ":").replace("T", "T").replace("Z", "Z")
+	}
+	return null
+}
+
 export async function keypoolCheckUpdate(
 	_controller: Controller,
 	_request: EmptyRequest,
@@ -108,20 +123,23 @@ export async function keypoolCheckUpdate(
 
 	// First check if versions are different
 	if (latestVersion !== currentVersion) {
+		Logger.info(`[keypoolCheckUpdate] Update available: ${currentVersion} -> ${latestVersion} full tag: ${latest.tag_name}`)
 		updateAvailable = true
 	}
 
 	// If buildDate is not "dirty", compare with release published date
 	if (buildDate !== "dirty") {
 		const buildDateObj = new Date(buildDate)
-		const publishedAtObj = new Date(latest.published_at)
+		const tagBuildDate = extractBuildDate(latest.tag_name)
+		const tagBuildDateObj = tagBuildDate ? new Date(tagBuildDate) : null
 
 		// If current build is the same or newer than the release, no update needed
-		if (buildDateObj >= publishedAtObj) {
+		if (buildDateObj >= tagBuildDateObj!) {
+			Logger.info(`[keypoolCheckUpdate] Current build date (${buildDateObj.toISOString()}) is the same or newer than the latest release build date (${tagBuildDateObj?.toISOString()}). Full tag: ${latest.tag_name}. No update needed.`)
 			updateAvailable = false
 		}
 	}
-
+	Logger.info(`[keypoolCheckUpdate] Current version: ${currentVersion}, Latest version: ${latestVersion}, Update available: ${updateAvailable}, Build date: ${buildDate}, Full tag: ${latest.tag_name}, Published at: ${latest.published_at}, VSIX asset: ${vsixAsset.name}`)
 	return KeypoolCheckUpdateResponse.create({
 		currentVersion,
 		latestVersion,
