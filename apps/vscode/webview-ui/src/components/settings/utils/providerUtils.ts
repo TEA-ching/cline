@@ -69,6 +69,8 @@ import {
 	wandbModels,
 	cohereDefaultModelId,
 	cohereModels,
+	poolsideModels,
+	poolsideDefaultModelId,
 	xaiDefaultModelId,
 	xaiModels,
 } from "@shared/api"
@@ -127,6 +129,8 @@ export function getModelsForProvider(
 			return wandbModels
 		case "cohere":
 			return cohereModels
+		case "poolside":
+			return poolsideModels
 		case "keypoollive":
 			return undefined
 		case "sambanova":
@@ -388,6 +392,8 @@ export function normalizeApiConfiguration(
 			return getProviderData(wandbModels, wandbDefaultModelId)
 		case "cohere":
 			return getProviderData(cohereModels, cohereDefaultModelId)
+		case "poolside":
+			return getProviderData(poolsideModels, poolsideDefaultModelId)
 		case "sambanova":
 			return getProviderData(sambanovaModels, sambanovaDefaultModelId)
 		case "cerebras":

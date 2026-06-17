@@ -852,6 +852,12 @@ async function createProviderModule(
 			const { createCohereProviderModule } = await import("./vendors/cohere");
 			return createCohereProviderModule(config);
 		}
+		case "poolside": {
+			const { createPoolsideProviderModule } = await import(
+				"./vendors/poolside"
+			);
+			return createPoolsideProviderModule(config);
+		}
 		case "claude-code": {
 			const { createClaudeCodeProviderModule } = await import(
 				"./vendors/community"
@@ -1035,6 +1041,7 @@ export const createVertexProvider = createAiSdkProvider("vertex");
 export const createBedrockProvider = createAiSdkProvider("bedrock");
 export const createMistralProvider = createAiSdkProvider("mistral");
 export const createCohereProvider = createAiSdkProvider("cohere");
+export const createPoolsideProvider = createAiSdkProvider("poolside");
 export const createClaudeCodeProvider = createAiSdkProvider("claude-code");
 export const createOpenAICodexProvider = createAiSdkProvider("openai-codex");
 export const createOpenCodeProvider = createAiSdkProvider("opencode");

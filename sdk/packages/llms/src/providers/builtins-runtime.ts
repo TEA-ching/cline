@@ -51,6 +51,10 @@ async function loadFamilyFactory(
 				const module = await import("./ai-sdk");
 				return module.createCohereProvider;
 			}
+			case "poolside": {
+				const module = await import("./ai-sdk");
+				return module.createPoolsideProvider;
+			}
 			case "claude-code": {
 				const module = await import("./ai-sdk");
 				return module.createClaudeCodeProvider;

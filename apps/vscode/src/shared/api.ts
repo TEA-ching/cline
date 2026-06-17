@@ -45,6 +45,7 @@ export type ApiProvider =
 	| "nousResearch"
 	| "wandb"
 	| "cohere"
+	| "poolside"
 	| "keypoollive"
 
 export const DEFAULT_API_PROVIDER = "openrouter" as ApiProvider
@@ -5483,3 +5484,30 @@ export const cohereModels = {
 		description: "North Mini Code is Cohere's coding specialist model, excelling at code generation and reasoning tasks.",
 	}
 } as const satisfies Record<string, CohereModelInfo>
+
+export interface PoolsideModelInfo extends ModelInfo {
+	supportsTools?: boolean
+}
+export const poolsideDefaultModelId: keyof typeof poolsideModels = "poolside/laguna-xs.2"
+export const poolsideModels = {
+	"poolside/laguna-xs.2": {
+		maxTokens: 32_000,
+		contextWindow: 262_144,	
+		supportsImages: false,
+		supportsPromptCache: false,
+		inputPrice: 0.6,
+		outputPrice: 2.5,
+		cacheReadsPrice: 0.1,
+		supportsTools: true
+	},
+	"poolside/laguna-m.1":{
+		maxTokens: 32_000,
+		contextWindow: 262_144,	
+		supportsImages: false,
+		supportsPromptCache: false,
+		inputPrice: 0.6,
+		outputPrice: 2.5,
+		cacheReadsPrice: 0.1,
+		supportsTools: true
+	}
+} as const satisfies Record<string, PoolsideModelInfo>

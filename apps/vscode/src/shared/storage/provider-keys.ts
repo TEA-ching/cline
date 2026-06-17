@@ -87,6 +87,7 @@ export const ProviderToApiKeyMap: Partial<Record<ApiProvider, keyof Secrets | (k
 	sapaicore: ["sapAiCoreClientId", "sapAiCoreClientSecret"],
 	wandb: "wandbApiKey",
 	cohere: "cohereApiKey",
+	poolside: "poolsideApiKey",
 	keypoollive: ["keypoolliveSecret", "keypoolliveGatewaySecret"],
 } as const
 

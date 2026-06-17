@@ -332,6 +332,8 @@ function convertApiProviderToProto(provider: string | undefined): ProtoApiProvid
 			return ProtoApiProvider.KEYPOOLLIVE
 		case "cohere":
 			return ProtoApiProvider.COHERE
+		case "poolside":
+			return ProtoApiProvider.POOLSIDE
 		default:
 			return ProtoApiProvider.ANTHROPIC
 	}
@@ -428,6 +430,8 @@ export function convertProtoToApiProvider(provider: ProtoApiProvider): ApiProvid
 			return "keypoollive"
 		case ProtoApiProvider.COHERE:
 			return "cohere"
+		case ProtoApiProvider.POOLSIDE:
+			return "poolside"
 		default:
 			return "anthropic"
 	}
@@ -492,6 +496,7 @@ export function convertApiConfigurationToProto(config: ApiConfiguration): ProtoA
 		nebiusApiKey: config.nebiusApiKey,
 		wandbApiKey: config.wandbApiKey,
 		cohereApiKey: config.cohereApiKey,
+		poolsideApiKey: config.poolsideApiKey,
 		keypoolliveVaultUrl: config.keypoolliveVaultUrl,
 		keypoolliveSecret: config.keypoolliveSecret,
 		keypoolliveGatewaySecret: config.keypoolliveGatewaySecret,
@@ -680,6 +685,7 @@ export function convertProtoToApiConfiguration(protoConfig: ProtoApiConfiguratio
 		nebiusApiKey: protoConfig.nebiusApiKey,
 		wandbApiKey: protoConfig.wandbApiKey,
 		cohereApiKey: protoConfig.cohereApiKey,
+		poolsideApiKey: protoConfig.poolsideApiKey,
 		keypoolliveVaultUrl: protoConfig.keypoolliveVaultUrl,
 		keypoolliveSecret: protoConfig.keypoolliveSecret,
 		keypoolliveGatewaySecret: protoConfig.keypoolliveGatewaySecret,

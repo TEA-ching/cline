@@ -14,6 +14,7 @@ export type AiSdkProviderOptionsTarget =
 	| "bedrock"
 	| "mistral"
 	| "cohere"
+	| "poolside"
 	| "claude-code"
 	| "openai-codex"
 	| "opencode"

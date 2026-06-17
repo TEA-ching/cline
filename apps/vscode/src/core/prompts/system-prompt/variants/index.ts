@@ -30,6 +30,7 @@ import { config as hermesConfig } from "./hermes/config"
 import { config as NativeGPT5Config } from "./native-gpt-5/config"
 import { config as NativeGPT51Config } from "./native-gpt-5-1/config"
 import { config as NativeCohereVariantConfig } from "./native-cohere/config"
+import { config as NativePoolsideVariantConfig } from "./poolside/config"
 import { config as NativeNextGenVariantConfig } from "./native-next-gen/config"
 import { config as nextGenConfig } from "./next-gen/config"
 import { config as trinityConfig } from "./trinity/config"
@@ -61,6 +62,10 @@ export const VARIANT_CONFIGS = {
 	 * Cohere variant with native tool support.
 	 */
 	[ModelFamily.NATIVE_COHERE]: NativeCohereVariantConfig,
+	/**
+	 * Poolside variant with native tool support.
+	 */
+	[ModelFamily.POOLSIDE]: NativePoolsideVariantConfig,
 	/**
 	 * Next-gen variant with native tool support.
 	 */

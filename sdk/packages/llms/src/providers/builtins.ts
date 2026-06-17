@@ -43,6 +43,7 @@ export type ProviderFamily =
 	| "bedrock"
 	| "mistral"
 	| "cohere"
+	| "poolside"
 	| "claude-code"
 	| "openai-codex"
 	| "opencode"
@@ -1068,6 +1069,36 @@ export const BUILTIN_SPECS: BuiltinSpec[] = [
 				outputPrice: 10.0,
 			},
 		}),
+	},
+	{
+		id: "poolside",
+		name: "Poolside",
+		description: "Poolside AI models via AI SDK provider",
+		family: "poolside",
+		capabilities: ["tools", "reasoning"],
+		defaultModelId: "poolside/laguna-m.1",
+		apiKeyEnv: ["POOLSIDE_API_KEY"],
+		modelsFactory: () => ({
+			"poolside/laguna-m.1": {
+				id: "poolside/laguna-m.1",
+				name: "Laguna M.1",
+				maxTokens: 32_000	,
+				contextWindow: 256_000,	
+				supportsImages: false,
+				supportsPromptCache: false,
+				supportsReasoning: true,
+			},
+			"poolside/laguna-m.2": {
+				id: "poolside/laguna-m.2",
+				name: "Laguna M.2",
+				maxTokens: 32_000	,
+				contextWindow: 256_000,	
+				supportsImages: false,
+				supportsPromptCache: false,
+				supportsReasoning: true,
+			}
+		}),
+		defaults: { baseUrl: "https://inference.poolside.ai/v1" },
 	},
 	{
 		id: "minimax",

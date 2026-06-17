@@ -16,4 +16,5 @@ export enum ModelFamily {
 	XS = "xs",
 	NATIVE_NEXT_GEN = "native-next-gen", // Uses native tool calling
 	NATIVE_COHERE = "native-cohere", // Uses native tool calling
+	POOLSIDE = "poolside", // Uses native tool calling
 }

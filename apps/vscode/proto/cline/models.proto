@@ -222,6 +222,7 @@ message ModelsApiSecrets {
   optional string keypoollive_secret = 40;
   optional string keypoollive_gateway_secret = 41;
   optional string cohere_api_key = 42;
+  optional string poolside_api_key = 43;
 }
 
 // API configuration options (non-secret settings)
@@ -491,6 +492,7 @@ enum ApiProvider {
   WANDB = 41;
   KEYPOOLLIVE = 42;
   COHERE = 43;
+  POOLSIDE = 44;
 }
 
 enum ApiFormat {
@@ -638,6 +640,7 @@ message ModelsApiConfiguration {
   optional bool keypoollive_gateway_cache_skip = 93;
   optional string cohere_api_key = 94;
   optional int32 keypoollive_max_db_size_mb = 95;
+  optional string poolside_api_key = 96;
 
   // Plan mode configurations
   optional ApiProvider plan_mode_api_provider = 100;

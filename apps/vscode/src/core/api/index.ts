@@ -44,6 +44,7 @@ import { VercelAIGatewayHandler } from "./providers/vercel-ai-gateway"
 import { VertexHandler } from "./providers/vertex"
 import { VsCodeLmHandler } from "./providers/vscode-lm"
 import { CohereHandler } from "./providers/cohere"
+import { PoolsideHandler } from "./providers/poolside"
 import { WandbHandler } from "./providers/wandb"
 import { XAIHandler } from "./providers/xai"
 import { ZAiHandler } from "./providers/zai"
@@ -470,6 +471,12 @@ function createHandlerForProvider(
 				cohereApiKey: options.cohereApiKey,
 				apiModelId: mode === "plan" ? options.planModeApiModelId : options.actModeApiModelId,
 
+			})
+		case "poolside":
+			return new PoolsideHandler({
+				onRetryAttempt: options.onRetryAttempt,	
+				poolsideApiKey: options.poolsideApiKey,
+				apiModelId: mode === "plan" ? options.planModeApiModelId : options.actModeApiModelId,
 			})
 		case "keypoollive":
 			return new KeypoolLiveHandler({
