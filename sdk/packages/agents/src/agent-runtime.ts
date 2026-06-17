@@ -23,7 +23,11 @@ import type {
     ToolApprovalResult,
     ToolPolicy,
 } from "@cline/shared";
-import { captureSdkError, estimateTokens } from "@cline/shared";
+import {
+	captureSdkError,
+	estimateTokens,
+	mergeModelOptions,
+} from "@cline/shared";
 import { nanoid } from "nanoid";
 import type { KeypoolEventHandler } from "@cline/shared";
 
@@ -781,7 +785,7 @@ export class AgentRuntime {
 			if (result?.options) {
 				request = {
 					...request,
-					options: { ...(request.options ?? {}), ...result.options },
+					options: mergeModelOptions(request.options, result.options),
 				};
 			}
 		}
