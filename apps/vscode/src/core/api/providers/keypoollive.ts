@@ -23,6 +23,7 @@ import type {
 import type { ApiStream } from "../transform/stream";
 import { AnthropicHandler } from "./anthropic";
 import { CohereHandler } from "./cohere";
+import { PoolsideHandler } from "./poolside";
 import { GeminiHandler } from "./gemini";
 import { MistralHandler } from "./mistral";
 import { OpenAiHandler } from "./openai";
@@ -216,6 +217,12 @@ export class KeypoolLiveHandler implements ApiHandler {
 					onRetryAttempt: this.options.onRetryAttempt,
 				});
 			case "poolside":
+				return new PoolsideHandler({
+					poolsideApiKey: apiKey,
+					poolsideBaseUrl: baseUrl,
+					apiModelId: model.id,
+					onRetryAttempt: this.options.onRetryAttempt,
+				});
 			case "openai":
 			default: {
 				const openAiHeaders: Record<string, string> = {
