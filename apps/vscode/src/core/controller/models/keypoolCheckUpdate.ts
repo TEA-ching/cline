@@ -104,15 +104,20 @@ export async function keypoolCheckUpdate(
 	}
 
 	// BuildDate-based version detection
-	let updateAvailable = latestVersion !== currentVersion
-	
+	let updateAvailable = false
+
+	// First check if versions are different
+	if (latestVersion !== currentVersion) {
+		updateAvailable = true
+	}
+
 	// If buildDate is not "dirty", compare with release published date
 	if (buildDate !== "dirty") {
 		const buildDateObj = new Date(buildDate)
 		const publishedAtObj = new Date(latest.published_at)
-		
-		// If current build is newer than the release, no update needed
-		if (buildDateObj > publishedAtObj) {
+
+		// If current build is the same or newer than the release, no update needed
+		if (buildDateObj >= publishedAtObj) {
 			updateAvailable = false
 		}
 	}
