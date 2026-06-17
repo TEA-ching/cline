@@ -35,9 +35,10 @@
     "models": {
         "provider": "keypoollive",
         "apiKey": "auto",
-        "fast": "mistral/devstral-medium-latest",
-        "_fast": "mistral/mistral-vibe-cli-latest",
-        "specialist": "mistral/mistral-medium-2604",
+        "fast":"openrouter/poolside/laguna-m.1:free",
+        "_fast": "mistral/mistral-code-agent-latest",
+        "specialist": "mistral/mistral-vibe-cli-latest",
+        "_specialist": "mistral/mistral-medium-2604",
         "_powerful": "openai/gpt-5.5",
         "powerful": "mistral/mistral-vibe-cli-latest"
     },
@@ -56,25 +57,25 @@
     },
     "resolve": {
         "ours": [],
-        "theirs": []
+        "theirs": ["**/catalog.generated.ts"]
     },
     "validation": {
         "low": [
-            "pushd apps/vscode && bun install && npm run check-types ; popd",
-            "pushd sdk && bun install && npm run types ; popd"
+            "bun install && pushd apps/vscode && bun install && npm run check-types ; popd",
+            "bun install && bun run build:sdk ; popd"
         ],
         "medium": [
-            "pushd apps/vscode && bun install && npm run check-types ; popd",
-            "pushd apps/vscode && bun install && npm run test:unit ; popd",
-            "pushd sdk && bun install && npm run types ; popd",
-            "pushd sdk && bun install && npm run test:unit ; popd"
+            "bun install && pushd apps/vscode && bun install && npm run check-types ; popd",
+            "bun install && pushd apps/vscode && bun install && npm run test:unit ; popd",
+            "bun install && pushd sdk && bun install && npm run types ; popd",
+            "bun install && pushd sdk && bun install && npm run test:unit ; popd"
         ],
         "high": [
-            "pushd apps/vscode && bun install && npm run check-types ; popd",
-            "pushd apps/vscode && bun install && npm run check-types ; popd",
-            "pushd apps/vscode && bun install && npm run test:unit ; popd",
-            "pushd apps/vscode && bun install && npm run compile ; popd",
-            "pushd apps/vscode && bun install && npm run package:vsix ; popd"
+            "bun install && pushd apps/vscode && bun install && npm run check-types ; popd",
+            "bun install && pushd apps/vscode && bun install && npm run check-types ; popd",
+            "bun install && pushd apps/vscode && bun install && npm run test:unit ; popd",
+            "bun install && pushd apps/vscode && bun install && npm run compile ; popd",
+            "bun install && pushd apps/vscode && bun install && npm run package:vsix ; popd"
         ],
         "final": [
             "bun install",
