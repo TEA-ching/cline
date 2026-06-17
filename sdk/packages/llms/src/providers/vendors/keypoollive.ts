@@ -89,7 +89,7 @@ import type { CrawlerKeyResolver, ResolvedCrawlerConfig } from "@cline/shared";
  * provider, which is useful for OpenAI-compatible gateways that are not listed
  * explicitly in the vault.
  */
-type AiProtocol = "openai" | "anthropic" | "gemini" | "mistral" | "cohere";
+type AiProtocol = "openai" | "anthropic" | "gemini" | "mistral" | "cohere" | "poolside";
 
 /**
  * Supported crawler protocols that the vault can handle.
@@ -1274,6 +1274,11 @@ async function createSubProvider(
 		case "cohere": {
 			const { createCohereProvider } = await import("../ai-sdk");
 			factory = createCohereProvider;
+			break;
+		}
+		case "poolside": {
+			const { createPoolsideProvider } = await import("../ai-sdk");
+			factory = createPoolsideProvider;
 			break;
 		}
 		case "mistral": {

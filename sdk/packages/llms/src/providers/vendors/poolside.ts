@@ -248,11 +248,11 @@ function patchPoolsideUsageFetch(baseFetch: typeof fetch): typeof fetch {
 			}
 		}
 
-		// Log as TypeScript fetch script (set COHERE_DEBUG_FETCH_LOG=1 to enable)
-		const debugLogEnabled = process.env.COHERE_DEBUG_FETCH_LOG === "1"
+		// Log as TypeScript fetch script (set POOLSIDE_DEBUG_FETCH_LOG=1 to enable)
+		const debugLogEnabled = process.env.POOLSIDE_DEBUG_FETCH_LOG === "1"
 		if (debugLogEnabled) {
 			try {
-				const storagePath = process.env.COHERE_DEBUG_FETCH_DIR || path.join(process.cwd(), "poolside-logs")
+				const storagePath = process.env.POOLSIDE_DEBUG_FETCH_DIR || path.join(process.cwd(), "poolside")
 
 				await fs.mkdir(storagePath, { recursive: true })
 
