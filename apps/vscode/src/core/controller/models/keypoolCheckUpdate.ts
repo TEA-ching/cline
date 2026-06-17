@@ -59,6 +59,7 @@ export async function keypoolCheckUpdate(
 	_request: EmptyRequest,
 ): Promise<KeypoolCheckUpdateResponse> {
 	try {
+		const buildDate: string = "dirty" ;// Injected at build time
 		const currentVersion = ExtensionRegistryInfo.version
 
 		const response = await fetch(
@@ -87,32 +88,44 @@ export async function keypoolCheckUpdate(
 			})
 		}
 
-		const latest = previewReleases[0]
-		const latestVersion = extractVersion(latest.tag_name)
-		const vsixAsset = findBestVsixAsset(latest.assets)
+	const latest = previewReleases[0]
+	const latestVersion = extractVersion(latest.tag_name)
+	const vsixAsset = findBestVsixAsset(latest.assets)
 
-		if (!vsixAsset) {
-			return KeypoolCheckUpdateResponse.create({
-				currentVersion,
-				latestVersion,
-				updateAvailable: false,
-				tagName: latest.tag_name,
-				publishedAt: latest.published_at,
-				error: "No VSIX asset found for this platform in the latest release",
-			})
-		}
-
-		const updateAvailable = latestVersion !== currentVersion
-
+	if (!vsixAsset) {
 		return KeypoolCheckUpdateResponse.create({
 			currentVersion,
 			latestVersion,
-			updateAvailable,
-			downloadUrl: vsixAsset.browser_download_url,
-			assetName: vsixAsset.name,
+			updateAvailable: false,
 			tagName: latest.tag_name,
 			publishedAt: latest.published_at,
+			error: "No VSIX asset found for this platform in the latest release",
 		})
+	}
+
+	// BuildDate-based version detection
+	let updateAvailable = latestVersion !== currentVersion
+	
+	// If buildDate is not "dirty", compare with release published date
+	if (buildDate !== "dirty") {
+		const buildDateObj = new Date(buildDate)
+		const publishedAtObj = new Date(latest.published_at)
+		
+		// If current build is newer than the release, no update needed
+		if (buildDateObj > publishedAtObj) {
+			updateAvailable = false
+		}
+	}
+
+	return KeypoolCheckUpdateResponse.create({
+		currentVersion,
+		latestVersion,
+		updateAvailable,
+		downloadUrl: vsixAsset.browser_download_url,
+		assetName: vsixAsset.name,
+		tagName: latest.tag_name,
+		publishedAt: latest.published_at,
+	})
 	} catch (err) {
 		Logger.error("[keypoolCheckUpdate] Failed to check for updates:", err)
 		return KeypoolCheckUpdateResponse.create({

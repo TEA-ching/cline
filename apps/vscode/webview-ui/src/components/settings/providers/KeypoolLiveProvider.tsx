@@ -15,7 +15,6 @@ interface KeypoolLiveProviderProps {
 }
 
 export const KeypoolLiveProvider = ({ isPopup: _isPopup, currentMode: _currentMode }: KeypoolLiveProviderProps) => {
-	const buildDate = "dirty" ;// Injected at build time
 	const { apiConfiguration } = useExtensionState()
 	const { handleFieldChange } = useApiConfigurationHandlers()
 	const [purging, setPurging] = useState(false)

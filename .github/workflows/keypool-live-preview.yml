@@ -154,13 +154,13 @@ jobs:
               raise SystemExit('Failed to patch AboutSection.tsx: could not find the about_title header')
           path.write_text(new_text, encoding='utf-8')
 
-          path = Path('webview-ui/src/components/settings/providers/KeypoolLiveProvider.tsx')
+          path = Path('src/core/controller/models/keypoolCheckUpdate.ts')
           text = path.read_text(encoding='utf-8')
           old_line = 'const buildDate = "dirty" ;// Injected at build time'
           new_line = f'const buildDate = "{build_date}" ;// Injected at build time'
           new_text = text.replace(old_line, new_line, 1)
           if new_text == text:
-              raise SystemExit('Failed to patch KeypoolLiveProvider.tsx: could not find buildDate placeholder')
+              raise SystemExit('Failed to patch KeypoolCheckUpdate.ts: could not find buildDate placeholder')
           path.write_text(new_text, encoding='utf-8')
           PY
         shell: bash
