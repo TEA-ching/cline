@@ -156,8 +156,8 @@ jobs:
 
           path = Path('src/core/controller/models/keypoolCheckUpdate.ts')
           text = path.read_text(encoding='utf-8')
-          old_line = 'const buildDate = "dirty" ;// Injected at build time'
-          new_line = f'const buildDate = "{build_date}" ;// Injected at build time'
+          old_line = 'const buildDate: string = "dirty" ;// Injected at build time'
+          new_line = f'const buildDate: string = "{build_date}" ;// Injected at build time'
           new_text = text.replace(old_line, new_line, 1)
           if new_text == text:
               raise SystemExit('Failed to patch KeypoolCheckUpdate.ts: could not find buildDate placeholder')
