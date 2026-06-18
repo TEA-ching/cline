@@ -1136,6 +1136,7 @@ export class AgentRuntime {
 			skipReason = `Tool execution is disabled for provider ${providerId}`;
 		}
 
+		let policyOverride: ToolPolicy | undefined;
 		if (tool && !skipReason) {
 			for (const hook of this.hooks.beforeTool) {
 				const result = (await hook({
@@ -1147,6 +1148,12 @@ export class AgentRuntime {
 				if (result?.input !== undefined) {
 					input = result.input;
 				}
+				if (result?.policy) {
+					policyOverride = {
+						...policyOverride,
+						...result.policy,
+					};
+				}
 				this.applyStopControl(result);
 				if (result?.skip) {
 					skipReason =
@@ -1157,10 +1164,10 @@ export class AgentRuntime {
 		}
 
 		if (tool && !skipReason) {
-			const policy = resolveToolPolicy(
-				toolCall.toolName,
-				this.config.toolPolicies,
-			);
+			const policy = {
+				...resolveToolPolicy(toolCall.toolName, this.config.toolPolicies),
+				...policyOverride,
+			};
 			if (policy.enabled === false) {
 				skipReason = `Tool "${toolCall.toolName}" is disabled by policy`;
 			} else if (policy.autoApprove === false) {
