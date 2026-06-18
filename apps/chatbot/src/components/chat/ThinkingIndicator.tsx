@@ -21,23 +21,44 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import React from 'react'
-import { Download, FileText } from 'lucide-react'
-import type { GeneratedFile } from '@/hooks/useAgent'
+import React, { useEffect, useState } from 'react'
 
-interface Props { file: GeneratedFile }
+interface Props {
+  startedAt: number | null
+  streamedTokens: number
+}
 
-export const DownloadItem: React.FC<Props> = ({ file }) => {
-  const name = file.path.split('/').pop() ?? file.path
+export const ThinkingIndicator: React.FC<Props> = ({ startedAt, streamedTokens }) => {
+  const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    if (!startedAt) { setElapsed(0); return }
+    setElapsed(Math.floor((Date.now() - startedAt) / 1000))
+    const id = setInterval(
+      () => setElapsed(Math.floor((Date.now() - startedAt) / 1000)),
+      1000,
+    )
+    return () => clearInterval(id)
+  }, [startedAt])
+
+  if (!startedAt) return null
+
   return (
-    <a
-      href={file.blobUrl}
-      download={name}
-      className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-default-600 hover:bg-default-100 group"
-    >
-      <FileText className="h-3.5 w-3.5 text-success-500 flex-shrink-0" />
-      <span className="flex-1 truncate font-mono" title={file.path}>{name}</span>
-      <Download className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 flex-shrink-0" />
-    </a>
+    <div className="flex items-center gap-2 px-4 py-2 text-xs text-default-400">
+      <span className="flex gap-0.5">
+        {[0, 1, 2].map(i => (
+          <span
+            key={i}
+            className="inline-block w-1.5 h-1.5 rounded-full bg-default-300 animate-bounce"
+            style={{ animationDelay: `${i * 150}ms` }}
+          />
+        ))}
+      </span>
+      <span className="font-mono tabular-nums">
+        {streamedTokens > 0
+          ? `${streamedTokens} tokens · ${elapsed}s`
+          : `Waiting… ${elapsed}s`}
+      </span>
+    </div>
   )
 }

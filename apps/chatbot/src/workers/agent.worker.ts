@@ -1,3 +1,26 @@
+/*
+ * MIT License
+ *
+ * Copyright (c) 2024-2026 Ronan Le Meillat - SCTG Development
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 /// <reference lib="webworker" />
 
 // ---------------------------------------------------------------------------
@@ -13,6 +36,7 @@ interface InitMessage {
   firecrawlKeys: string[]
   firecrawlEndpoint: string
   systemPrompt: string
+  enabledSkills: string[]
 }
 
 interface RunMessage {
@@ -62,6 +86,12 @@ import type { VirtualFS as VirtualFSType } from '@/vfs/virtual-fs'
 
 let vfs: VirtualFSType | null = null
 let agent: AgentType | null = null
+
+// Queue for vfs_add/vfs_remove messages that arrive before handleInit completes
+type PendingVfsOp =
+  | { type: 'add'; path: string; content: string }
+  | { type: 'remove'; path: string }
+const pendingVfsOps: PendingVfsOp[] = []
 
 // ---------------------------------------------------------------------------
 // Bridge helpers: communicate back to main thread
@@ -134,21 +164,32 @@ function requestToolApproval(
 
 async function handleInit(msg: InitMessage): Promise<void> {
   try {
-    const [{ Agent }, { VirtualFS }, { createBrowserTools }] = await Promise.all([
+    const [{ Agent }, { VirtualFS }, { createBrowserTools }, { createSkillTools }] = await Promise.all([
       import('@cline/agents'),
       import('@/vfs/virtual-fs'),
       import('@/tools/index'),
+      import('@/skills/worker-tools'),
     ])
 
     vfs = new VirtualFS()
 
-    const tools = createBrowserTools({
-      vfs,
-      firecrawlKeys: msg.firecrawlKeys,
-      firecrawlEndpoint: msg.firecrawlEndpoint,
-      onFileCreated: postFileCreated,
-      onAskQuestion,
-    })
+    // Flush any vfs_add/vfs_remove messages that arrived before init completed
+    for (const op of pendingVfsOps) {
+      if (op.type === 'add') vfs.write(op.path, op.content)
+      else vfs.delete(op.path)
+    }
+    pendingVfsOps.length = 0
+
+    const tools = [
+      ...createBrowserTools({
+        vfs,
+        firecrawlKeys: msg.firecrawlKeys,
+        firecrawlEndpoint: msg.firecrawlEndpoint,
+        onFileCreated: postFileCreated,
+        onAskQuestion,
+      }),
+      ...createSkillTools(msg.enabledSkills ?? []),
+    ]
 
     console.log('[agent.worker] Agent config:', {
       providerId: msg.providerId,
@@ -253,15 +294,13 @@ self.onmessage = (ev: MessageEvent<WorkerIncomingMessage>) => {
       break
 
     case 'vfs_add':
-      if (vfs) {
-        vfs.write(msg.path, msg.content)
-      }
+      if (vfs) vfs.write(msg.path, msg.content)
+      else pendingVfsOps.push({ type: 'add', path: msg.path, content: msg.content })
       break
 
     case 'vfs_remove':
-      if (vfs) {
-        vfs.delete(msg.path)
-      }
+      if (vfs) vfs.delete(msg.path)
+      else pendingVfsOps.push({ type: 'remove', path: msg.path })
       break
 
     case 'abort':

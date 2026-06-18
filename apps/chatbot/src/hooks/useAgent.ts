@@ -1,8 +1,30 @@
+/*
+ * MIT License
+ *
+ * Copyright (c) 2024-2026 Ronan Le Meillat - SCTG Development
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentRuntimeEvent, AgentMessage } from '@cline/agents'
 import AgentWorkerClass from '../workers/agent.worker.ts?worker'
 
-// Internal symbol to force worker re-creation on reset()
 type ResetKey = number
 
 // ---------------------------------------------------------------------------
@@ -17,11 +39,12 @@ export interface AgentConfig {
   systemPrompt?: string
   firecrawlKeys: string[]
   firecrawlEndpoint: string
+  enabledSkills?: string[]
 }
 
 export interface ChatMessage {
   id: string
-  role: 'user' | 'assistant' | 'tool'
+  role: 'user' | 'assistant' | 'tool' | 'system'
   content: string
   images?: string[]
   toolName?: string
@@ -51,9 +74,19 @@ export interface UseAgentReturn {
     options: string[]
     resolve: (answer: string) => void
   } | null
+  /** Timestamp (ms) when the current agent turn started; null when idle. */
+  turnStartedAt: number | null
+  /** Estimated streamed token count for the current turn. */
+  streamedTokens: number
   sendMessage: (text: string, images?: string[]) => void
   abort: () => void
   reset: () => void
+  /** Remove the last user message and all subsequent messages. */
+  removeLastExchange: () => void
+  /** Clear all messages without resetting the worker. */
+  clearMessages: () => void
+  /** Load a saved message list without touching the worker. */
+  loadMessages: (messages: ChatMessage[]) => void
   syncVfsFile: (path: string, content: string) => void
   removeVfsFile: (path: string) => void
 }
@@ -66,24 +99,14 @@ type WorkerOutgoingMessage =
   | { type: 'event'; event: AgentRuntimeEvent }
   | { type: 'turn_complete'; messages: AgentMessage[] }
   | { type: 'turn_error'; error: string }
-  | {
-      type: 'approval_req'
-      toolName: string
-      input: unknown
-      port: MessagePort
-    }
-  | {
-      type: 'ask_question'
-      question: string
-      options: string[]
-      port: MessagePort
-    }
+  | { type: 'approval_req'; toolName: string; input: unknown; port: MessagePort }
+  | { type: 'ask_question'; question: string; options: string[]; port: MessagePort }
   | { type: 'file_created'; path: string; content: string }
   | { type: 'worker_error'; error: string }
   | { type: 'worker_ready' }
 
 // ---------------------------------------------------------------------------
-// ID generation (no Node crypto)
+// ID generation
 // ---------------------------------------------------------------------------
 
 function uid(): string {
@@ -102,8 +125,9 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
   const [pendingApproval, setPendingApproval] = useState<UseAgentReturn['pendingApproval']>(null)
   const [pendingQuestion, setPendingQuestion] = useState<UseAgentReturn['pendingQuestion']>(null)
   const [resetKey, setResetKey] = useState<ResetKey>(0)
+  const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null)
+  const [streamedTokens, setStreamedTokens] = useState(0)
 
-  // Track the ID of the current streaming assistant message
   const streamingMsgIdRef = useRef<string | null>(null)
 
   // ---------------------------------------------------------------------------
@@ -111,7 +135,6 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
-    // Terminate any existing worker
     if (workerRef.current) {
       workerRef.current.terminate()
       workerRef.current = null
@@ -122,7 +145,6 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
 
     const worker = new AgentWorkerClass()
 
-    // Send init message immediately
     worker.postMessage({
       type: 'init',
       providerId: config.providerId,
@@ -132,11 +154,12 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
       firecrawlKeys: config.firecrawlKeys,
       firecrawlEndpoint: config.firecrawlEndpoint,
       systemPrompt: config.systemPrompt ?? '',
+      enabledSkills: config.enabledSkills ?? [],
     })
 
-    // ---------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Message handler
-    // ---------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
 
     worker.onmessage = (ev: MessageEvent<WorkerOutgoingMessage>) => {
       const msg = ev.data
@@ -146,30 +169,25 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
         case 'event': {
           const event = msg.event
           if (event.type === 'assistant-text-delta') {
-            console.log('[useAgent] text-delta text:', JSON.stringify((event as any).text), 'streamingId:', streamingMsgIdRef.current)
-            // Accumulate into the streaming assistant message
+            const text = (event as any).text as string
+            setStreamedTokens(prev => prev + Math.max(1, Math.round(text.length / 4)))
             setMessages((prev) => {
               const streamingId = streamingMsgIdRef.current
-
               if (streamingId) {
-                // Append delta to existing streaming message
                 return prev.map((m) =>
                   m.id === streamingId
-                    ? { ...m, content: m.content + (event as any).text, isStreaming: true }
+                    ? { ...m, content: m.content + text, isStreaming: true }
                     : m,
                 )
               }
-
-              // Create a new streaming message
               const newMsg: ChatMessage = {
                 id: uid(),
                 role: 'assistant',
-                content: (event as any).text,
+                content: text,
                 isStreaming: true,
                 timestamp: Date.now(),
               }
               streamingMsgIdRef.current = newMsg.id
-              console.log('[useAgent] created streaming msg, messages will be:', prev.length + 1)
               return [...prev, newMsg]
             })
           } else if (event.type === 'tool-started') {
@@ -191,7 +209,6 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
             const output =
               toolResultPart?.type === 'tool-result' ? toolResultPart.output : undefined
             setMessages((prev) => {
-              // Update the most recent tool message for this toolCallId
               const idx = [...prev]
                 .reverse()
                 .findIndex(
@@ -213,8 +230,8 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
 
         case 'turn_complete': {
           setIsRunning(false)
+          setTurnStartedAt(null)
           streamingMsgIdRef.current = null
-          // Mark the last streaming message as done
           setMessages((prev) =>
             prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
           )
@@ -223,6 +240,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
 
         case 'turn_error': {
           setIsRunning(false)
+          setTurnStartedAt(null)
           streamingMsgIdRef.current = null
           const errorMsg: ChatMessage = {
             id: uid(),
@@ -281,6 +299,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
         case 'worker_error': {
           console.error('[agent.worker] error:', msg.error)
           setIsRunning(false)
+          setTurnStartedAt(null)
           streamingMsgIdRef.current = null
           break
         }
@@ -295,6 +314,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     worker.onerror = (err: ErrorEvent) => {
       console.error('Agent worker error:', err.message, err.filename, `L${err.lineno}:${err.colno}`, err.error ?? err)
       setIsRunning(false)
+      setTurnStartedAt(null)
       streamingMsgIdRef.current = null
     }
     worker.onmessageerror = (err) => {
@@ -315,10 +335,11 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     config?.apiKey,
     config?.baseUrl,
     config?.systemPrompt,
-    // firecrawlKeys / firecrawlEndpoint are serialised each render — stringify to stabilise
     // eslint-disable-next-line react-hooks/exhaustive-deps
     JSON.stringify(config?.firecrawlKeys),
     config?.firecrawlEndpoint,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    JSON.stringify(config?.enabledSkills),
   ])
 
   // ---------------------------------------------------------------------------
@@ -327,7 +348,6 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
 
   const sendMessage = useCallback(
     (text: string, images?: string[]) => {
-      console.log('[useAgent] sendMessage called, workerRef.current:', !!workerRef.current, '| text:', text)
       if (!workerRef.current) {
         console.warn('[useAgent] sendMessage: no worker — message dropped')
         return
@@ -341,8 +361,9 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
       }
       setMessages((prev) => [...prev, userMsg])
       setIsRunning(true)
+      setTurnStartedAt(Date.now())
+      setStreamedTokens(0)
       streamingMsgIdRef.current = null
-      console.log('[useAgent] postMessage run →', text)
       workerRef.current.postMessage({ type: 'run', message: text, images })
     },
     [],
@@ -351,6 +372,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
   const abort = useCallback(() => {
     workerRef.current?.postMessage({ type: 'abort' })
     setIsRunning(false)
+    setTurnStartedAt(null)
     streamingMsgIdRef.current = null
     setMessages((prev) =>
       prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
@@ -358,15 +380,39 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
   }, [])
 
   const reset = useCallback(() => {
-    // Clear UI state. The useEffect will terminate the old worker and create a
-    // new one because resetKey changes.
     streamingMsgIdRef.current = null
     setMessages([])
     setIsRunning(false)
+    setTurnStartedAt(null)
+    setStreamedTokens(0)
     setGeneratedFiles([])
     setPendingApproval(null)
     setPendingQuestion(null)
     setResetKey((k) => k + 1)
+  }, [])
+
+  const removeLastExchange = useCallback(() => {
+    setMessages(prev => {
+      let lastUserIdx = -1
+      for (let i = prev.length - 1; i >= 0; i--) {
+        if (prev[i].role === 'user') { lastUserIdx = i; break }
+      }
+      return lastUserIdx === -1 ? prev : prev.slice(0, lastUserIdx)
+    })
+  }, [])
+
+  const clearMessages = useCallback(() => {
+    setMessages([])
+    setTurnStartedAt(null)
+    setStreamedTokens(0)
+    streamingMsgIdRef.current = null
+  }, [])
+
+  const loadMessages = useCallback((msgs: ChatMessage[]) => {
+    setMessages(msgs)
+    setTurnStartedAt(null)
+    setStreamedTokens(0)
+    streamingMsgIdRef.current = null
   }, [])
 
   const syncVfsFile = useCallback((path: string, content: string) => {
@@ -383,9 +429,14 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     generatedFiles,
     pendingApproval,
     pendingQuestion,
+    turnStartedAt,
+    streamedTokens,
     sendMessage,
     abort,
     reset,
+    removeLastExchange,
+    clearMessages,
+    loadMessages,
     syncVfsFile,
     removeVfsFile,
   }
