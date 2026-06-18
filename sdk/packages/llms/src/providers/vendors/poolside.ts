@@ -23,6 +23,9 @@ export async function createPoolsideProviderModule(
 // Verified by testing: minItems, maxItems, minLength, maxLength, pattern, minimum, maximum, multipleOf
 // are rejected; uniqueItems, exclusiveMinimum, default are accepted.
 const POOLSIDE_UNSUPPORTED_CONSTRAINTS = new Set([
+	"minItems", "maxItems",
+	"minLength", "maxLength", "pattern",
+	"minimum", "maximum", "multipleOf",
 ])
 
 function stripUnsupportedConstraints(s: Record<string, unknown>): Record<string, unknown> {
