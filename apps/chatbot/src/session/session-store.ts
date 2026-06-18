@@ -1,0 +1,60 @@
+import { openDB, type IDBPDatabase } from 'idb'
+import type { ChatMessage } from '@/hooks/useAgent'
+
+const DB_NAME = 'cline-chatbot'
+const DB_VERSION = 1
+const STORE = 'sessions'
+
+export interface Session {
+  id: string
+  title: string
+  messages: ChatMessage[]
+  providerId: string
+  modelId: string
+  createdAt: number
+  updatedAt: number
+}
+
+let db: IDBPDatabase | null = null
+
+async function getDB(): Promise<IDBPDatabase> {
+  if (!db) {
+    db = await openDB(DB_NAME, DB_VERSION, {
+      upgrade(database) {
+        if (!database.objectStoreNames.contains(STORE)) {
+          const store = database.createObjectStore(STORE, { keyPath: 'id' })
+          store.createIndex('updatedAt', 'updatedAt')
+        }
+      },
+    })
+  }
+  return db
+}
+
+export const SessionStore = {
+  async save(session: Session): Promise<void> {
+    const database = await getDB()
+    await database.put(STORE, session)
+  },
+
+  async get(id: string): Promise<Session | undefined> {
+    const database = await getDB()
+    return database.get(STORE, id)
+  },
+
+  async list(): Promise<Session[]> {
+    const database = await getDB()
+    const all = await database.getAllFromIndex(STORE, 'updatedAt')
+    return all.reverse() // newest first
+  },
+
+  async delete(id: string): Promise<void> {
+    const database = await getDB()
+    await database.delete(STORE, id)
+  },
+
+  async clear(): Promise<void> {
+    const database = await getDB()
+    await database.clear(STORE)
+  },
+}

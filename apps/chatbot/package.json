@@ -1,0 +1,45 @@
+{
+  "name": "@cline/chatbot",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cline/agents": "workspace:*",
+    "@cline/llms": "workspace:*",
+    "@cline/shared": "workspace:*",
+    "@heroui/react": "3.1.0",
+    "@heroui/styles": "3.1.0",
+    "@tailwindcss/vite": "^4.3.0",
+    "idb": "^8.0.0",
+    "lucide-react": "^1.17.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "shiki": "^3.0.0",
+    "tailwindcss": "^4.3.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^20.14.11",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@typescript-eslint/eslint-plugin": "^8.60.1",
+    "@typescript-eslint/parser": "^8.60.1",
+    "@vitejs/plugin-react": "^6.0.2",
+    "eslint": "^10.5.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.6.0",
+    "terser": "^5.48.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.1",
+    "vite": "^8.0.16"
+  }
+}
