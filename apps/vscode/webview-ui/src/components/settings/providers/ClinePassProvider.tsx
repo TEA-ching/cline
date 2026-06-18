@@ -71,7 +71,7 @@ export const ClinePassProvider: typeof ClineProvider = (props) => {
 				{...props}
 				defaultModelId={clinePassDefaultModel}
 				modelIdFieldPair={{ plan: "planModeClinePassModelId", act: "actModeClinePassModelId" }}
-				modelInfoFieldPair={{ plan: "planModeClinePassModelInfo", act: "planModeClinePassModelInfo" }}
+				modelInfoFieldPair={{ plan: "planModeClinePassModelInfo", act: "actModeClinePassModelInfo" }}
 				models={clinePassModelOptions}
 				showFeaturedModels={false}
 			/>
