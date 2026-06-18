@@ -69,6 +69,6 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy apps/chatbot/dist --project-name=chatbot --branch=main --commit-sha=${{ github.sha }} --commit-message="${{ github.event.head_commit.message }}" --commit-author="${{ github.event.head_commit.author.name }} <${{ github.event.head_commit.author.email }}>" --commit-date="${{ github.event.head_commit.timestamp }}"
+          command: pages deploy apps/chatbot/dist --project-name=chatbot --branch=main --commit-hash=${{ github.sha }} --commit-message="${{ github.event.head_commit.message }}" --commit-author="${{ github.event.head_commit.author.name }} <${{ github.event.head_commit.author.email }}>" --commit-date="${{ github.event.head_commit.timestamp }}"
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
       
