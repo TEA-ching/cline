@@ -24,7 +24,7 @@ export const LoginScreen: React.FC = () => {
     <div className="flex min-h-screen items-center justify-center bg-default-50 p-4">
       <Card className="w-full max-w-md p-6">
         <Card.Header className="flex flex-col gap-1 text-center">
-          <Card.Title className="text-2xl font-bold">Cline Chatbot</Card.Title>
+          <Card.Title className="text-2xl font-bold">SCTG Chatbot</Card.Title>
           <Card.Description>
             Enter your vault token to connect to the AI proxy.
           </Card.Description>
@@ -34,7 +34,7 @@ export const LoginScreen: React.FC = () => {
           <Form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <TextField isRequired name="token">
               <Label>Vault Token</Label>
-              <Input type="hidden" autoComplete="username" value="Cline Chatbot" readOnly className="hidden" />
+              <Input type="hidden" autoComplete="username" value="SCTG Chatbot" readOnly className="hidden" />
               <Input
                 type="password"
                 placeholder="Paste your token here…"
