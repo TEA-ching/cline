@@ -69,6 +69,6 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy  --project-name=chatbot --branch=main
+          command: pages deploy  --project-name=chatbot --branch=main apps/chatbot/dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
       
