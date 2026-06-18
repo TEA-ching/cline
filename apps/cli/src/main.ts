@@ -22,6 +22,7 @@ import {
 import {
 	getCliFeatureFlagsService,
 	refreshCliFeatureFlagsInBackground,
+	setCliFeatureFlagsAccountContext,
 } from "./utils/feature-flags";
 import {
 	configureSandboxEnvironment,
@@ -908,6 +909,12 @@ export async function runCli(): Promise<void> {
 	};
 	registerDisposable(stopUserInstructionService);
 	try {
+		const persistedClineAccountId = providerSettingsManager
+			.getProviderSettings("cline")
+			?.auth?.accountId?.trim();
+		if (persistedClineAccountId) {
+			setCliFeatureFlagsAccountContext({ id: persistedClineAccountId });
+		}
 		refreshCliFeatureFlagsInBackground();
 		const lastUsedProviderSettings =
 			providerSettingsManager.getLastUsedProviderSettings({
