@@ -1,0 +1,72 @@
+# Copyright (c) 2024-2026 Ronan LE MEILLAT
+# License: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+name: Deploy chatbot on cloudflare pages
+
+on:
+  push:
+    branches:
+      - keypool-live
+    paths:
+      - apps/chatbot/**
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+  packages: write
+  attestations: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install dependencies
+        run: bun i
+
+      - name: Build
+        run: |
+          cd apps/chatbot
+          export KEYPOOL_VAULT_URL=${{ secrets.KEYPOOL_VAULT_URL }}
+          bun run build
+
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/chatbot/dist --project-name=chatbot --branch=main --commit-sha=${{ github.sha }} --commit-message="${{ github.event.head_commit.message }}" --commit-author="${{ github.event.head_commit.author.name }} <${{ github.event.head_commit.author.email }}>" --commit-date="${{ github.event.head_commit.timestamp }}"
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+      
