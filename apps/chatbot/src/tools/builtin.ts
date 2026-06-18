@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-export interface SkillMeta {
+export interface OptionalToolMeta {
   id: string
   name: string
   description: string
@@ -29,7 +29,7 @@ export interface SkillMeta {
   tools: string[]
 }
 
-export const BUILTIN_OPTONAL_TOOLS: SkillMeta[] = [
+export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
   {
     id: 'calculator',
     name: 'Calculator',
@@ -68,7 +68,7 @@ export const BUILTIN_OPTONAL_TOOLS: SkillMeta[] = [
   {
     id: 'execute_js',
     name: 'JS / TS Sandbox',
-    description: 'Execute JavaScript or TypeScript in a secure QuickJS WASM sandbox. No network, no filesystem — pure computation.',
+    description: 'Execute JavaScript or TypeScript in a secure QuickJS WASM sandbox. Access to virtual filesystem. No network.',
     icon: '⚡',
     tools: ['execute_js'],
   },

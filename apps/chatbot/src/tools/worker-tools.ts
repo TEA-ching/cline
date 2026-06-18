@@ -24,6 +24,7 @@
 import { createTool } from '@cline/agents'
 import { z } from 'zod'
 import type { AgentTool } from '@cline/agents'
+import type { VirtualFS } from '@/vfs/virtual-fs'
 import { runInSandbox } from './js-sandbox'
 
 const MATH_CTX = {
@@ -41,7 +42,10 @@ const MATH_CTX = {
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: tool input/output types vary
-export function createOptionalTools(skillIds: string[]): AgentTool<any, any>[] {
+export function createOptionalTools(
+  skillIds: string[],
+  ctx?: { vfs?: VirtualFS }
+): AgentTool<any, any>[] {
   const tools: AgentTool<any, any>[] = []
 
   if (skillIds.includes('calculator')) {
@@ -255,7 +259,9 @@ export function createOptionalTools(skillIds: string[]): AgentTool<any, any>[] {
       name: 'execute_js',
       description:
         'Execute JavaScript or TypeScript code in a secure sandbox (QuickJS WASM). ' +
-        'The sandbox has no network access, no filesystem, and a 5-second CPU timeout. ' +
+        'The sandbox has no network access, no external filesystem access, and a 5-second CPU timeout. ' +
+        'When VFS is available, you can access virtual files using the global vfs object with methods: ' +
+        'vfs.read(path), vfs.write(path, content), vfs.list(prefix), vfs.delete(path), vfs.exists(path). ' +
         'Use console.log() to print output. The return value of the last expression is also shown. ' +
         'Supports modern JS syntax and TypeScript type annotations.',
       inputSchema: z.object({
@@ -265,7 +271,7 @@ export function createOptionalTools(skillIds: string[]): AgentTool<any, any>[] {
       }),
       timeoutMs: 10_000,
       execute: async ({ code, language }) => {
-        const { output, error } = await runInSandbox(code, language)
+        const { output, error } = await runInSandbox(code, language, ctx?.vfs)
         if (error) {
           return { success: false, error }
         }

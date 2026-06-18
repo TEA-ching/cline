@@ -88,7 +88,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   const [showSkills, setShowSkills] = useState(false)
   const [sessionId, setSessionId] = useState(() => `sess_${Date.now()}`)
   const [systemPrompt, setSystemPrompt] = useLocalStorageState('chatbot_system_prompt', DEFAULT_SYSTEM_PROMPT)
-  const [enabledSkills, setEnabledSkills] = useLocalStorageState<string[]>('chatbot_enabled_skills', [])
+  const [enabledSkills, setEnabledSkills] = useLocalStorageState<string[]>('chatbot_enabled_optional_tools', [])
 
   const models = useMemo(() => listChatModels(vaultConfig), [vaultConfig])
   const selectedModel = models.find(

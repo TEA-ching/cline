@@ -25,6 +25,7 @@ import { newQuickJSWASMModuleFromVariant, shouldInterruptAfterDeadline, isFail }
 import type { QuickJSWASMModule } from 'quickjs-emscripten'
 import singlefileVariant from '@jitl/quickjs-singlefile-browser-release-sync'
 import { transform } from 'sucrase'
+import type { VirtualFS } from '@/vfs/virtual-fs'
 
 const TIMEOUT_MS = 5_000
 const MEMORY_LIMIT_BYTES = 64 * 1024 * 1024 // 64 MB
@@ -50,6 +51,7 @@ function serializeValue(val: unknown): string {
 export async function runInSandbox(
   code: string,
   language: 'javascript' | 'typescript',
+  vfs?: VirtualFS,
 ): Promise<SandboxResult> {
   let js: string
   try {
@@ -81,6 +83,122 @@ export async function runInSandbox(
   ctx.setProp(ctx.global, 'console', consoleHandle)
   logFn.dispose()
   consoleHandle.dispose()
+
+  // Inject VFS methods if available
+  if (vfs) {
+    const vfsHandle = ctx.newObject()
+
+    // vfs.read(path: string): string | null
+    const vfsReadFn = ctx.newFunction('read', (...args: any[]) => {
+      try {
+        if (args.length === 0) {
+          return ctx.newString('Error: path argument required')
+        }
+        const path = ctx.dump(args[0])
+        if (typeof path !== 'string') {
+          return ctx.newString('Error: path must be a string')
+        }
+        const content = vfs.read(path)
+        if (content === null) {
+          return ctx.null
+        }
+        return ctx.newString(content)
+      } catch (err) {
+        return ctx.newString(`Error reading file: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    })
+
+    // vfs.write(path: string, content: string): boolean
+    const vfsWriteFn = ctx.newFunction('write', (...args: any[]) => {
+      try {
+        if (args.length < 2) {
+          return ctx.newString('Error: path and content arguments required')
+        }
+        const path = ctx.dump(args[0])
+        const content = ctx.dump(args[1])
+        if (typeof path !== 'string' || typeof content !== 'string') {
+          return ctx.newString('Error: path and content must be strings')
+        }
+        vfs.write(path, content)
+        return ctx.true
+      } catch (err) {
+        return ctx.newString(`Error writing file: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    })
+
+    // vfs.list(prefix?: string): string[]
+    const vfsListFn = ctx.newFunction('list', (...args: any[]) => {
+      try {
+        let prefix: string | undefined
+        if (args.length > 0) {
+          const prefixArg = ctx.dump(args[0])
+          if (typeof prefixArg === 'string') {
+            prefix = prefixArg
+          }
+        }
+        const files = vfs.list(prefix)
+        const resultArray = ctx.newArray()
+        files.forEach((file, index) => {
+          ctx.setProp(resultArray, index, ctx.newString(file))
+        })
+        return resultArray
+      } catch (err) {
+        return ctx.newString(`Error listing files: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    })
+
+    // vfs.delete(path: string): boolean
+    const vfsDeleteFn = ctx.newFunction('delete', (...args: any[]) => {
+      try {
+        if (args.length === 0) {
+          return ctx.newString('Error: path argument required')
+        }
+        const path = ctx.dump(args[0])
+        if (typeof path !== 'string') {
+          return ctx.newString('Error: path must be a string')
+        }
+        const success = vfs.delete(path)
+        return success ? ctx.true : ctx.false
+      } catch (err) {
+        return ctx.newString(`Error deleting file: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    })
+
+    // vfs.exists(path: string): boolean
+    const vfsExistsFn = ctx.newFunction('exists', (...args: any[]) => {
+      try {
+        if (args.length === 0) {
+          return ctx.false
+        }
+        const path = ctx.dump(args[0])
+        if (typeof path !== 'string') {
+          return ctx.false
+        }
+        const exists = vfs.read(path) !== null
+        return exists ? ctx.true : ctx.false
+      } catch (err) {
+        return ctx.false
+      }
+    })
+
+    // Attach VFS methods to the vfs object
+    ctx.setProp(vfsHandle, 'read', vfsReadFn)
+    ctx.setProp(vfsHandle, 'write', vfsWriteFn)
+    ctx.setProp(vfsHandle, 'list', vfsListFn)
+    ctx.setProp(vfsHandle, 'delete', vfsDeleteFn)
+    ctx.setProp(vfsHandle, 'exists', vfsExistsFn)
+
+    // Make vfs available globally
+    ctx.setProp(ctx.global, 'vfs', vfsHandle)
+
+    // Clean up function handles
+    vfsReadFn.dispose()
+    vfsWriteFn.dispose()
+    vfsListFn.dispose()
+    vfsDeleteFn.dispose()
+    vfsExistsFn.dispose()
+    vfsHandle.dispose()
+  }
 
   let output = ''
   let error: string | undefined
