@@ -164,11 +164,11 @@ function requestToolApproval(
 
 async function handleInit(msg: InitMessage): Promise<void> {
   try {
-    const [{ Agent }, { VirtualFS }, { createBrowserTools }, { createSkillTools }] = await Promise.all([
+    const [{ Agent }, { VirtualFS }, { createBrowserTools }, { createOptionalTools: createSkillTools }] = await Promise.all([
       import('@cline/agents'),
       import('@/vfs/virtual-fs'),
       import('@/tools/index'),
-      import('@/skills/worker-tools'),
+      import('@/tools/worker-tools'),
     ])
 
     vfs = new VirtualFS()

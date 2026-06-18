@@ -29,7 +29,7 @@ export interface SkillMeta {
   tools: string[]
 }
 
-export const BUILTIN_SKILLS: SkillMeta[] = [
+export const BUILTIN_OPTONAL_TOOLS: SkillMeta[] = [
   {
     id: 'calculator',
     name: 'Calculator',

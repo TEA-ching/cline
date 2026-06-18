@@ -24,7 +24,7 @@
 import React from 'react'
 import { Button } from '@heroui/react'
 import { X, Info } from 'lucide-react'
-import { BUILTIN_SKILLS } from '@/skills/builtin'
+import { BUILTIN_OPTONAL_TOOLS } from '@/tools/builtin'
 
 interface Props {
   enabledSkills: string[]
@@ -32,7 +32,7 @@ interface Props {
   onClose: () => void
 }
 
-export const SkillManager: React.FC<Props> = ({ enabledSkills, onToggle, onClose }) => {
+export const ToolManager: React.FC<Props> = ({ enabledSkills, onToggle, onClose }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-end">
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
@@ -40,7 +40,7 @@ export const SkillManager: React.FC<Props> = ({ enabledSkills, onToggle, onClose
 
         {/* Header */}
         <div className="flex items-center justify-between border-b border-default-200 px-3 py-2 shrink-0">
-          <span className="text-sm font-medium">Agent Skills</span>
+          <span className="text-sm font-medium">Tool Manager</span>
           <Button isIconOnly variant="ghost" size="sm" onPress={onClose}>
             <X className="h-4 w-4" />
           </Button>
@@ -50,14 +50,14 @@ export const SkillManager: React.FC<Props> = ({ enabledSkills, onToggle, onClose
         <div className="flex items-start gap-2 px-3 py-2 border-b border-default-100 bg-default-50 shrink-0">
           <Info className="h-3.5 w-3.5 text-default-400 mt-0.5 shrink-0" />
           <p className="text-xs text-default-400">
-            Skills add extra tools to the AI agent. Toggle a skill and start a new conversation
+            Add extra tools to the AI agent. Toggle a tool and start a new conversation
             (or use <span className="font-mono">/new</span>) to activate it.
           </p>
         </div>
 
-        {/* Skill list */}
+        {/* Tool list */}
         <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
-          {BUILTIN_SKILLS.map(skill => {
+          {BUILTIN_OPTONAL_TOOLS.map(skill => {
             const enabled = enabledSkills.includes(skill.id)
             return (
               <button
@@ -94,8 +94,8 @@ export const SkillManager: React.FC<Props> = ({ enabledSkills, onToggle, onClose
         <div className="border-t border-default-200 px-3 py-2 shrink-0">
           <p className="text-xs text-default-400 text-center">
             {enabledSkills.length === 0
-              ? 'No skills enabled'
-              : `${enabledSkills.length} skill${enabledSkills.length !== 1 ? 's' : ''} enabled`}
+              ? 'No tools enabled'
+              : `${enabledSkills.length} tool${enabledSkills.length !== 1 ? 's' : ''} enabled`}
           </p>
         </div>
       </div>

@@ -36,7 +36,7 @@ import { FileManager } from '@/components/files/FileManager'
 import { DropZone } from '@/components/files/DropZone'
 import { SettingsPanel } from '@/components/settings/SettingsPanel'
 import { SessionBrowser } from '@/components/sessions/SessionBrowser'
-import { SkillManager } from '@/components/skills/SkillManager'
+import { ToolManager } from '@/components/optional-tools/ToolManager'
 
 import { useAgent } from '@/hooks/useAgent'
 import type { ChatMessage } from '@/hooks/useAgent'
@@ -62,7 +62,7 @@ export const SLASH_COMMANDS = [
   { cmd: '/undo',     desc: 'Remove last message pair' },
   { cmd: '/compact',  desc: 'Ask AI to summarize conversation (saves context)' },
   { cmd: '/sessions', desc: 'Browse & restore saved conversations' },
-  { cmd: '/skills',   desc: 'Manage agent skills' },
+  { cmd: '/tools',   desc: 'Manage optional tools' },
   { cmd: '/prompt',   desc: '/prompt <text> — view or set system prompt' },
 ]
 
@@ -229,7 +229,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
         case '/sessions':
           setShowSessions(true)
           return
-        case '/skills':
+        case '/tools':
           setShowSkills(true)
           return
         case '/prompt':
@@ -296,7 +296,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
                 {selectedModelId || 'No model selected'}
                 {enabledSkills.length > 0 && (
                   <span className="ml-1.5 text-primary-400">
-                    +{enabledSkills.length} skill{enabledSkills.length !== 1 ? 's' : ''}
+                    +{enabledSkills.length} optional tool{enabledSkills.length !== 1 ? 's' : ''}
                   </span>
                 )}
               </p>
@@ -311,7 +311,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
             <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSessions(true)} aria-label="Saved conversations">
               <History className="h-4 w-4" />
             </Button>
-            <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSkills(true)} aria-label="Agent skills">
+            <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSkills(true)} aria-label="Optional tools">
               <Zap className="h-4 w-4" />
             </Button>
             <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSettings(v => !v)} aria-label="Settings">
@@ -363,9 +363,9 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
           />
         )}
 
-        {/* Skill manager */}
+        {/* Optional tool manager */}
         {showSkills && (
-          <SkillManager
+          <ToolManager
             enabledSkills={enabledSkills}
             onToggle={handleToggleSkill}
             onClose={() => setShowSkills(false)}

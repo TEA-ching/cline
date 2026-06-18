@@ -41,7 +41,7 @@ const MATH_CTX = {
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: tool input/output types vary
-export function createSkillTools(skillIds: string[]): AgentTool<any, any>[] {
+export function createOptionalTools(skillIds: string[]): AgentTool<any, any>[] {
   const tools: AgentTool<any, any>[] = []
 
   if (skillIds.includes('calculator')) {
