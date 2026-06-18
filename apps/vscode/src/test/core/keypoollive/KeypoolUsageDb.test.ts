@@ -27,7 +27,7 @@ describe("KeypoolUsageDb", () => {
 		sandbox.restore()
 	})
 
-	it("should record and retrieve usage stats", function () {
+	it("should record and retrieve usage stats", async function () {
 		// better-sqlite3 might not be available in all environments (e.g. arm64/x64 mismatch)
 		// we skip the test if it fails to load
 		try {
@@ -45,14 +45,14 @@ describe("KeypoolUsageDb", () => {
 			completionTokens: 50,
 		})
 
-		const stats = KeypoolUsageDb.getUsageStats("hour")
+		const stats = await KeypoolUsageDb.getUsageStats("hour")
 		stats.length.should.be.greaterThan(0)
 		stats[0].provider.should.equal("anthropic")
 		stats[0].promptTokens.should.equal(100)
 		stats[0].completionTokens.should.equal(50)
 	})
 
-	it("should record and retrieve error stats", function () {
+	it("should record and retrieve error stats", async function () {
 		try {
 			require("better-sqlite3")
 		} catch {
@@ -76,7 +76,7 @@ describe("KeypoolUsageDb", () => {
 			errorCode: 429,
 		})
 
-		const stats = KeypoolUsageDb.getErrorStats()
+		const stats = await KeypoolUsageDb.getErrorStats()
 		stats.length.should.be.greaterThan(0)
 		const stat = stats.find((s) => s.provider === "openai")
 		should.exist(stat)

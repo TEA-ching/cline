@@ -101,7 +101,7 @@ export async function getSessionApiConfig(
 	}
 
 	// Resolve the next available key from the pool.
-	const resolved = resolveNextApiConfig(vault, providerName, modelId);
+	const resolved = await resolveNextApiConfig(vault, providerName, modelId);
 	if (!resolved) return null;
 
 	// Store the resolved config in both our detailed map and our simplified key cache.

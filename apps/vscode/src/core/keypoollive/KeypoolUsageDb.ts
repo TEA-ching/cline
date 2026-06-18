@@ -3,11 +3,10 @@
  * © 2026 Ronan LE MEILLAT — MIT License
  *
  * This module stores lightweight API-key usage and error statistics for the
- * KeypoolLive provider. It intentionally uses newline-delimited JSON (NDJSON)
- * files instead of SQLite:
+ * KeypoolLive provider. It supports two storage modes:
  *
- * - `usage.ndjson` stores successful requests and token usage metrics.
- * - `errors.ndjson` stores failed requests and error codes.
+ * - Local mode (default): Uses NDJSON files in the extension storage directory
+ * - Remote mode: Uses a Cloudflare Worker KV backend for shared statistics
  *
  * The design is append-oriented and dependency-free. Records are written as one
  * JSON object per line, which keeps the implementation simple, avoids native
@@ -55,6 +54,23 @@ import { Logger } from "@/shared/services/Logger";
  * layer that asks for hourly, daily, weekly, or monthly key usage.
  */
 export type UsagePeriod = "hour" | "day" | "week" | "month";
+
+/**
+ * Storage mode for usage statistics.
+ * - "local": Use NDJSON files in extension storage (default)
+ * - "remote": Use Cloudflare Worker KV backend
+ */
+export type KeypoolStorageMode = "local" | "remote";
+
+/**
+ * Configuration for remote storage mode.
+ */
+export interface KeypoolRemoteConfig {
+	/** URL of the Cloudflare Worker (e.g., https://ai-proxy.example.com) */
+	workerUrl: string;
+	/** Bearer token for authentication (the vault key) */
+	authToken: string;
+}
 
 /**
  * Represents a successful API request that consumed tokens from a pooled key.
@@ -258,6 +274,18 @@ export class KeypoolUsageDb {
 	private static maxSizeBytes: number = 50 * 1024 * 1024;
 
 	/**
+	 * Current storage mode.
+	 * - "local": Use NDJSON files (default)
+	 * - "remote": Use Cloudflare Worker KV backend
+	 */
+	private static storageMode: KeypoolStorageMode = "local";
+
+	/**
+	 * Remote configuration (only used when storageMode is "remote").
+	 */
+	private static remoteConfig: KeypoolRemoteConfig | null = null;
+
+	/**
 	 * Updates the maximum combined database size.
 	 *
 	 * The extension calls this when the `keypoolliveMaxDbSizeMb` setting changes.
@@ -266,6 +294,31 @@ export class KeypoolUsageDb {
 	 */
 	static setMaxSizeMb(mb: number): void {
 		KeypoolUsageDb.maxSizeBytes = Math.max(1, mb) * 1024 * 1024;
+	}
+
+	/**
+	 * Configures the database to use remote storage mode.
+	 *
+	 * @param config - Remote worker configuration
+	 */
+	static setRemoteMode(config: KeypoolRemoteConfig): void {
+		KeypoolUsageDb.storageMode = "remote";
+		KeypoolUsageDb.remoteConfig = config;
+	}
+
+	/**
+	 * Configures the database to use local storage mode.
+	 */
+	static setLocalMode(): void {
+		KeypoolUsageDb.storageMode = "local";
+		KeypoolUsageDb.remoteConfig = null;
+	}
+
+	/**
+	 * Returns the current storage mode.
+	 */
+	static getStorageMode(): KeypoolStorageMode {
+		return KeypoolUsageDb.storageMode;
 	}
 
 	/** Absolute path to `usage.ndjson`. */
@@ -318,6 +371,12 @@ export class KeypoolUsageDb {
 	 * successful-request and error-record logs.
 	 */
 	static getFileSizeBytes(): number {
+		// In remote mode, return the size from the worker
+		if (KeypoolUsageDb.storageMode === "remote" && KeypoolUsageDb.remoteConfig) {
+			// Fire-and-forget request to get remote size
+			KeypoolUsageDb.fetchRemoteSize().catch(() => {});
+			return 0; // Local size is not relevant in remote mode
+		}
 		return (
 			KeypoolUsageDb.fileSize(KeypoolUsageDb.usagePath()) +
 			KeypoolUsageDb.fileSize(KeypoolUsageDb.errorsPath())
@@ -418,6 +477,105 @@ export class KeypoolUsageDb {
 		}
 	}
 
+	// ─── Remote API helpers ───────────────────────────────────────────────────
+
+	/**
+	 * Makes a request to the remote worker API.
+	 *
+	 * @param endpoint - API endpoint path (e.g., "/v1/keypool/usage")
+	 * @param method - HTTP method
+	 * @param body - Request body (for POST requests)
+	 * @returns Response data or null on error
+	 */
+	private static async fetchRemote<T>(
+		endpoint: string,
+		method: "GET" | "POST" = "GET",
+		body?: object,
+	): Promise<T | null> {
+		if (!KeypoolUsageDb.remoteConfig) return null;
+
+		const url = `${KeypoolUsageDb.remoteConfig.workerUrl}${endpoint}`;
+		try {
+			const response = await fetch(url, {
+				method,
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${KeypoolUsageDb.remoteConfig.authToken}`,
+				},
+				body: body ? JSON.stringify(body) : undefined,
+			});
+
+			if (!response.ok) {
+				Logger.error(
+					`[KeypoolUsageDb] Remote API error: ${response.status} ${response.statusText}`,
+				);
+				return null;
+			}
+
+			return (await response.json()) as T;
+		} catch (e) {
+			Logger.error("[KeypoolUsageDb] Failed to call remote API:", e);
+			return null;
+		}
+	}
+
+	/**
+	 * Records usage to the remote worker.
+	 */
+	private static async recordRemoteUsage(entry: KeyUsageEntry): Promise<void> {
+		await KeypoolUsageDb.fetchRemote("/v1/keypool/usage", "POST", entry);
+	}
+
+	/**
+	 * Records error to the remote worker.
+	 */
+	private static async recordRemoteError(entry: KeyErrorEntry): Promise<void> {
+		await KeypoolUsageDb.fetchRemote("/v1/keypool/error", "POST", entry);
+	}
+
+	/**
+	 * Gets usage stats from the remote worker.
+	 */
+	private static async fetchRemoteUsageStats(
+		period: UsagePeriod,
+	): Promise<KeyUsageStat[]> {
+		const result = await KeypoolUsageDb.fetchRemote<{ data: KeyUsageStat[] }>(
+			`/v1/keypool/stats?period=${period}`,
+		);
+		return result?.data ?? [];
+	}
+
+	/**
+	 * Gets error stats from the remote worker.
+	 */
+	private static async fetchRemoteErrorStats(): Promise<KeyErrorStat[]> {
+		const result = await KeypoolUsageDb.fetchRemote<{ data: KeyErrorStat[] }>(
+			"/v1/keypool/errors",
+		);
+		return result?.data ?? [];
+	}
+
+	/**
+	 * Gets file size from the remote worker.
+	 */
+	private static async fetchRemoteSize(): Promise<number> {
+		const result = await KeypoolUsageDb.fetchRemote<{ sizeBytes: number }>(
+			"/v1/keypool/size",
+		);
+		return result?.sizeBytes ?? 0;
+	}
+
+	/**
+	 * Purges data on the remote worker.
+	 */
+	private static async purgeRemote(): Promise<number> {
+		const result = await KeypoolUsageDb.fetchRemote<{ ok: boolean; freedBytes: number }>(
+			"/v1/keypool/purge",
+			"POST",
+		);
+		return result?.freedBytes ?? 0;
+	}
+
 	// ─── Public API ────────────────────────────────────────────────────────────
 
 	/**
@@ -425,10 +583,18 @@ export class KeypoolUsageDb {
 	 *
 	 * The timestamp is assigned by the database layer to preserve append-order
 	 * semantics. Callers should not include timestamps in `KeyUsageEntry`.
+	 *
+	 * In remote mode, the record is sent to the Cloudflare Worker.
+	 * In local mode, the record is appended to the NDJSON file.
 	 */
 	static recordUsage(entry: KeyUsageEntry): void {
-		const record: UsageRecord = { ts: Date.now(), ...entry };
-		KeypoolUsageDb.appendLine(KeypoolUsageDb.usagePath(), record);
+		if (KeypoolUsageDb.storageMode === "remote") {
+			// Fire-and-forget remote recording
+			KeypoolUsageDb.recordRemoteUsage(entry).catch(() => {});
+		} else {
+			const record: UsageRecord = { ts: Date.now(), ...entry };
+			KeypoolUsageDb.appendLine(KeypoolUsageDb.usagePath(), record);
+		}
 	}
 
 	/**
@@ -437,10 +603,18 @@ export class KeypoolUsageDb {
 	 * Errors are stored separately from successful usage so the error log can
 	 * retain non-HTTP failures and status-code details without bloating the
 	 * usage aggregation path.
+	 *
+	 * In remote mode, the record is sent to the Cloudflare Worker.
+	 * In local mode, the record is appended to the NDJSON file.
 	 */
 	static recordError(entry: KeyErrorEntry): void {
-		const record: ErrorRecord = { ts: Date.now(), ...entry };
-		KeypoolUsageDb.appendLine(KeypoolUsageDb.errorsPath(), record);
+		if (KeypoolUsageDb.storageMode === "remote") {
+			// Fire-and-forget remote recording
+			KeypoolUsageDb.recordRemoteError(entry).catch(() => {});
+		} else {
+			const record: ErrorRecord = { ts: Date.now(), ...entry };
+			KeypoolUsageDb.appendLine(KeypoolUsageDb.errorsPath(), record);
+		}
 	}
 
 	/**
@@ -452,8 +626,15 @@ export class KeypoolUsageDb {
 	 *
 	 * The sort order mirrors the previous SQL query: newest period first, then
 	 * provider, key owner, and key hint lexicographically.
+	 *
+	 * In remote mode, stats are fetched from the Cloudflare Worker.
+	 * In local mode, stats are computed from the NDJSON file.
 	 */
-	static getUsageStats(period: UsagePeriod): KeyUsageStat[] {
+	static async getUsageStats(period: UsagePeriod): Promise<KeyUsageStat[]> {
+		if (KeypoolUsageDb.storageMode === "remote") {
+			return KeypoolUsageDb.fetchRemoteUsageStats(period);
+		}
+
 		try {
 			const cutoff = periodCutoffMs(period);
 			const records = KeypoolUsageDb.readLines<UsageRecord>(
@@ -526,8 +707,15 @@ export class KeypoolUsageDb {
 	 * for the same key. This means the rate is an error-to-success ratio rather
 	 * than a strict percentage of all attempts. The denominator is floored at 1
 	 * to preserve the previous SQL behavior of `MAX(total_requests, 1)`.
+	 *
+	 * In remote mode, stats are fetched from the Cloudflare Worker.
+	 * In local mode, stats are computed from the NDJSON file.
 	 */
-	static getErrorStats(): KeyErrorStat[] {
+	static async getErrorStats(): Promise<KeyErrorStat[]> {
+		if (KeypoolUsageDb.storageMode === "remote") {
+			return KeypoolUsageDb.fetchRemoteErrorStats();
+		}
+
 		try {
 			const errorRecords = KeypoolUsageDb.readLines<ErrorRecord>(
 				KeypoolUsageDb.errorsPath(),
@@ -599,8 +787,17 @@ export class KeypoolUsageDb {
 	 *
 	 * This purges stored statistics but intentionally leaves the containing
 	 * directory in place so future writes can recreate the files normally.
+	 *
+	 * In remote mode, data is purged from the Cloudflare Worker.
+	 * In local mode, files are deleted from disk.
 	 */
 	static purge(): number {
+		if (KeypoolUsageDb.storageMode === "remote") {
+			// Fire-and-forget remote purge
+			KeypoolUsageDb.purgeRemote().catch(() => {});
+			return 0;
+		}
+
 		let freed = 0;
 		for (const filePath of [
 			KeypoolUsageDb.usagePath(),

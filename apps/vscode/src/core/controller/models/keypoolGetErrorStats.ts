@@ -24,7 +24,7 @@ export async function keypoolGetErrorStats(
 ): Promise<KeypoolErrorStatsResponse> {
 	try {
 		const period = toPeriod(request.period)
-		const rows = KeypoolUsageDb.getErrorStats()
+		const rows = await KeypoolUsageDb.getErrorStats()
 		const stats: KeypoolErrorStat[] = rows.map((r) =>
 			KeypoolErrorStat.create({
 				provider: r.provider,

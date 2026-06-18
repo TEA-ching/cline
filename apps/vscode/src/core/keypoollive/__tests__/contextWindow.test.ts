@@ -171,7 +171,7 @@ describe("KeypoolLive — contextWindow field mapping", () => {
 	})
 
 	describe("KeyPool.resolveNextApiConfig — contextWindow in resolved model", () => {
-		it("returns model with correct contextWindow", () => {
+		it("returns model with correct contextWindow", async () => {
 			const vault: AiVaultConfig = {
 				version: 1,
 				providers: {
@@ -182,12 +182,12 @@ describe("KeypoolLive — contextWindow field mapping", () => {
 					},
 				},
 			}
-			const config = resolveNextApiConfig(vault, "anthropic")
+			const config = await resolveNextApiConfig(vault, "anthropic")
 			config!.model.contextWindow!.should.equal(1000000)
 			config!.model.maxOutputTokens!.should.equal(128000)
 		})
 
-		it("returns model with contextWindow for specific modelId selection", () => {
+		it("returns model with contextWindow for specific modelId selection", async () => {
 			const vault: AiVaultConfig = {
 				version: 1,
 				providers: {
@@ -201,7 +201,7 @@ describe("KeypoolLive — contextWindow field mapping", () => {
 					},
 				},
 			}
-			const config = resolveNextApiConfig(vault, "gemini", "gemini-3.1-pro-preview")
+			const config = await resolveNextApiConfig(vault, "gemini", "gemini-3.1-pro-preview")
 			config!.model.id.should.equal("gemini-3.1-pro-preview")
 			config!.model.contextWindow!.should.equal(1048576)
 		})

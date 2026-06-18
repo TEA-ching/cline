@@ -320,7 +320,7 @@ export class KeypoolLiveHandler implements ApiHandler {
 		this.resolvedConfig = config;
 		{
 			const keyHint = `***${config.apiKey.slice(-8)}`;
-			const dayStats = KeypoolUsageDb.getUsageStats("day");
+			const dayStats = await KeypoolUsageDb.getUsageStats("day");
 			const keyStat = dayStats.find(
 				(s) => s.provider === vaultProviderName && s.keyHint === keyHint,
 			);

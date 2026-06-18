@@ -24,7 +24,7 @@ export async function keypoolGetUsageStats(
 ): Promise<KeypoolUsageStatsResponse> {
 	try {
 		const period = toPeriod(request.period)
-		const rows = KeypoolUsageDb.getUsageStats(period)
+		const rows = await KeypoolUsageDb.getUsageStats(period)
 		const stats: KeypoolUsageStat[] = rows.map((r) =>
 			KeypoolUsageStat.create({
 				periodLabel: r.period,

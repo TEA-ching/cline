@@ -76,6 +76,32 @@ let persistentStateLoaded = false;
 let persistentStateWriteChain: Promise<void> = Promise.resolve();
 
 /**
+ * Remote storage mode configuration.
+ * When set, usage/error stats are sent to the Cloudflare Worker instead of local NDJSON.
+ */
+interface KeypoolRemoteStorageConfig {
+	workerUrl: string;
+	authToken: string;
+}
+
+let remoteStorageConfig: KeypoolRemoteStorageConfig | null = null;
+
+/**
+ * Configures remote storage mode.
+ * Call this before using the provider to enable shared statistics.
+ */
+export function setKeypoolRemoteStorage(config: KeypoolRemoteStorageConfig): void {
+	remoteStorageConfig = config;
+}
+
+/**
+ * Returns whether remote storage mode is enabled.
+ */
+export function isKeypoolRemoteStorageEnabled(): boolean {
+	return remoteStorageConfig !== null;
+}
+
+/**
  * Browser-compatible environment variable access
  */
 function getBrowserEnv(name: string): string | undefined {
@@ -386,9 +412,7 @@ function selectNextKey(providerName: string, keys: any[]): any | null {
 	return pool[idx];
 }
 
-/**
- * Browser-compatible usage recording
- */
+// ─── Browser-compatible usage recording ───────────────────────────────────────────
 async function getUsageDbDir(): Promise<string> {
 	const envDir = getBrowserEnv(KEYPOOL_USAGE_DB_DIR_ENV);
 	if (envDir) {
@@ -399,34 +423,90 @@ async function getUsageDbDir(): Promise<string> {
 	return "keypoollive";
 }
 
-async function recordKeypoolUsageToNdjson(entry: any): Promise<void> {
-	const dbDir = await getUsageDbDir();
-	const storage = new BrowserFileStorage(`${dbDir}/usage.ndjson`);
+/**
+ * Records usage to the remote worker or local NDJSON.
+ */
+async function recordKeypoolUsage(entry: any): Promise<void> {
+	if (remoteStorageConfig) {
+		// Remote mode: send to Cloudflare Worker
+		try {
+			const response = await fetch(
+				`${remoteStorageConfig.workerUrl}/v1/keypool/usage`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: `Bearer ${remoteStorageConfig.authToken}`,
+					},
+					body: JSON.stringify(entry),
+				},
+			);
+			if (!response.ok) {
+				console.error(
+					`[keypoollive] Remote usage recording failed: ${response.status}`,
+				);
+			}
+		} catch (e) {
+			console.error("[keypoollive] Failed to record usage remotely:", e);
+		}
+	} else {
+		// Local mode: write to NDJSON
+		const dbDir = await getUsageDbDir();
+		const storage = new BrowserFileStorage(`${dbDir}/usage.ndjson`);
 
-	const existingData = await storage.read();
-	const lines = existingData
-		? Array.isArray(existingData)
-			? existingData
-			: [existingData]
-		: [];
-	lines.push(entry);
+		const existingData = await storage.read();
+		const lines = existingData
+			? Array.isArray(existingData)
+				? existingData
+				: [existingData]
+			: [];
+		lines.push(entry);
 
-	await storage.write(lines);
+		await storage.write(lines);
+	}
 }
 
-async function recordKeypoolErrorToNdjson(entry: any): Promise<void> {
-	const dbDir = await getUsageDbDir();
-	const storage = new BrowserFileStorage(`${dbDir}/errors.ndjson`);
+/**
+ * Records error to the remote worker or local NDJSON.
+ */
+async function recordKeypoolError(entry: any): Promise<void> {
+	if (remoteStorageConfig) {
+		// Remote mode: send to Cloudflare Worker
+		try {
+			const response = await fetch(
+				`${remoteStorageConfig.workerUrl}/v1/keypool/error`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: `Bearer ${remoteStorageConfig.authToken}`,
+					},
+					body: JSON.stringify(entry),
+				},
+			);
+			if (!response.ok) {
+				console.error(
+					`[keypoollive] Remote error recording failed: ${response.status}`,
+				);
+			}
+		} catch (e) {
+			console.error("[keypoollive] Failed to record error remotely:", e);
+		}
+	} else {
+		// Local mode: write to NDJSON
+		const dbDir = await getUsageDbDir();
+		const storage = new BrowserFileStorage(`${dbDir}/errors.ndjson`);
 
-	const existingData = await storage.read();
-	const lines = existingData
-		? Array.isArray(existingData)
-			? existingData
-			: [existingData]
-		: [];
-	lines.push(entry);
+		const existingData = await storage.read();
+		const lines = existingData
+			? Array.isArray(existingData)
+				? existingData
+				: [existingData]
+			: [];
+		lines.push(entry);
 
-	await storage.write(lines);
+		await storage.write(lines);
+	}
 }
 
 /**
@@ -693,8 +773,8 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 						cacheReadTokens,
 						cacheWriteTokens,
 					});
-					// Persist to shared NDJSON (fire-and-forget; failures are non-fatal)
-					void recordKeypoolUsageToNdjson({
+					// Persist to shared storage (fire-and-forget; failures are non-fatal)
+					void recordKeypoolUsage({
 						provider: providerName,
 						modelId,
 						keyOwner: resolvedKeyOwner ?? "unknown",
@@ -732,8 +812,8 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 					error: errorMessage,
 				});
 
-				// Persist error to shared NDJSON (fire-and-forget)
-				void recordKeypoolErrorToNdjson({
+				// Persist error to shared storage (fire-and-forget)
+				void recordKeypoolError({
 					provider: providerName,
 					modelId,
 					keyOwner: resolvedKeyOwner ?? "unknown",

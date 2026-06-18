@@ -361,10 +361,10 @@ export async function markKeyAsFailed(
  * @param keys - List of available keys from the vault.
  * @returns The selected VaultKey or null if no keys are eligible.
  */
-function selectNextKey(
+async function selectNextKey(
 	providerName: string,
 	keys: VaultKey[],
-): VaultKey | null {
+): Promise<VaultKey | null> {
 	const eligible = keys.filter((k) => k.type !== "expired");
 	if (eligible.length === 0) return null;
 
@@ -378,7 +378,7 @@ function selectNextKey(
 	}
 
 	// Get 24h usage stats from the persistent DB and build a per-keyHint lookup
-	const dayStats = KeypoolUsageDb.getUsageStats("day");
+	const dayStats = await KeypoolUsageDb.getUsageStats("day");
 	type KeyStats24h = { completionTokens: number; promptTokens: number; requestCount: number };
 	const statsMap = new Map<string, KeyStats24h>();
 	for (const stat of dayStats) {
@@ -433,11 +433,11 @@ function selectNextKey(
  * @param modelId - Optional model identifier. If omitted, the first chat model is used.
  * @returns A ResolvedApiConfig object ready for the API handler, or null if resolution fails.
  */
-export function resolveNextApiConfig(
+export async function resolveNextApiConfig(
 	vault: AiVaultConfig,
 	providerName: string,
 	modelId?: string,
-): ResolvedApiConfig | null {
+): Promise<ResolvedApiConfig | null> {
 	const provider = vault.providers[providerName];
 	if (!provider) return null;
 
@@ -449,7 +449,7 @@ export function resolveNextApiConfig(
 		: chatModels[0];
 	if (!model) return null;
 
-	const key = selectNextKey(providerName, provider.keys);
+	const key = await selectNextKey(providerName, provider.keys);
 	if (!key) return null;
 
 	return {

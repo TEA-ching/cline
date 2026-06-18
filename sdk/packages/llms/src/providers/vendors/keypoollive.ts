@@ -1322,6 +1322,34 @@ function parseModelId(compositeModelId: string): {
 	};
 }
 
+// ─── Remote storage configuration ─────────────────────────────────────────────
+
+/**
+ * Remote storage mode configuration.
+ * When set, usage/error stats are sent to the Cloudflare Worker instead of local NDJSON.
+ */
+interface KeypoolRemoteStorageConfig {
+	workerUrl: string;
+	authToken: string;
+}
+
+let remoteStorageConfig: KeypoolRemoteStorageConfig | null = null;
+
+/**
+ * Configures remote storage mode.
+ * Call this before using the provider to enable shared statistics.
+ */
+export function setKeypoolRemoteStorage(config: KeypoolRemoteStorageConfig): void {
+	remoteStorageConfig = config;
+}
+
+/**
+ * Returns whether remote storage mode is enabled.
+ */
+export function isKeypoolRemoteStorageEnabled(): boolean {
+	return remoteStorageConfig !== null;
+}
+
 // ─── NDJSON usage recording ───────────────────────────────────────────────────
 // Compatible with apps/vscode/src/core/keypoollive/KeypoolUsageDb.ts record format.
 // Directory: KEYPOOL_USAGE_DB_DIR env var, or ~/.cline/data/keypoollive/
@@ -1356,30 +1384,86 @@ async function getUsageDbDir(): Promise<string> {
 	return path.join(os.homedir(), ".cline", "data", "keypoollive");
 }
 
-async function recordKeypoolUsageToNdjson(
+/**
+ * Records usage to the remote worker or local NDJSON.
+ */
+async function recordKeypoolUsage(
 	entry: Omit<NdjsonUsageEntry, "ts">,
 ): Promise<void> {
-	const fs = await import("node:fs/promises");
-	const path = await import("node:path");
-	const dbDir = await getUsageDbDir();
-	await fs.mkdir(dbDir, { recursive: true });
-	const line =
-		JSON.stringify({ ts: Date.now(), ...entry } satisfies NdjsonUsageEntry) +
-		"\n";
-	await fs.appendFile(path.join(dbDir, "usage.ndjson"), line, "utf8");
+	if (remoteStorageConfig) {
+		// Remote mode: send to Cloudflare Worker
+		try {
+			const response = await fetch(
+				`${remoteStorageConfig.workerUrl}/v1/keypool/usage`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: `Bearer ${remoteStorageConfig.authToken}`,
+					},
+					body: JSON.stringify(entry),
+				},
+			);
+			if (!response.ok) {
+				console.error(
+					`[keypoollive] Remote usage recording failed: ${response.status}`,
+				);
+			}
+		} catch (e) {
+			console.error("[keypoollive] Failed to record usage remotely:", e);
+		}
+	} else {
+		// Local mode: write to NDJSON
+		const fs = await import("node:fs/promises");
+		const path = await import("node:path");
+		const dbDir = await getUsageDbDir();
+		await fs.mkdir(dbDir, { recursive: true });
+		const line =
+			JSON.stringify({ ts: Date.now(), ...entry } satisfies NdjsonUsageEntry) +
+			"\n";
+		await fs.appendFile(path.join(dbDir, "usage.ndjson"), line, "utf8");
+	}
 }
 
-async function recordKeypoolErrorToNdjson(
+/**
+ * Records error to the remote worker or local NDJSON.
+ */
+async function recordKeypoolError(
 	entry: Omit<NdjsonErrorEntry, "ts">,
 ): Promise<void> {
-	const fs = await import("node:fs/promises");
-	const path = await import("node:path");
-	const dbDir = await getUsageDbDir();
-	await fs.mkdir(dbDir, { recursive: true });
-	const line =
-		JSON.stringify({ ts: Date.now(), ...entry } satisfies NdjsonErrorEntry) +
-		"\n";
-	await fs.appendFile(path.join(dbDir, "errors.ndjson"), line, "utf8");
+	if (remoteStorageConfig) {
+		// Remote mode: send to Cloudflare Worker
+		try {
+			const response = await fetch(
+				`${remoteStorageConfig.workerUrl}/v1/keypool/error`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: `Bearer ${remoteStorageConfig.authToken}`,
+					},
+					body: JSON.stringify(entry),
+				},
+			);
+			if (!response.ok) {
+				console.error(
+					`[keypoollive] Remote error recording failed: ${response.status}`,
+				);
+			}
+		} catch (e) {
+			console.error("[keypoollive] Failed to record error remotely:", e);
+		}
+	} else {
+		// Local mode: write to NDJSON
+		const fs = await import("node:fs/promises");
+		const path = await import("node:path");
+		const dbDir = await getUsageDbDir();
+		await fs.mkdir(dbDir, { recursive: true });
+		const line =
+			JSON.stringify({ ts: Date.now(), ...entry } satisfies NdjsonErrorEntry) +
+			"\n";
+		await fs.appendFile(path.join(dbDir, "errors.ndjson"), line, "utf8");
+	}
 }
 
 // ─── Usage stats for key selection ───────────────────────────────────────────
@@ -1805,8 +1889,8 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 						cacheReadTokens,
 						cacheWriteTokens,
 					});
-					// Persist to shared NDJSON (fire-and-forget; failures are non-fatal)
-					void recordKeypoolUsageToNdjson({
+					// Persist to shared storage (fire-and-forget; failures are non-fatal)
+					void recordKeypoolUsage({
 						provider: providerName,
 						modelId,
 						keyOwner: resolvedKeyOwner ?? "unknown",
@@ -1838,8 +1922,8 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 					error: errorMessage,
 				});
 
-				// Persist error to shared NDJSON (fire-and-forget)
-				void recordKeypoolErrorToNdjson({
+				// Persist error to shared storage (fire-and-forget)
+				void recordKeypoolError({
 					provider: providerName,
 					modelId,
 					keyOwner: resolvedKeyOwner ?? "unknown",
