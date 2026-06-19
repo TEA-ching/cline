@@ -1,5 +1,5 @@
 {
-    "command": "npx @sctg/backport-agent@latest --verbose --config .backport-agent/config.json --backport-customizations .backport-agent/customizations.yaml --keypool-vault-url $KEYPOOL_VAULT_URL --keypool-live-secret $KEYPOOL_LIVE_SECRET",
+    "command": "bunx @sctg/backport-agent@latest --verbose --config .backport-agent/config.json --backport-customizations .backport-agent/customizations.yaml --keypool-vault-url $KEYPOOL_VAULT_URL --keypool-live-secret $KEYPOOL_LIVE_SECRET",
     "report": {
         "destination": ".backport-agent"
     },
@@ -36,7 +36,7 @@
     "models": {
         "provider": "keypoollive",
         "apiKey": "auto",
-        "fast":"openrouter/poolside/laguna-m.1:free",
+        "fast":"poolside/poolside/laguna-m.1",
         "_fast": "mistral/mistral-code-agent-latest",
         "specialist": "mistral/mistral-vibe-cli-latest",
         "_specialist": "mistral/mistral-medium-2604",

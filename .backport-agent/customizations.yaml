@@ -274,3 +274,16 @@ customizations:
       - "assets/icons/icon.png"
     invariants:
       - "Les icônes du fork ne doivent pas être écrasées par les icônes upstream lors d'un merge."
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 11. Mise à jour de l'extension VS Code
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: vscode-extension-update
+    description: >  
+      Dans l'UI de settings, le titre de l'extension est affiché comme "Cline v{version} with Keypool Live" et la date de build est affichée en dessous. Cela permet aux utilisateurs de savoir qu'ils utilisent la version du fork avec le support Keypool Live.
+      Un bouton "Check for Updates" est également ajouté pour permettre aux utilisateurs de vérifier les mises à jour de l'extension. 
+    paths:
+      - "apps/vscode/webview-ui/src/components/settings/sections/AboutSection.tsx"
+      - "apps/vscode/src/core/controller/models/keypoolCheckUpdate.ts"
+      - "apps/vscode/src/utils/build-date.ts"
+      - "apps/vscode/webview-ui/src/config/BuildDate.ts"
