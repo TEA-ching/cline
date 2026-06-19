@@ -69,6 +69,7 @@ const AboutSection = ({ version, renderSectionHeader }: AboutSectionProps) => {
 			<Section>
 				<div className="flex px-4 flex-col gap-2">
 					<h2 id="about_title" className="text-lg font-semibold">Cline v{version} with Keypool Live</h2>
+					<p className="text-xs text-[var(--vscode-descriptionForeground)]">Build date: {buildDate.toISOString()}</p>
 					<p>
 						An AI assistant that can use your CLI and Editor. Cline can handle complex software development tasks
 						step-by-step with tools that let him create & edit files, explore large projects, use the browser, and
