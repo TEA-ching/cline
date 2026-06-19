@@ -6,6 +6,7 @@ import { KeypoolCheckUpdateResponse } from "@shared/proto/cline/models"
 import { ExtensionRegistryInfo } from "@/registry"
 import { fetch } from "@/shared/net"
 import { Logger } from "@/shared/services/Logger"
+import { buildDate } from "@/utils/build-date"
 import type { Controller } from ".."
 
 const GITHUB_OWNER = "TEA-ching"
@@ -55,16 +56,18 @@ function extractVersion(tagName: string): string {
 }
 
 /**
- * Extracts the build date from a GitHub release tag name.
+ * Extracts the build date from a GitHub release tag name to an ISO date string.
  * Tags are expected to be in the format "preview/YYYY-MM-DDTHH-MM-SSZ".
  * @param tagName 
- * @returns 
+ * @returns ISO date string or null if the tag format is invalid
  */
 function extractBuildDate(tagName: string): string | null {
 	// Tags are like "preview/2026-06-17T11-23-05Z" — extract the date part and convert to ISO format
-	const match = tagName.match(/^preview\/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)$/)
+	// We capture the date and time parts separately to avoid offset calculation issues
+	const match = tagName.match(/^preview\/(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2}Z)$/)
 	if (match) {
-		return match[1].replace(/-/g, ":").replace("T", "T").replace("Z", "Z")
+		// Reconstruct with colons: "2026-06-17T11:23:05Z"
+		return `${match[1]}T${match[2]}:${match[3]}:${match[4]}`
 	}
 	return null
 }
@@ -74,7 +77,6 @@ export async function keypoolCheckUpdate(
 	_request: EmptyRequest,
 ): Promise<KeypoolCheckUpdateResponse> {
 	try {
-		const buildDate: string = "dirty" ;// Injected at build time
 		const currentVersion = ExtensionRegistryInfo.version
 
 		const response = await fetch(
@@ -103,53 +105,53 @@ export async function keypoolCheckUpdate(
 			})
 		}
 
-	const latest = previewReleases[0]
-	const latestVersion = extractVersion(latest.tag_name)
-	const vsixAsset = findBestVsixAsset(latest.assets)
+		const latest = previewReleases[0]
+		const latestVersion = extractVersion(latest.tag_name)
+		const vsixAsset = findBestVsixAsset(latest.assets)
 
-	if (!vsixAsset) {
+		if (!vsixAsset) {
+			return KeypoolCheckUpdateResponse.create({
+				currentVersion,
+				latestVersion,
+				updateAvailable: false,
+				tagName: latest.tag_name,
+				publishedAt: latest.published_at,
+				error: "No VSIX asset found for this platform in the latest release",
+			})
+		}
+
+		// BuildDate-based version detection
+		let updateAvailable = false
+
+		// First check if versions are different
+		if (latestVersion !== currentVersion) {
+			Logger.info(`[keypoolCheckUpdate] Update available: current: ${currentVersion}, latest: ${latestVersion}`)
+			updateAvailable = true
+		}
+
+		const tagBuildDate = extractBuildDate(latest.tag_name)
+		Logger.info(`[keypoolCheckUpdate] Current build date: ${buildDate.toISOString()}, Latest release build date (extracted tag): ${tagBuildDate}`)
+
+		const tagBuildDateObj = tagBuildDate ? new Date(tagBuildDate) : null
+		Logger.info(`[keypoolCheckUpdate] Parsed latest release build date: ${tagBuildDateObj?.toISOString()}`)
+
+		// If current build is the same or newer than the release, no update needed
+		// Only compare if we successfully parsed the tag build date
+		if (tagBuildDateObj && buildDate >= tagBuildDateObj) {
+			Logger.info(`[keypoolCheckUpdate] Current build date (${buildDate.toISOString()}) is the same or newer than the latest release build date (${tagBuildDateObj?.toISOString()}). Full tag: ${latest.tag_name}. No update needed.`)
+			updateAvailable = false
+		}
+
+		Logger.info(`[keypoolCheckUpdate] Current version: ${currentVersion}, Latest version: ${latestVersion}, Update available: ${updateAvailable}, Build date: ${buildDate}, Full tag: ${latest.tag_name}, Published  build date: ${tagBuildDateObj?.toISOString()}, VSIX asset: ${vsixAsset.name}`)
 		return KeypoolCheckUpdateResponse.create({
 			currentVersion,
 			latestVersion,
-			updateAvailable: false,
+			updateAvailable,
+			downloadUrl: vsixAsset.browser_download_url,
+			assetName: vsixAsset.name,
 			tagName: latest.tag_name,
 			publishedAt: latest.published_at,
-			error: "No VSIX asset found for this platform in the latest release",
 		})
-	}
-
-	// BuildDate-based version detection
-	let updateAvailable = false
-
-	// First check if versions are different
-	if (latestVersion !== currentVersion) {
-		Logger.info(`[keypoolCheckUpdate] Update available: ${currentVersion}, current build date: ${buildDate} -> ${latestVersion} full tag: ${latest.tag_name}`)
-		updateAvailable = true
-	}
-
-	const buildDateObj = new Date(buildDate)
-	const tagBuildDate = extractBuildDate(latest.tag_name)
-	const tagBuildDateObj = tagBuildDate ? new Date(tagBuildDate) : null
-	
-	// If buildDate is not "dirty", compare with release published date
-	if (buildDate !== "dirty") {
-
-		// If current build is the same or newer than the release, no update needed
-		if (buildDateObj >= tagBuildDateObj!) {
-			Logger.info(`[keypoolCheckUpdate] Current build date (${buildDateObj.toISOString()}) is the same or newer than the latest release build date (${tagBuildDateObj?.toISOString()}). Full tag: ${latest.tag_name}. No update needed.`)
-			updateAvailable = false
-		}
-	}
-	Logger.info(`[keypoolCheckUpdate] Current version: ${currentVersion}, Latest version: ${latestVersion}, Update available: ${updateAvailable}, Build date: ${buildDate}, Full tag: ${latest.tag_name}, Published  build date: ${tagBuildDateObj?.toISOString()}, VSIX asset: ${vsixAsset.name}`)
-	return KeypoolCheckUpdateResponse.create({
-		currentVersion,
-		latestVersion,
-		updateAvailable,
-		downloadUrl: vsixAsset.browser_download_url,
-		assetName: vsixAsset.name,
-		tagName: latest.tag_name,
-		publishedAt: latest.published_at,
-	})
 	} catch (err) {
 		Logger.error("[keypoolCheckUpdate] Failed to check for updates:", err)
 		return KeypoolCheckUpdateResponse.create({

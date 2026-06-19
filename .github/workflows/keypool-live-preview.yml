@@ -125,12 +125,13 @@ jobs:
               .author.name = "Cline Bot Inc. & Ronan Le Meillat - SCTG Development"' package.json > package.json.tmp && mv package.json.tmp package.json
         shell: bash
 
-      - name: Patch AboutSection build date
+      - name: Patch AboutSection.tsx and build-date.ts build date
         id: patch-about-section
         env:
           BUILD_DATETIME: ${{ needs.setup.outputs.datetime }}
         run: |
-          echo "export const buildDate = new Date('${{ needs.setup.outputs.datetime }}');" > webview-ui/src/config/BuildDate.ts
+          echo "export const buildDate = new Date(\"${{ needs.setup.outputs.datetime }}\");" > webview-ui/src/config/BuildDate.ts
+          echo "export const buildDate = new Date(\"${{ needs.setup.outputs.datetime }}\");" > src/utils/build-date.ts
         shell: bash
 
       - name: Install @vscode/vsce globally
