@@ -374,7 +374,6 @@ const ApiOptions = ({
 				<ClineProvider
 					currentMode={currentMode}
 					initialModelTab={initialModelTab}
-					isClinePassEnabled={isClinePassEnabled}
 					isPopup={isPopup}
 					showModelOptions={showModelOptions}
 				/>
