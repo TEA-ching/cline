@@ -287,3 +287,7 @@ customizations:
       - "apps/vscode/src/core/controller/models/keypoolCheckUpdate.ts"
       - "apps/vscode/src/utils/build-date.ts"
       - "apps/vscode/webview-ui/src/config/BuildDate.ts"
+    invariants:
+      - "Le titre de l'extension doit inclure 'with Keypool Live' pour indiquer le fork."
+      - "La date de build doit être affichée dans AboutSection pour informer les utilisateurs."
+      - "Le bouton 'Check for Updates' doit déclencher la vérification des mises à jour via keypoolCheckUpdate."
