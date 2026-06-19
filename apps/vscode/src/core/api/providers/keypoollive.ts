@@ -319,10 +319,10 @@ export class KeypoolLiveHandler implements ApiHandler {
 
 		this.resolvedConfig = config;
 		{
-			const keyHint = `***${config.apiKey.slice(-8)}`;
+			const keyHint = config.apiKey.slice(-8);
 			const dayStats = await KeypoolUsageDb.getUsageStats("day");
 			const keyStat = dayStats.find(
-				(s) => s.provider === vaultProviderName && s.keyHint === keyHint,
+				(s) => s.provider === vaultProviderName && s.keyHint.replace(/^\*+/, "") === keyHint,
 			);
 			Logger.log(
 				`[KeypoolLive] Using key owner=${config.keyOwner}, key=${formatKeyHint(config.apiKey)}, key usage (in=${keyStat?.promptTokens ?? 0}, out=${keyStat?.completionTokens ?? 0}, requests=${keyStat?.requestCount ?? 0}) model=${config.model.id}`,
@@ -373,7 +373,7 @@ export class KeypoolLiveHandler implements ApiHandler {
 					provider: vaultProviderName,
 					modelId: vaultModelId || config.model.id,
 					keyOwner: config.keyOwner,
-					keyHint: `***${config.apiKey.slice(-8)}`,
+					keyHint: config.apiKey.slice(-8),
 					promptTokens,
 					completionTokens,
 				});
@@ -390,7 +390,7 @@ export class KeypoolLiveHandler implements ApiHandler {
 					provider: vaultProviderName,
 					modelId: vaultModelId || config.model.id,
 					keyOwner: config.keyOwner,
-					keyHint: `***${config.apiKey.slice(-8)}`,
+					keyHint: config.apiKey.slice(-8),
 					errorCode: e?.status ?? e?.statusCode ?? null,
 				});
 

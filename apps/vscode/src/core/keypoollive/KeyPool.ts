@@ -383,13 +383,14 @@ async function selectNextKey(
 	const statsMap = new Map<string, KeyStats24h>();
 	for (const stat of dayStats) {
 		if (stat.provider !== providerName) continue;
-		const existing = statsMap.get(stat.keyHint);
+		const hint = stat.keyHint.replace(/^\*+/, "");
+		const existing = statsMap.get(hint);
 		if (existing) {
 			existing.completionTokens += stat.completionTokens;
 			existing.promptTokens += stat.promptTokens;
 			existing.requestCount += stat.requestCount;
 		} else {
-			statsMap.set(stat.keyHint, {
+			statsMap.set(hint, {
 				completionTokens: stat.completionTokens,
 				promptTokens: stat.promptTokens,
 				requestCount: stat.requestCount,
@@ -407,12 +408,12 @@ async function selectNextKey(
 		return usable[randomIdx];
 	}
 
-	// Sort: min output tokens → min input tokens → min request count
+	// Sort: min input tokens → min output tokens → min request count
 	const sorted = [...usable].sort((a, b) => {
 		const sa: KeyStats24h = statsMap.get(a.key.slice(-8)) ?? { completionTokens: 0, promptTokens: 0, requestCount: 0 };
 		const sb: KeyStats24h = statsMap.get(b.key.slice(-8)) ?? { completionTokens: 0, promptTokens: 0, requestCount: 0 };
-		if (sa.completionTokens !== sb.completionTokens) return sa.completionTokens - sb.completionTokens;
 		if (sa.promptTokens !== sb.promptTokens) return sa.promptTokens - sb.promptTokens;
+		if (sa.completionTokens !== sb.completionTokens) return sa.completionTokens - sb.completionTokens;
 		return sa.requestCount - sb.requestCount;
 	});
 
