@@ -81,9 +81,9 @@ export const ToolManager: React.FC<Props> = ({ enabledSkills, onToggle, onClose 
                   </p>
                 </div>
                 <div className={`shrink-0 w-4 h-4 rounded-full mt-0.5 transition-colors flex items-center justify-center ${
-                  enabled ? 'bg-primary-500 border-2 border-primary-500' : 'bg-transparent'
+                  enabled ? 'bg-primary-600 border-2 border-primary-600' : 'bg-transparent'
                 }`}>
-                  {enabled && <span className="text-white text-xs font-bold">●</span>}
+                  {enabled && <span className="text-gray-300 text-xs font-bold">●</span>}
                 </div>
               </button>
             )

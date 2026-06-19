@@ -27,28 +27,29 @@ import {
   shouldInterruptAfterDeadline,
   isFail,
 } from 'quickjs-emscripten'
-import type { QuickJSWASMModule, QuickJSAsyncWASMModule } from 'quickjs-emscripten'
+import type { QuickJSWASMModule } from 'quickjs-emscripten'
 import singlefileVariant from '@jitl/quickjs-singlefile-browser-release-sync'
 import asyncifyVariant from '@jitl/quickjs-singlefile-browser-release-asyncify'
 import { transform } from 'sucrase'
 import type { VirtualFS } from '@/vfs/virtual-fs'
 
-const TIMEOUT_MS = 5_000
-const ASYNC_TIMEOUT_MS = 25_000
-const FETCH_TIMEOUT_MS = 15_000
+const TIMEOUT_MS = 30_000
+const ASYNC_TIMEOUT_MS = 120_000
+const FETCH_TIMEOUT_MS = 30_000
 const MEMORY_LIMIT_BYTES = 64 * 1024 * 1024 // 64 MB
 const MAX_STACK_BYTES = 1024 * 1024          // 1 MB
 
 let modulePromise: Promise<QuickJSWASMModule> | null = null
-let asyncModulePromise: Promise<QuickJSAsyncWASMModule> | null = null
 
 function getModule(): Promise<QuickJSWASMModule> {
   return (modulePromise ??= newQuickJSWASMModuleFromVariant(singlefileVariant))
 }
 
-function getAsyncModule(): Promise<QuickJSAsyncWASMModule> {
-  return (asyncModulePromise ??= newQuickJSAsyncWASMModuleFromVariant(asyncifyVariant))
-}
+// Do NOT cache the async WASM module. quickjs-emscripten's asyncify state is
+// module-global: after a runtime is disposed the asyncify bookkeeping inside the
+// shared module can be left in a dirty state, causing "Lifetime not alive" on the
+// next invocation. Creating a fresh module per call matches the library's own
+// newAsyncRuntime() approach and guarantees a clean asyncify context every time.
 
 export interface SandboxResult {
   output: string
@@ -217,78 +218,125 @@ async function runSync(js: string, vfs: VirtualFS | undefined, filesWritten: str
 }
 
 async function runAsync(js: string, vfs: VirtualFS | undefined, filesWritten: string[]): Promise<SandboxResult> {
-  const QuickJS = await getAsyncModule()
-  // QuickJSAsyncWASMModule.newRuntime() returns QuickJSAsyncRuntime which has newAsyncContext()
-  // biome-ignore lint/suspicious/noExplicitAny: async runtime type not re-exported from quickjs-emscripten
-  const runtime = QuickJS.newRuntime() as any
+  // Fresh module per call — asyncify state is module-global, shared modules corrupt across calls.
+  // Use newContext() directly on the module so the runtime is owned by the context and
+  // disposed atomically with ctx.dispose() — avoids double-dispose of runtime.
+  const QuickJS = await newQuickJSAsyncWASMModuleFromVariant(asyncifyVariant)
+  // biome-ignore lint/suspicious/noExplicitAny: QuickJSAsyncContext type not re-exported from variant
+  const ctx = (QuickJS as any).newContext()
+  // biome-ignore lint/suspicious/noExplicitAny: runtime type not re-exported from quickjs-emscripten variant
+  const runtime = (ctx as any).runtime
   runtime.setMemoryLimit(MEMORY_LIMIT_BYTES)
   runtime.setMaxStackSize(MAX_STACK_BYTES)
   runtime.setInterruptHandler(shouldInterruptAfterDeadline(Date.now() + ASYNC_TIMEOUT_MS))
-
-  const ctx = await runtime.newAsyncContext()
   const logs: string[] = []
 
   injectConsoleBridge(ctx, logs)
   if (vfs) injectVfsBridge(ctx, vfs, filesWritten)
 
-  // Inject async fetch bridge
-  const fetchFn = ctx.newAsyncifiedFunction('fetch', async (...args: any[]) => {
-    const url = String(ctx.dump(args[0]))
-    let responseText: string
-    let status: number
-    let ok: boolean
-    let statusText: string
+  // Two-phase fetch bridge to avoid "Lifetime not alive" in asyncified callbacks.
+  //
+  // Root cause: quickjs-emscripten marks argument handles passed to
+  // newAsyncifiedFunction callbacks as not-alive when the WASM stack is
+  // suspended by asyncify. Accessing args[0] (even before the first await)
+  // calls assertAlive() on a dead handle and throws.
+  //
+  // Fix: extract the URL via a synchronous native function (__setFetchUrl) that
+  // runs during normal QuickJS execution (no asyncify involved). The asyncified
+  // __doFetch() then reads from the host variable without touching any QuickJS
+  // argument handles.
+  //
+  // IMPORTANT: do NOT create ctx.newFunction() inside the __doFetch callback —
+  // quickjs-emscripten does not support HostRefs inside asyncified callbacks.
+  let pendingFetchUrl = ''
 
+  const setUrlFn = ctx.newFunction('__setFetchUrl', (...args: any[]) => {
+    const url = ctx.dump(args[0])
+    if (typeof url === 'string') pendingFetchUrl = url
+    return ctx.undefined
+  })
+  ctx.setProp(ctx.global, '__setFetchUrl', setUrlFn)
+  setUrlFn.dispose()
+
+  const fetchFn = ctx.newAsyncifiedFunction('__doFetch', async () => {
+    const url = pendingFetchUrl
+    pendingFetchUrl = ''
     const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS)
     const response = await globalThis.fetch(url, { signal })
-    status = response.status
-    ok = response.ok
-    statusText = response.statusText
-    responseText = await response.text()
+    const body = await response.text()
 
     const resp = ctx.newObject()
 
-    const statusHandle = ctx.newNumber(status)
-    ctx.setProp(resp, 'status', statusHandle)
-    statusHandle.dispose()
+    const sh = ctx.newNumber(response.status); ctx.setProp(resp, 'status', sh); sh.dispose()
+    ctx.setProp(resp, 'ok', response.ok ? ctx.true : ctx.false)
+    const st = ctx.newString(response.statusText); ctx.setProp(resp, 'statusText', st); st.dispose()
+    const b = ctx.newString(body); ctx.setProp(resp, '_body', b); b.dispose()
 
-    ctx.setProp(resp, 'ok', ok ? ctx.true : ctx.false)
-
-    const statusTextHandle = ctx.newString(statusText)
-    ctx.setProp(resp, 'statusText', statusTextHandle)
-    statusTextHandle.dispose()
-
-    const body = responseText
-    const textFn = ctx.newFunction('text', () => ctx.newString(body))
-    ctx.setProp(resp, 'text', textFn)
-    textFn.dispose()
-
-    const jsonFn = ctx.newFunction('json', () => {
-      const parsed = ctx.evalCode(`(${body})`)
-      if (isFail(parsed)) {
-        // biome-ignore lint/suspicious/noExplicitAny: QuickJS error handle type varies by version
-        ;(parsed.error as any).dispose?.()
-        throw new Error('Response body is not valid JSON')
-      }
-      return parsed.value
+    const headersObj = ctx.newObject()
+    response.headers.forEach((value, name) => {
+      const v = ctx.newString(value)
+      ctx.setProp(headersObj, name.toLowerCase(), v)
+      v.dispose()
     })
-    ctx.setProp(resp, 'json', jsonFn)
-    jsonFn.dispose()
+    ctx.setProp(resp, '_headers', headersObj)
+    headersObj.dispose()
 
     return resp
   })
-  ctx.setProp(ctx.global, 'fetch', fetchFn)
+  ctx.setProp(ctx.global, '__doFetch', fetchFn)
   fetchFn.dispose()
+
+  // Pure-JS shim: calls __setFetchUrl (sync) then __doFetch (async, no args).
+  // text()/json()/headers are pure QuickJS closures — no native HostRefs.
+  const shimResult = ctx.evalCode(
+    'var fetch=async function(u){__setFetchUrl(u);var r=await __doFetch();' +
+    'r.text=function(){return Promise.resolve(r._body);};' +
+    'r.json=function(){return Promise.resolve(JSON.parse(r._body));};' +
+    'r.headers={' +
+    'get:function(n){return Object.prototype.hasOwnProperty.call(r._headers,n.toLowerCase())?r._headers[n.toLowerCase()]:null;},' +
+    'entries:function(){return Object.entries(r._headers);},' +
+    'keys:function(){return Object.keys(r._headers);},' +
+    'values:function(){return Object.values(r._headers);}' +
+    '};return r;};'
+  )
+  if (isFail(shimResult)) {
+    // biome-ignore lint/suspicious/noExplicitAny: QuickJS error handle type varies by version
+    ;(shimResult.error as any)?.dispose?.()
+    ctx.dispose()
+    runtime.dispose()
+    return { output: '', error: 'Failed to initialize network layer', filesWritten }
+  }
+  shimResult.value.dispose()
+
+  // Wrap user code in an async IIFE so evalCodeAsync awaits all async operations
+  // (including floating top-level async function calls) before returning, preventing
+  // ctx.dispose() from running while QuickJS Promise callbacks are still in-flight.
+  const wrappedJs = `;(async function __sandbox__(){\n${js}\n})();`
 
   let output = ''
   let error: string | undefined
 
   try {
-    const result = await ctx.evalCodeAsync(js, 'sandbox.js')
+    // biome-ignore lint/suspicious/noExplicitAny: evalCodeAsync return type varies by version
+    let result: any
+    try {
+      result = await (ctx as any).evalCodeAsync(wrappedJs, 'sandbox.js')
+    } catch (hostErr) {
+      // evalCodeAsync itself threw a host-side exception (not a QuickJS script error)
+      return { output: '', error: `Sandbox host error: ${hostErr instanceof Error ? hostErr.message : String(hostErr)}`, filesWritten }
+    }
+
     if (isFail(result)) {
       // biome-ignore lint/suspicious/noExplicitAny: QuickJS error handle type varies by version
       const errHandle = result.error as any
-      const errVal = ctx.dump(errHandle)
+      let errVal: unknown
+      try {
+        errVal = ctx.dump(errHandle)
+      } catch (dumpErr) {
+        // The error handle is a dead Lifetime — asyncify cleanup race inside quickjs-emscripten.
+        // Report the dump error itself rather than crashing the whole call.
+        errVal = { name: 'InternalError', message: dumpErr instanceof Error ? dumpErr.message : String(dumpErr) }
+      }
       errHandle.dispose?.()
       const isTimeout =
         typeof errVal === 'object' &&
@@ -300,13 +348,20 @@ async function runAsync(js: string, vfs: VirtualFS | undefined, filesWritten: st
           ? String((errVal as Record<string, unknown>).message ?? JSON.stringify(errVal))
           : String(errVal)
     } else {
-      const val = ctx.dump(result.value)
-      result.value.dispose()
+      // result.value is the eval result (the IIFE's Promise handle or undefined).
+      // Guard against a dead handle in case quickjs-emscripten races during cleanup.
+      let val: unknown
+      try {
+        val = ctx.dump(result.value)
+        result.value.dispose()
+      } catch { /* dead handle — console output captured in logs is still valid */ }
       output = buildOutput(logs, val)
     }
   } finally {
-    ctx.dispose()
-    runtime.dispose()
+    // ctx owns the runtime (created via module.newContext()), so one dispose suffices.
+    // Suppress the spurious "not found when trying to free HostRef" error that
+    // quickjs-emscripten emits for the asyncify suspension-key sentinel (id = INT_MIN).
+    try { ctx.dispose() } catch { /* suppress asyncify cleanup error */ }
   }
 
   return { output, error, filesWritten }

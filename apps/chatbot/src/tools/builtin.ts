@@ -73,8 +73,33 @@ export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
       'Full access to the virtual filesystem via the global vfs object (vfs.read, vfs.write, vfs.list, vfs.delete, vfs.exists). ' +
       'Files created with vfs.write() appear instantly in the file manager. ' +
       'Network access (fetch) is available when allow_network: true is passed. ' +
-      'CPU timeout: 5 s (sync) / 25 s (with network). No DOM, no Node.js APIs.',
+      'CPU timeout: 30 s (sync) / 120 s (with network). No DOM, no Node.js APIs.',
     icon: '⚡',
     tools: ['execute_js'],
+    /**
+     * Tests prompts (french):
+     * ```markdown
+     * 1. Écris un fichier "test.txt" avec le contenu "Hello, VFS!"
+     * 2. Lis le fichier pour vérifier son contenu
+     * 3. Liste tous les fichiers du VFS
+     * 4. Vérifie que le fichier existe avec vfs.exists()
+     * 5. Crée un dossier "subdir" et un fichier "subdir/nested.txt"
+     * 6. Supprime le fichier "test.txt"
+     * 7. Vérifie que le fichier a été supprimé
+     * 
+     *  Utilise le sandbox JS/TS pour tester les opérations sur le VFS :
+     * ```
+     *
+     * ```markdown
+     * Utilise le sandbox JS/TS avec l'option allow_network: true pour :
+     * 
+     * 1. Faire une requête GET vers "https://jsonplaceholder.typicode.com/todos/1"
+     * 2. Affiche le statut de la réponse
+     * 3. Parse et affiche le JSON retourné
+     * 4. Gère les erreurs réseau de manière appropriée
+     * 
+     * Note: Utilise TypeScript et ajoute des logs détaillés.
+     * ```
+     */
   },
 ]
