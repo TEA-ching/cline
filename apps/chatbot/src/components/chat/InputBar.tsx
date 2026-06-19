@@ -24,6 +24,12 @@
 import React, { useState, useRef, KeyboardEvent } from 'react'
 import { Button, Modal, Input } from '@heroui/react'
 import { Send, Paperclip, Square, ImagePlus, Link } from 'lucide-react'
+import {
+  isGitHubUrl,
+  parseGitHubUrl,
+  fetchGitHubFile,
+  fetchGitHubDirectory
+} from '../../utils/github'
 
 export interface SlashCommand {
   cmd: string
@@ -63,6 +69,30 @@ export const InputBar: React.FC<Props> = ({
     }
   }
 
+  // Check if URL is a Wikipedia article URL
+  const isWikipediaUrl = (url: string) => {
+    try {
+      const urlObj = new URL(url)
+      return urlObj.hostname.endsWith('.wikipedia.org') &&
+             urlObj.pathname.startsWith('/wiki/')
+    } catch {
+      return false
+    }
+  }
+
+  // Convert Wikipedia article URL to REST API v1 URL
+  const getWikipediaApiUrl = (url: string) => {
+    try {
+      const urlObj = new URL(url)
+      const title = urlObj.pathname.substring('/wiki/'.length)
+      return `${urlObj.origin}/api/rest_v1/page/html/${encodeURIComponent(title)}?redirect=true`
+    } catch {
+      return url // Fallback to original URL if conversion fails
+    }
+  }
+
+
+
   const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newUrl = e.target.value
     setUrl(newUrl)
@@ -75,11 +105,68 @@ export const InputBar: React.FC<Props> = ({
     if (!url.trim()) return
 
     try {
-      const response = await fetch(url)
+      // Handle GitHub URLs
+      if (isGitHubUrl(url)) {
+        const githubInfo = parseGitHubUrl(url)
+
+        if (githubInfo.type === 'blob') {
+          // Single file download
+          const file = await fetchGitHubFile(githubInfo.apiUrl, filename || extractFilenameFromUrl(url))
+
+          // Create a FileList-like object to pass to onUploadFiles
+          const fileList = {
+            0: file,
+            length: 1,
+            item: (index: number) => index === 0 ? file : null
+          } as unknown as FileList
+
+          onUploadFiles?.(fileList)
+        }
+        else if (githubInfo.type === 'tree' || githubInfo.type === 'repo') {
+          // Directory download - fetch all files
+          const files = await fetchGitHubDirectory(githubInfo.apiUrl)
+
+          if (files.length > 0) {
+            // Create a FileList-like object with multiple files
+            const fileList = {
+              length: files.length,
+              item: (index: number) => files[index] || null
+            } as unknown as FileList
+
+            // Add numeric indices for FileList compatibility
+            files.forEach((file: File, index: number) => {
+              fileList[index] = file
+            })
+
+            onUploadFiles?.(fileList)
+          }
+        }
+        else {
+          throw new Error('Unsupported GitHub URL format')
+        }
+
+        setIsUrlModalOpen(false)
+        setUrl('')
+        setFilename('')
+        return
+      }
+
+      // Special handling for Wikipedia URLs
+      let targetUrl = url
+      if (isWikipediaUrl(url)) {
+        targetUrl = getWikipediaApiUrl(url)
+      }
+
+      const response = await fetch(targetUrl, {
+        headers: {
+          'accept': 'text/html; charset=utf-8; profile="https://www.mediawiki.org/wiki/Specs/HTML/2.1.0"'
+        }
+      })
+
       if (!response.ok) throw new Error('Failed to fetch URL')
 
       const content = await response.text()
-      const file = new File([content], filename, { type: 'text/plain' })
+      const file = new File([content], filename, { type: 'text/html' })
 
       // Create a FileList-like object to pass to onUploadFiles
       const fileList = {
