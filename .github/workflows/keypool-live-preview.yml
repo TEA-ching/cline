@@ -163,6 +163,7 @@ jobs:
               raise SystemExit('Failed to patch KeypoolCheckUpdate.ts: could not find buildDate placeholder')
           path.write_text(new_text, encoding='utf-8')
           PY
+          echo "export const buildDate = '${{ needs.setup.outputs.datetime }}';" > webview-ui/src/config/BuildDate.ts
         shell: bash
 
       - name: Install @vscode/vsce globally

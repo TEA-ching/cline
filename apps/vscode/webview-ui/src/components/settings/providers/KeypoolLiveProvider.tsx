@@ -281,65 +281,6 @@ export const KeypoolLiveProvider = ({ isPopup: _isPopup, currentMode: _currentMo
 				)}
 			</div>
 
-			{/* Extension update */}
-			<div style={{ marginBottom: 12 }}>
-				<div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>Extension Update</div>
-				<div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-					<button
-						disabled={checkState === "checking" || installState === "installing"}
-						onClick={handleCheckUpdate}
-						style={{
-							background: "var(--vscode-button-secondaryBackground)",
-							border: "none",
-							color: "var(--vscode-button-secondaryForeground)",
-							cursor: (checkState === "checking" || installState === "installing") ? "not-allowed" : "pointer",
-							fontSize: 12,
-							padding: "4px 10px",
-						}}>
-						{checkState === "checking" ? "Checking…" : "Check for update"}
-					</button>
-
-					{checkState === "up_to_date" && updateInfo && (
-						<span style={{ fontSize: 11, color: "var(--vscode-descriptionForeground)" }}>
-							You have the latest version ({updateInfo.currentVersion})
-						</span>
-					)}
-
-					{checkState === "update_available" && updateInfo && installState === "idle" && (
-						<>
-							<span style={{ fontSize: 11, color: "var(--vscode-descriptionForeground)" }}>
-								{updateInfo.currentVersion} → {updateInfo.latestVersion} ({updateInfo.assetName})
-							</span>
-							<button
-								onClick={handleInstallUpdate}
-								style={{
-									background: "var(--vscode-button-background)",
-									border: "none",
-									color: "var(--vscode-button-foreground)",
-									cursor: "pointer",
-									fontSize: 12,
-									padding: "4px 10px",
-								}}>
-								Install update
-							</button>
-						</>
-					)}
-
-					{installState === "installing" && (
-						<span style={{ fontSize: 11, color: "var(--vscode-descriptionForeground)" }}>Installing…</span>
-					)}
-
-					{installState === "done" && (
-						<span style={{ fontSize: 11, color: "var(--vscode-descriptionForeground)" }}>
-							Update installed. Restart the extension host to apply (Developer: Restart Extension Host).
-						</span>
-					)}
-
-					{(checkState === "error" || installState === "error") && updateError && (
-						<span style={{ fontSize: 11, color: "var(--vscode-errorForeground)" }}>{updateError}</span>
-					)}
-				</div>
-			</div>
 
 			{/* Optional: Cloudflare AI Gateway */}
 			<details style={{ marginBottom: 8 }}>
