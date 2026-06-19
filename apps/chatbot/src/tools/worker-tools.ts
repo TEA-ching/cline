@@ -274,10 +274,12 @@ export function createOptionalTools(
         code: z.string().describe('JavaScript or TypeScript code to execute'),
         language: z.enum(['javascript', 'typescript']).default('javascript')
           .describe('Language of the code snippet'),
+        allow_network: z.boolean().optional().default(false)
+          .describe('Set to true to enable fetch() inside the sandbox. Increases timeout to 30 s.'),
       }),
-      timeoutMs: 10_000,
-      execute: async ({ code, language }) => {
-        const { output, error, filesWritten } = await runInSandbox(code, language, ctx?.vfs)
+      timeoutMs: 30_000,
+      execute: async ({ code, language, allow_network }) => {
+        const { output, error, filesWritten } = await runInSandbox(code, language, ctx?.vfs, allow_network)
         if (ctx?.onFileCreated && ctx.vfs) {
           for (const path of filesWritten) {
             const content = ctx.vfs.read(path)
