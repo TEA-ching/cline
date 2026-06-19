@@ -22,8 +22,8 @@
  * SOFTWARE.
  */
 import React, { useState, useRef, KeyboardEvent } from 'react'
-import { Button } from '@heroui/react'
-import { Send, Paperclip, Square, ImagePlus } from 'lucide-react'
+import { Button, Modal, Input } from '@heroui/react'
+import { Send, Paperclip, Square, ImagePlus, Link } from 'lucide-react'
 
 export interface SlashCommand {
   cmd: string
@@ -45,9 +45,58 @@ export const InputBar: React.FC<Props> = ({
   const [text, setText] = useState('')
   const [images, setImages] = useState<string[]>([])
   const [suggestionIdx, setSuggestionIdx] = useState(-1)
+  const [isUrlModalOpen, setIsUrlModalOpen] = useState(false)
+  const [url, setUrl] = useState('')
+  const [filename, setFilename] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
+
+  // Extract filename from URL
+  const extractFilenameFromUrl = (url: string) => {
+    try {
+      const urlObj = new URL(url)
+      const pathname = urlObj.pathname
+      return pathname.substring(pathname.lastIndexOf('/') + 1) || 'downloaded-file'
+    } catch {
+      return 'downloaded-file'
+    }
+  }
+
+  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newUrl = e.target.value
+    setUrl(newUrl)
+    if (!filename || filename === 'downloaded-file') {
+      setFilename(extractFilenameFromUrl(newUrl))
+    }
+  }
+
+  const handleAddFromUrl = async () => {
+    if (!url.trim()) return
+
+    try {
+      const response = await fetch(url)
+      if (!response.ok) throw new Error('Failed to fetch URL')
+
+      const content = await response.text()
+      const file = new File([content], filename, { type: 'text/plain' })
+
+      // Create a FileList-like object to pass to onUploadFiles
+      const fileList = {
+        0: file,
+        length: 1,
+        item: (index: number) => index === 0 ? file : null
+      } as unknown as FileList
+
+      onUploadFiles?.(fileList)
+      setIsUrlModalOpen(false)
+      setUrl('')
+      setFilename('')
+    } catch (error) {
+      console.error('Error downloading file:', error)
+      // TODO: Show error to user
+    }
+  }
 
   // Compute suggestions when text starts with /
   const suggestions = React.useMemo(() => {
@@ -158,6 +207,60 @@ export const InputBar: React.FC<Props> = ({
       )}
 
       <div className="flex items-end gap-2">
+        {/* Add from URL button */}
+        <Button
+          isIconOnly variant="ghost" size="sm"
+          onPress={() => setIsUrlModalOpen(true)}
+          aria-label="Add file from URL"
+        >
+          <Link className="h-4 w-4" />
+        </Button>
+
+        {/* Add from URL Modal */}
+        <Modal isOpen={isUrlModalOpen} onOpenChange={setIsUrlModalOpen}>
+          <Modal.Backdrop >
+          <Modal.Container>
+            <Modal.Dialog>
+              <Modal.Header>
+                <Modal.Heading>Add File from URL</Modal.Heading>
+                <Modal.CloseTrigger />
+              </Modal.Header>
+              <Modal.Body>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">URL</label>
+                    <Input
+                      type="url"
+                      value={url}
+                      onChange={handleUrlChange}
+                      placeholder="https://example.com/file.txt"
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Filename</label>
+                    <Input
+                      value={filename}
+                      onChange={(e) => setFilename(e.target.value)}
+                      placeholder="Enter filename"
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              </Modal.Body>
+              <Modal.Footer>
+                <Button variant="ghost" onPress={() => setIsUrlModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onPress={handleAddFromUrl} isDisabled={!url.trim()}>
+                  Add
+                </Button>
+              </Modal.Footer>
+            </Modal.Dialog>
+          </Modal.Container>
+          </Modal.Backdrop>
+        </Modal>
+
         {/* File upload (VFS) */}
         <Button
           isIconOnly variant="ghost" size="sm"
