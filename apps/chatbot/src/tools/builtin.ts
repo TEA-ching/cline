@@ -101,5 +101,12 @@ export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
      * Note: Utilise TypeScript et ajoute des logs détaillés.
      * ```
      */
+   },
+  {
+    id: 'search_wikipedia',
+    name: 'Wikipedia',
+    description: 'Search and extract articles from Wikipedia in various languages using the Wikipedia REST API.',
+    icon: '📚',
+    tools: ['search_wikipedia'],
   },
 ]

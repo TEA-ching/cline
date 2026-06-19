@@ -74,10 +74,32 @@ type WorkerIncomingMessage =
   | ApprovalResponseMessage
 
 // ---------------------------------------------------------------------------
+// Key error detection (mirrors isKeyRelatedError in lib/keypool-usage.ts)
+// ---------------------------------------------------------------------------
+
+function isKeyRelatedError(msg: string): boolean {
+  const m = msg.toLowerCase()
+  return (
+    /\b401\b/.test(m) ||
+    /\b403\b/.test(m) ||
+    /\b429\b/.test(m) ||
+    m.includes('rate limit') ||
+    m.includes('rate_limit') ||
+    m.includes('quota') ||
+    m.includes('unauthorized') ||
+    m.includes('forbidden') ||
+    m.includes('too many requests') ||
+    m.includes('throttle') ||
+    m.includes('resource exhausted') ||
+    m.includes('insufficient_quota')
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Imported types (type-only, erased at runtime)
 // ---------------------------------------------------------------------------
 
-import type { AgentRuntimeEvent, AgentMessage, ToolApprovalResult, Agent as AgentType } from '@cline/agents'
+import type { AgentRuntimeEvent, AgentMessage, ToolApprovalResult, Agent as AgentType, AgentUsage } from '@cline/agents'
 import type { VirtualFS as VirtualFSType } from '@/vfs/virtual-fs'
 
 // ---------------------------------------------------------------------------
@@ -101,12 +123,16 @@ function postEvent(event: AgentRuntimeEvent): void {
   self.postMessage({ type: 'event', event })
 }
 
-function postTurnComplete(messages: readonly AgentMessage[]): void {
-  self.postMessage({ type: 'turn_complete', messages })
+function postTurnComplete(messages: readonly AgentMessage[], usage?: AgentUsage): void {
+  self.postMessage({ type: 'turn_complete', messages, usage })
 }
 
 function postTurnError(error: string): void {
   self.postMessage({ type: 'turn_error', error })
+}
+
+function postKeyError(error: string): void {
+  self.postMessage({ type: 'key_error', error })
 }
 
 function postFileCreated(path: string, content: string): void {
@@ -268,10 +294,13 @@ async function handleRun(msg: RunMessage): Promise<void> {
     const result = await agent.run(runInput)
     console.log('[agent.worker] agent.run() completed, messages:', result.messages.length)
     console.log('[agent.worker] messages summary:', result.messages.map(m => ({ role: m.role, contentTypes: Array.isArray(m.content) ? m.content.map((c: any) => c.type) : typeof m.content })))
-    postTurnComplete(result.messages)
+    postTurnComplete(result.messages, result.usage)
   } catch (error) {
     const message = error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error)
     console.error('[agent.worker] handleRun error:', message)
+    if (isKeyRelatedError(message)) {
+      postKeyError(message)
+    }
     postTurnError(message)
   }
 }

@@ -59,6 +59,7 @@ jobs:
           bun run build:sdk
           cd apps/chatbot
           export KEYPOOL_VAULT_URL=${{ secrets.KEYPOOL_VAULT_URL }}
+          export KEYPOOL_USAGE_DB_DIR=${{ secrets.KEYPOOL_USAGE_DB_DIR }} 
           bun run build
 
       - name: Deploy

@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AgentRuntimeEvent, AgentMessage } from '@cline/agents'
+import type { AgentRuntimeEvent, AgentMessage, AgentUsage } from '@cline/agents'
 import AgentWorkerClass from '../workers/agent.worker.ts?worker'
 
 type ResetKey = number
@@ -78,6 +78,13 @@ export interface UseAgentReturn {
   turnStartedAt: number | null
   /** Estimated streamed token count for the current turn. */
   streamedTokens: number
+  /** Actual token usage from the last completed turn; null before first turn. */
+  lastTurnUsage: AgentUsage | null
+  /**
+   * Non-null when the last failed turn was caused by an auth/rate-limit key
+   * error (401/403/429 or pattern match). Reset to null on the next sendMessage.
+   */
+  lastKeyError: string | null
   sendMessage: (text: string, images?: string[]) => void
   abort: () => void
   reset: () => void
@@ -97,8 +104,9 @@ export interface UseAgentReturn {
 
 type WorkerOutgoingMessage =
   | { type: 'event'; event: AgentRuntimeEvent }
-  | { type: 'turn_complete'; messages: AgentMessage[] }
+  | { type: 'turn_complete'; messages: AgentMessage[]; usage?: AgentUsage }
   | { type: 'turn_error'; error: string }
+  | { type: 'key_error'; error: string }
   | { type: 'approval_req'; toolName: string; input: unknown; port: MessagePort }
   | { type: 'ask_question'; question: string; options: string[]; port: MessagePort }
   | { type: 'file_created'; path: string; content: string }
@@ -127,6 +135,8 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
   const [resetKey, setResetKey] = useState<ResetKey>(0)
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null)
   const [streamedTokens, setStreamedTokens] = useState(0)
+  const [lastTurnUsage, setLastTurnUsage] = useState<AgentUsage | null>(null)
+  const [lastKeyError, setLastKeyError] = useState<string | null>(null)
 
   const streamingMsgIdRef = useRef<string | null>(null)
 
@@ -232,9 +242,15 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
           setIsRunning(false)
           setTurnStartedAt(null)
           streamingMsgIdRef.current = null
+          if (msg.usage) setLastTurnUsage(msg.usage)
           setMessages((prev) =>
             prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
           )
+          break
+        }
+
+        case 'key_error': {
+          setLastKeyError(msg.error)
           break
         }
 
@@ -363,6 +379,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
       setIsRunning(true)
       setTurnStartedAt(Date.now())
       setStreamedTokens(0)
+      setLastKeyError(null)
       streamingMsgIdRef.current = null
       workerRef.current.postMessage({ type: 'run', message: text, images })
     },
@@ -431,6 +448,8 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     pendingQuestion,
     turnStartedAt,
     streamedTokens,
+    lastTurnUsage,
+    lastKeyError,
     sendMessage,
     abort,
     reset,

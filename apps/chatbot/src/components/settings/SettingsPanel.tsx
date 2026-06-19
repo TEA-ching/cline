@@ -23,7 +23,7 @@
  */
 import React from 'react'
 import { Button } from '@heroui/react'
-import { X, LogOut, RefreshCw } from 'lucide-react'
+import { X, LogOut, RefreshCw, RotateCcw } from 'lucide-react'
 import { ModelSelector } from './ModelSelector'
 import { useVault } from '@/hooks/useVault'
 import type { AiConfig } from '@/types/ai-config'
@@ -34,10 +34,17 @@ interface Props {
   selectedModelId: string
   onModelChange: (providerId: string, modelId: string) => void
   onClose: () => void
+  /** Display hint for the currently active API key (e.g. "***abc12345"). */
+  currentKeyHint?: string
+  /** Whether key rotation is possible (pool has > 1 non-expired key). */
+  canRotate?: boolean
+  /** Called when the user manually triggers a key rotation. */
+  onRotateKey?: () => void
 }
 
 export const SettingsPanel: React.FC<Props> = ({
   config, selectedProviderId, selectedModelId, onModelChange, onClose,
+  currentKeyHint, canRotate, onRotateKey,
 }) => {
   const { logout, refresh, loading } = useVault()
 
@@ -65,6 +72,24 @@ export const SettingsPanel: React.FC<Props> = ({
           <p className="font-semibold uppercase tracking-wide">Vault</p>
           <p>{Object.keys(config.providers).length} providers · {Object.keys(config.crawlers).length} crawlers</p>
         </div>
+
+        {currentKeyHint && (
+          <div className="text-xs text-default-400 space-y-2">
+            <p className="font-semibold uppercase tracking-wide">API Key</p>
+            <p className="font-mono text-default-500 break-all">{currentKeyHint}</p>
+            {canRotate && onRotateKey && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full"
+                onPress={onRotateKey}
+              >
+                <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                Rotate Key
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="border-t border-default-200 p-3 flex gap-2">

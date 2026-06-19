@@ -44,7 +44,9 @@ import { useVirtualFS } from '@/hooks/useVirtualFS'
 import { useVault } from '@/hooks/useVault'
 import { useModelSelection } from '@/hooks/useModelSelection'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
+import { useKeypoolRotation } from '@/hooks/useKeypoolRotation'
 import { listChatModels, modelSupportsImages, getFirecrawlKeys } from '@/lib/model-utils'
+import { recordKeyUsage, recordKeyError, extractErrorCode } from '@/lib/keypool-usage'
 import { SessionStore } from '@/session/session-store'
 import type { Session } from '@/session/session-store'
 import type { AiConfig } from '@/types/ai-config'
@@ -96,6 +98,16 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   )?.model
   const selectedProvider = vaultConfig.providers[selectedProviderId] ?? null
 
+  // Key rotation — round-robin, persisted in localStorage per provider
+  const {
+    currentKey,
+    currentKeyHint,
+    currentKeyOwner,
+    poolSize,
+    rotateKey,
+    markKeyFailedAndRotate,
+  } = useKeypoolRotation(selectedProviderId, selectedProvider)
+
   // Stable firecrawl endpoint from first crawler entry
   const firecrawlEndpoint = useMemo(
     () => Object.values(vaultConfig.crawlers)[0]?.endpoint ?? 'https://api.firecrawl.dev',
@@ -103,12 +115,13 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   )
 
   // Agent config — JSON.stringify guards prevent spurious worker restarts
+  // Use currentKey from the pool instead of always keys[0]
   const agentConfig = useMemo(() => {
     if (!selectedProvider || !selectedModelId) return null
     return {
       providerId: selectedProviderId,
       modelId: selectedModelId,
-      apiKey: selectedProvider.keys[0]?.key ?? '',
+      apiKey: currentKey?.key ?? selectedProvider.keys[0]?.key ?? '',
       baseUrl: selectedProvider.endpoint,
       systemPrompt,
       firecrawlKeys: firecrawlKeys.length > 0 ? firecrawlKeys : getFirecrawlKeys(vaultConfig),
@@ -120,7 +133,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     selectedProviderId,
     selectedModelId,
     selectedProvider?.endpoint,
-    selectedProvider?.keys[0]?.key,
+    currentKey?.key,
     systemPrompt,
     firecrawlEndpoint,
     // biome-ignore lint/correctness/useExhaustiveDependencies: stable serialisation
@@ -137,6 +150,8 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     pendingQuestion,
     turnStartedAt,
     streamedTokens,
+    lastTurnUsage,
+    lastKeyError,
     sendMessage: agentSend,
     abort,
     reset,
@@ -146,6 +161,38 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     syncVfsFile,
     removeVfsFile,
   } = useAgent(agentConfig)
+
+  // -------------------------------------------------------------------------
+  // Keypool: record usage after each successful turn
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (!lastTurnUsage || !selectedProvider || !currentKey) return
+    recordKeyUsage({
+      provider: selectedProviderId,
+      modelId: selectedModelId,
+      keyOwner: currentKeyOwner,
+      keyHint: currentKeyHint,
+      promptTokens: lastTurnUsage.inputTokens,
+      completionTokens: lastTurnUsage.outputTokens,
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastTurnUsage])
+
+  // -------------------------------------------------------------------------
+  // Keypool: detect key errors, record them, and rotate automatically
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (!lastKeyError || !selectedProvider || !currentKey) return
+    recordKeyError({
+      provider: selectedProviderId,
+      modelId: selectedModelId,
+      keyOwner: currentKeyOwner,
+      keyHint: currentKeyHint,
+      errorCode: extractErrorCode(lastKeyError),
+    })
+    markKeyFailedAndRotate()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastKeyError])
 
   const vfs = useVirtualFS(syncVfsFile)
 
@@ -350,6 +397,9 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
             selectedModelId={selectedModelId}
             onModelChange={handleModelChange}
             onClose={() => setShowSettings(false)}
+            currentKeyHint={currentKeyHint}
+            canRotate={poolSize > 1}
+            onRotateKey={rotateKey}
           />
         )}
 

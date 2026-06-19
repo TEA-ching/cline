@@ -7,6 +7,7 @@ export default defineConfig(({ mode }) => {
   return {
     define: {
       "import.meta.env.KEYPOOL_VAULT_URL": JSON.stringify(process.env.KEYPOOL_VAULT_URL ?? 'https://vault.exemple.com'),
+      "import.meta.env.KEYPOOL_USAGE_DB": JSON.stringify(process.env.KEYPOOL_USAGE_DB_DIR ?? 'https://usage-db.exemple.com/v1/keypool/usage'),
       // Polyfill Node.js `process` for browser/Worker builds.
       // isBrowserEnvironment() checks window.document — false in a Worker —
       // so vendor files fall through to process.env / process.listeners etc.
