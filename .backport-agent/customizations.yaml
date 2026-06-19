@@ -10,7 +10,78 @@
 customizations:
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 1. Fournisseur KeypoolLive (cœur métier du fork)
+  # 1. Fournisseur Cohere
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: cohere-provider
+    description: >
+      Ajoute le fournisseur Cohere pour l'accès aux modèles de langage Cohere.
+      Le fournisseur est intégré dans la chaîne complète : shared/api.ts → proto/cline/models.proto
+      → api-configuration-conversion.ts → provider-keys.ts → providers.json → ApiOptions.tsx → core/api/index.ts.
+      Il prend en charge la gestion des modèles Cohere, la configuration du raisonnement pour les modèles
+      command-a* (mode thinking), la compatibilité des outils avec strict_tools, et la correction des rapports
+      d'utilisation des tokens via un wrapper fetch personnalisé.
+    paths:
+      - "apps/vscode/src/core/api/providers/cohere.ts"
+      - "apps/vscode/src/core/api/providers/__tests__/cohere.test.ts"
+    related_files:
+      # Fichiers upstream partagés qui contiennent des entrées cohere
+      - "apps/vscode/src/shared/api.ts"                                    # union ApiProvider
+      - "apps/vscode/proto/cline/models.proto"                             # enum ApiProvider
+      - "apps/vscode/src/shared/proto-conversions/models/api-configuration-conversion.ts"
+      - "apps/vscode/src/shared/storage/provider-keys.ts"                  # clés de stockage sécurisé
+      - "apps/vscode/src/shared/providers/providers.json"                  # registry fournisseur
+      - "apps/vscode/src/core/api/index.ts"                                # routage buildApiHandler
+      - "apps/vscode/webview-ui/src/components/settings/utils/providerUtils.ts"
+      - "apps/vscode/webview-ui/src/components/settings/ApiOptions.tsx"
+    invariants:
+      - "L'id de fournisseur 'cohere' doit rester dans l'union ApiProvider de shared/api.ts."
+      - "L'enum ApiProvider du proto doit contenir COHERE avec sa valeur numérique stable."
+      - "convertApiProviderToProto() et convertProtoToApiProvider() doivent être symétriques pour 'cohere'."
+      - "Les clés cohereSecret doivent rester dans provider-keys.ts."
+      - "providers.json doit contenir l'entrée cohere (value, label, website)."
+      - "buildApiHandler() dans core/api/index.ts doit router le cas 'cohere' vers CohereHandler."
+      - "Les champs proto cohere_* (secret, base_url) doivent rester dans state.proto / models.proto."
+      - "Le wrapper fetch pour la correction des tokens doit rester fonctionnel."
+    tests:
+      - "cd apps/vscode && npm run test:unit -- --timeout 10000 --grep 'Cohere|cohere'"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 2. Fournisseur Poolside
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: poolside-provider
+    description: >
+      Ajoute le fournisseur Poolside pour l'accès aux modèles de langage Poolside.
+      Le fournisseur est intégré dans la chaîne complète : shared/api.ts → proto/cline/models.proto
+      → api-configuration-conversion.ts → provider-keys.ts → providers.json → ApiOptions.tsx → core/api/index.ts.
+      Il prend en charge la gestion des modèles Poolside, la compatibilité des outils avec strict_tools,
+      et utilise l'API OpenAI compatible de Poolside via createOpenAI.
+    paths:
+      - "apps/vscode/src/core/api/providers/poolside.ts"
+      - "apps/vscode/src/core/api/providers/__tests__/poolside.test.ts"
+    related_files:
+      # Fichiers upstream partagés qui contiennent des entrées poolside
+      - "apps/vscode/src/shared/api.ts"                                    # union ApiProvider
+      - "apps/vscode/proto/cline/models.proto"                             # enum ApiProvider
+      - "apps/vscode/src/shared/proto-conversions/models/api-configuration-conversion.ts"
+      - "apps/vscode/src/shared/storage/provider-keys.ts"                  # clés de stockage sécurisé
+      - "apps/vscode/src/shared/providers/providers.json"                  # registry fournisseur
+      - "apps/vscode/src/core/api/index.ts"                                # routage buildApiHandler
+      - "apps/vscode/webview-ui/src/components/settings/utils/providerUtils.ts"
+      - "apps/vscode/webview-ui/src/components/settings/ApiOptions.tsx"
+    invariants:
+      - "L'id de fournisseur 'poolside' doit rester dans l'union ApiProvider de shared/api.ts."
+      - "L'enum ApiProvider du proto doit contenir POOLSIDE avec sa valeur numérique stable."
+      - "convertApiProviderToProto() et convertProtoToApiProvider() doivent être symétriques pour 'poolside'."
+      - "Les clés poolsideSecret doivent rester dans provider-keys.ts."
+      - "providers.json doit contenir l'entrée poolside (value, label, website)."
+      - "buildApiHandler() dans core/api/index.ts doit router le cas 'poolside' vers PoolsideHandler."
+      - "Les champs proto poolside_* (secret, base_url) doivent rester dans state.proto / models.proto."
+      - "L'URL par défaut 'https://inference.poolside.ai/v1' doit rester configurée."
+    tests:
+      - "cd apps/vscode && npm run test:unit -- --timeout 10000 --grep 'Poolside|poolside'"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 3. Fournisseur KeypoolLive (cœur métier du fork)
   # ──────────────────────────────────────────────────────────────────────────
   - id: keypoollive-provider
     description: >
@@ -64,7 +135,7 @@ customizations:
       - "cd apps/vscode && npm run test:unit -- --timeout 10000 --grep 'KeypoolLive|keypool|Keypool'"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 3. Intégration Smart Web Crawling
+  # 5. Intégration Smart Web Crawling
   # ──────────────────────────────────────────────────────────────────────────
   - id: smart-web-crawling-integration
     description: >
@@ -113,7 +184,7 @@ customizations:
       - "cd sdk/packages/core && bun test --grep 'SmartWebFetchIntegration'"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 4. Dashboard et sélecteur de modèle KeypoolLive dans la webview
+  # 6. Dashboard et sélecteur de modèle KeypoolLive dans la webview
   # ──────────────────────────────────────────────────────────────────────────
   - id: keypoollive-webview-ui
     description: >
@@ -138,7 +209,7 @@ customizations:
       - "cd apps/vscode && npm run test:unit -- --timeout 10000 --grep 'KeypoolLive|keypool|Keypool'"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 5. Renommage @cline/* → @sctg/cline-* pour la publication npm
+  # 7. Renommage @cline/* → @sctg/cline-* pour la publication npm
   # ──────────────────────────────────────────────────────────────────────────
   - id: sctg-package-publishing
     description: >
@@ -171,7 +242,7 @@ customizations:
       - "! grep -rq '@sctg/cline-' sdk/packages --include='*.ts' 2>/dev/null"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 6. Branding ClinePool / SCTG
+  # 8. Branding ClinePool / SCTG
   # ──────────────────────────────────────────────────────────────────────────
   - id: sctg-branding
     description: >
@@ -194,7 +265,7 @@ customizations:
       - "node -e \"const p=require('./apps/vscode/package.json'); console.assert(p.displayName==='ClinePool','displayName must be ClinePool')\""
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 7. Workflow de release preview keypool-live
+  # 9. Workflow de release preview keypool-live
   # ──────────────────────────────────────────────────────────────────────────
   - id: keypoollive-release-workflow
     description: >
@@ -219,7 +290,7 @@ customizations:
       - "yamllint -d relaxed .github/workflows/keypool-live-preview.yml"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 8. Agent de backport et infrastructure d'analyse
+  # 10. Agent de backport et infrastructure d'analyse
   # ──────────────────────────────────────────────────────────────────────────
   - id: backport-agent-infra
     description: >
@@ -242,7 +313,7 @@ customizations:
       - "test -f .clinerules/general.md && echo '.clinerules/general.md exists'"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 9. Documentation Mintlify / sdk/model-providers
+  # 11. Documentation Mintlify / sdk/model-providers
   # ──────────────────────────────────────────────────────────────────────────
   - id: sctg-documentation
     description: >
@@ -263,7 +334,7 @@ customizations:
     tests:
       - "grep -qiE 'keypoollive|keypool' docs/sdk/model-providers.mdx && echo 'OK'"
   # ──────────────────────────────────────────────────────────────────────────
-  # 10. Visuels et assets
+  # 12. Visuels et assets
   # ──────────────────────────────────────────────────────────────────────────
   - id: sctg-assets
     description: >
@@ -276,7 +347,7 @@ customizations:
       - "Les icônes du fork ne doivent pas être écrasées par les icônes upstream lors d'un merge."
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 11. Mise à jour de l'extension VS Code
+  # 13. Mise à jour de l'extension VS Code
   # ──────────────────────────────────────────────────────────────────────────
   - id: vscode-extension-update
     description: >  
