@@ -188,7 +188,7 @@ async function handleInit(msg: InitMessage): Promise<void> {
         onFileCreated: postFileCreated,
         onAskQuestion,
       }),
-      ...createSkillTools(msg.enabledSkills ?? [], { vfs }),
+      ...createSkillTools(msg.enabledSkills ?? [], { vfs, onFileCreated: postFileCreated }),
     ]
 
     console.log('[agent.worker] Agent config:', {

@@ -68,7 +68,12 @@ export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
   {
     id: 'execute_js',
     name: 'JS / TS Sandbox',
-    description: 'Execute JavaScript or TypeScript in a secure QuickJS WASM sandbox. Access to virtual filesystem. No network.',
+    description:
+      'Execute JavaScript or TypeScript in a secure QuickJS WASM sandbox. ' +
+      'Full access to the virtual filesystem via the global vfs object (vfs.read, vfs.write, vfs.list, vfs.delete, vfs.exists). ' +
+      'Files created with vfs.write() appear instantly in the file manager. ' +
+      'Network access (fetch) is available when allow_network: true is passed. ' +
+      'CPU timeout: 5 s (sync) / 25 s (with network). No DOM, no Node.js APIs.',
     icon: '⚡',
     tools: ['execute_js'],
   },

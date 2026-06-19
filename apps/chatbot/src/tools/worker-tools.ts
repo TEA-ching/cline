@@ -44,7 +44,7 @@ const MATH_CTX = {
 // biome-ignore lint/suspicious/noExplicitAny: tool input/output types vary
 export function createOptionalTools(
   skillIds: string[],
-  ctx?: { vfs?: VirtualFS }
+  ctx?: { vfs?: VirtualFS; onFileCreated?: (path: string, content: string) => void }
 ): AgentTool<any, any>[] {
   const tools: AgentTool<any, any>[] = []
 
@@ -259,11 +259,17 @@ export function createOptionalTools(
       name: 'execute_js',
       description:
         'Execute JavaScript or TypeScript code in a secure sandbox (QuickJS WASM). ' +
-        'The sandbox has no network access, no external filesystem access, and a 5-second CPU timeout. ' +
-        'When VFS is available, you can access virtual files using the global vfs object with methods: ' +
-        'vfs.read(path), vfs.write(path, content), vfs.list(prefix), vfs.delete(path), vfs.exists(path). ' +
-        'Use console.log() to print output. The return value of the last expression is also shown. ' +
-        'Supports modern JS syntax and TypeScript type annotations.',
+        'Virtual filesystem is always available via the global `vfs` object:\n' +
+        '  vfs.read(path) → string | null\n' +
+        '  vfs.write(path, content) → boolean  (file appears in file manager immediately)\n' +
+        '  vfs.list(prefix?) → string[]\n' +
+        '  vfs.delete(path) → boolean\n' +
+        '  vfs.exists(path) → boolean\n' +
+        'Output: use console.log(); the last expression value is also returned.\n' +
+        'Network: pass allow_network: true to enable global fetch(url) → Response ' +
+        '(supports .status, .ok, .text(), .json()). Default: no network.\n' +
+        'Timeout: 5 s (CPU) without network, 25 s wall-clock with network.\n' +
+        'No DOM, no Node.js APIs. TypeScript type annotations are stripped automatically.',
       inputSchema: z.object({
         code: z.string().describe('JavaScript or TypeScript code to execute'),
         language: z.enum(['javascript', 'typescript']).default('javascript')
@@ -271,7 +277,13 @@ export function createOptionalTools(
       }),
       timeoutMs: 10_000,
       execute: async ({ code, language }) => {
-        const { output, error } = await runInSandbox(code, language, ctx?.vfs)
+        const { output, error, filesWritten } = await runInSandbox(code, language, ctx?.vfs)
+        if (ctx?.onFileCreated && ctx.vfs) {
+          for (const path of filesWritten) {
+            const content = ctx.vfs.read(path)
+            if (content !== null) ctx.onFileCreated(path, content)
+          }
+        }
         if (error) {
           return { success: false, error }
         }
