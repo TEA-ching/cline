@@ -80,12 +80,36 @@ function simpleUnifiedDiff(
 // ---------------------------------------------------------------------------
 // Glob to regex helper
 // ---------------------------------------------------------------------------
-function globToRegex(glob: string): RegExp {
+export function globToRegex(glob: string): RegExp {
+  // Handle recursive **/ pattern
+  if (glob.includes('**/')) {
+    // Split the pattern at **/
+    const parts = glob.split('**/')
+    // The part after **/ should match any path ending with this pattern
+    const suffix = parts[1].replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '[^/]*')
+      .replace(/\?/g, '[^/]')
+    return new RegExp(suffix + '$')
+  }
+
+  // Handle regular glob patterns with path separators
+  if (glob.includes('/')) {
+    // For patterns with slashes, we want exact path matching
+    // Convert to regex that matches the exact path structure
+    const escaped = glob
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '[^/]*')
+      .replace(/\?/g, '[^/]')
+    return new RegExp('^' + escaped + '$')
+  }
+
+  // Handle simple filename patterns - match filename anywhere in path
+  // For patterns like *.ts, we want to match the filename pattern anywhere
   const escaped = glob
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')
     .replace(/\*/g, '.*')
     .replace(/\?/g, '.')
-  return new RegExp(`^${escaped}$`)
+  return new RegExp(escaped + '$')
 }
 
 // ---------------------------------------------------------------------------
