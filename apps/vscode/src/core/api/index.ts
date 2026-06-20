@@ -512,6 +512,7 @@ function createHandlerForProvider(
 				onRetryAttempt: options.onRetryAttempt,
 				keypoolliveVaultUrl: options.keypoolliveVaultUrl,
 				keypoolliveSecret: options.keypoolliveSecret,
+				keypoolliveRemoteStorageUrl: options.keypoolliveRemoteStorageUrl,
 				keypoolliveGatewaySecret: options.keypoolliveGatewaySecret,
 				keypoolliveUseGateway: options.keypoolliveUseGateway,
 				keypoolliveGatewayId: options.keypoolliveGatewayId,

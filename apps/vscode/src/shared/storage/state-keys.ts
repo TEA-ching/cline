@@ -249,6 +249,7 @@ const API_HANDLER_SETTINGS_FIELDS = {
 	keypoolliveGatewayId: { default: undefined as string | undefined },
 	keypoolliveGatewayCacheSkip: { default: false as boolean },
 	keypoolliveMaxDbSizeMb: { default: 50 as number },
+	keypoolliveRemoteStorageUrl: { default: undefined as string | undefined },
 } satisfies FieldDefinitions
 
 const USER_SETTINGS_FIELDS = {

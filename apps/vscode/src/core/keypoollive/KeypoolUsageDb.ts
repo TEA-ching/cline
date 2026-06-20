@@ -278,7 +278,19 @@ export class KeypoolUsageDb {
 	 * - "local": Use NDJSON files (default)
 	 * - "remote": Use Cloudflare Worker KV backend
 	 */
-	private static storageMode: KeypoolStorageMode = "local";
+	private static storageMode: () => KeypoolStorageMode = () => {
+		if (process.env.KEYPOOL_LIVE_REMOTE_STORAGE_URL && process.env.KEYPOOL_LIVE_SECRET) {
+			if (process.env.KEYPOOL_LIVE_REMOTE_STORAGE_URL.startsWith("http://") || process.env.KEYPOOL_LIVE_REMOTE_STORAGE_URL.startsWith("https://")) {
+				Logger.debug(`[KeypoolUsageDb] Using remote storage mode to ${process.env.KEYPOOL_LIVE_REMOTE_STORAGE_URL}`)
+				KeypoolUsageDb.remoteConfig = {
+					workerUrl: process.env.KEYPOOL_LIVE_REMOTE_STORAGE_URL, authToken: process.env.KEYPOOL_LIVE_SECRET ?? ""
+				};
+				return "remote";
+			}
+			return "local";
+		}
+		return "local";
+	}
 
 	/**
 	 * Remote configuration (only used when storageMode is "remote").
@@ -302,15 +314,15 @@ export class KeypoolUsageDb {
 	 * @param config - Remote worker configuration
 	 */
 	static setRemoteMode(config: KeypoolRemoteConfig): void {
-		KeypoolUsageDb.storageMode = "remote";
-		KeypoolUsageDb.remoteConfig = config;
+		KeypoolUsageDb.storageMode = () => "remote";
+		KeypoolUsageDb.remoteConfig = { ...config, workerUrl: process.env.KEYPOOL_LIVE_REMOTE_STORAGE_URL ?? config.workerUrl };
 	}
 
 	/**
 	 * Configures the database to use local storage mode.
 	 */
 	static setLocalMode(): void {
-		KeypoolUsageDb.storageMode = "local";
+		KeypoolUsageDb.storageMode = () => "local";
 		KeypoolUsageDb.remoteConfig = null;
 	}
 
@@ -318,7 +330,7 @@ export class KeypoolUsageDb {
 	 * Returns the current storage mode.
 	 */
 	static getStorageMode(): KeypoolStorageMode {
-		return KeypoolUsageDb.storageMode;
+		return KeypoolUsageDb.storageMode();
 	}
 
 	/** Absolute path to `usage.ndjson`. */
@@ -372,9 +384,9 @@ export class KeypoolUsageDb {
 	 */
 	static getFileSizeBytes(): number {
 		// In remote mode, return the size from the worker
-		if (KeypoolUsageDb.storageMode === "remote" && KeypoolUsageDb.remoteConfig) {
+		if (KeypoolUsageDb.storageMode() === "remote" && KeypoolUsageDb.remoteConfig) {
 			// Fire-and-forget request to get remote size
-			KeypoolUsageDb.fetchRemoteSize().catch(() => {});
+			KeypoolUsageDb.fetchRemoteSize().catch(() => { });
 			return 0; // Local size is not relevant in remote mode
 		}
 		return (
@@ -492,8 +504,8 @@ export class KeypoolUsageDb {
 		method: "GET" | "POST" = "GET",
 		body?: object,
 	): Promise<T | null> {
+		Logger.debug(`[KeypoolUsageDb] Fetching remote API: ${method} ${KeypoolUsageDb.remoteConfig?.workerUrl}${endpoint}`);
 		if (!KeypoolUsageDb.remoteConfig) return null;
-
 		const url = `${KeypoolUsageDb.remoteConfig.workerUrl}${endpoint}`;
 		try {
 			const response = await fetch(url, {
@@ -539,6 +551,7 @@ export class KeypoolUsageDb {
 	private static async fetchRemoteUsageStats(
 		period: UsagePeriod,
 	): Promise<KeyUsageStat[]> {
+		Logger.debug(`[KeypoolUsageDb] Fetching remote usage stats for period: ${period}`);
 		const result = await KeypoolUsageDb.fetchRemote<{ data: KeyUsageStat[] }>(
 			`/v1/keypool/stats?period=${period}`,
 		);
@@ -549,6 +562,7 @@ export class KeypoolUsageDb {
 	 * Gets error stats from the remote worker.
 	 */
 	private static async fetchRemoteErrorStats(): Promise<KeyErrorStat[]> {
+		Logger.debug("[KeypoolUsageDb] Fetching remote error stats");
 		const result = await KeypoolUsageDb.fetchRemote<{ data: KeyErrorStat[] }>(
 			"/v1/keypool/errors",
 		);
@@ -559,6 +573,7 @@ export class KeypoolUsageDb {
 	 * Gets file size from the remote worker.
 	 */
 	private static async fetchRemoteSize(): Promise<number> {
+		Logger.debug("[KeypoolUsageDb] Fetching remote file size");
 		const result = await KeypoolUsageDb.fetchRemote<{ sizeBytes: number }>(
 			"/v1/keypool/size",
 		);
@@ -569,6 +584,7 @@ export class KeypoolUsageDb {
 	 * Purges data on the remote worker.
 	 */
 	private static async purgeRemote(): Promise<number> {
+		Logger.debug("[KeypoolUsageDb] Purging remote data");
 		const result = await KeypoolUsageDb.fetchRemote<{ ok: boolean; freedBytes: number }>(
 			"/v1/keypool/purge",
 			"POST",
@@ -588,9 +604,12 @@ export class KeypoolUsageDb {
 	 * In local mode, the record is appended to the NDJSON file.
 	 */
 	static recordUsage(entry: KeyUsageEntry): void {
-		if (KeypoolUsageDb.storageMode === "remote") {
+		Logger.debug(`[KeypoolUsageDb] Recording usage: ${JSON.stringify(entry)} (storageMode=${KeypoolUsageDb.storageMode()})`);
+		if (KeypoolUsageDb.storageMode() === "remote") {
 			// Fire-and-forget remote recording
-			KeypoolUsageDb.recordRemoteUsage(entry).catch(() => {});
+			KeypoolUsageDb.recordRemoteUsage(entry).catch((error) => {
+				Logger.error("[KeypoolUsageDb] Failed to record remote usage:", error);
+			});
 		} else {
 			const record: UsageRecord = { ts: Date.now(), ...entry };
 			KeypoolUsageDb.appendLine(KeypoolUsageDb.usagePath(), record);
@@ -608,9 +627,12 @@ export class KeypoolUsageDb {
 	 * In local mode, the record is appended to the NDJSON file.
 	 */
 	static recordError(entry: KeyErrorEntry): void {
-		if (KeypoolUsageDb.storageMode === "remote") {
+		Logger.debug(`[KeypoolUsageDb] Recording error: ${JSON.stringify(entry)} (storageMode=${KeypoolUsageDb.storageMode()})`);
+		if (KeypoolUsageDb.storageMode() === "remote") {
 			// Fire-and-forget remote recording
-			KeypoolUsageDb.recordRemoteError(entry).catch(() => {});
+			KeypoolUsageDb.recordRemoteError(entry).catch((error) => {
+				Logger.error("[KeypoolUsageDb] Failed to record remote error:", error);
+			});
 		} else {
 			const record: ErrorRecord = { ts: Date.now(), ...entry };
 			KeypoolUsageDb.appendLine(KeypoolUsageDb.errorsPath(), record);
@@ -631,7 +653,8 @@ export class KeypoolUsageDb {
 	 * In local mode, stats are computed from the NDJSON file.
 	 */
 	static async getUsageStats(period: UsagePeriod): Promise<KeyUsageStat[]> {
-		if (KeypoolUsageDb.storageMode === "remote") {
+		Logger.debug(`[KeypoolUsageDb] Fetching usage stats for period: ${period} (storageMode=${KeypoolUsageDb.storageMode()})`);
+		if (KeypoolUsageDb.storageMode() === "remote") {
 			return KeypoolUsageDb.fetchRemoteUsageStats(period);
 		}
 
@@ -712,7 +735,8 @@ export class KeypoolUsageDb {
 	 * In local mode, stats are computed from the NDJSON file.
 	 */
 	static async getErrorStats(): Promise<KeyErrorStat[]> {
-		if (KeypoolUsageDb.storageMode === "remote") {
+		Logger.debug(`[KeypoolUsageDb] Fetching error stats (storageMode=${KeypoolUsageDb.storageMode()})`);
+		if (KeypoolUsageDb.storageMode() === "remote") {
 			return KeypoolUsageDb.fetchRemoteErrorStats();
 		}
 
@@ -792,9 +816,12 @@ export class KeypoolUsageDb {
 	 * In local mode, files are deleted from disk.
 	 */
 	static purge(): number {
-		if (KeypoolUsageDb.storageMode === "remote") {
+		Logger.debug(`[KeypoolUsageDb] Purging stats (storageMode=${KeypoolUsageDb.storageMode()})`);
+		if (KeypoolUsageDb.storageMode() === "remote") {
 			// Fire-and-forget remote purge
-			KeypoolUsageDb.purgeRemote().catch(() => {});
+			KeypoolUsageDb.purgeRemote().catch((error) => {
+				Logger.error("[KeypoolUsageDb] Failed to purge remote stats:", error);
+			});
 			return 0;
 		}
 

@@ -149,6 +149,25 @@ export const KeypoolLiveProvider = ({ isPopup: _isPopup, currentMode: _currentMo
 				</div>
 			</DebouncedTextField>
 
+			{/* Optional: Remote storage URL */}
+			<DebouncedTextField
+				initialValue={apiConfiguration?.keypoolliveRemoteStorageUrl || ""}
+				onChange={async (value) => {
+					await ModelsServiceClient.updateApiConfiguration(
+						UpdateApiConfigurationRequestNew.create({
+							updates: { options: { keypoolliveRemoteStorageUrl: value || undefined } },
+							updateMask: ["options.keypoolliveRemoteStorageUrl"],
+						}),
+					)
+				}}
+				placeholder="https://example.com/remote-storage"
+				style={{ width: "100%" }}
+				type="text">
+				<div className="flex items-center gap-2 mb-1">
+					<span style={{ fontWeight: 500 }}>Remote Storage URL</span>
+				</div>
+			</DebouncedTextField>
+
 			{/* Vault Secret */}
 			<DebouncedTextField
 				initialValue={apiConfiguration?.keypoolliveSecret || ""}

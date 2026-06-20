@@ -1347,12 +1347,19 @@ export function setKeypoolRemoteStorage(config: KeypoolRemoteStorageConfig): voi
  * Returns whether remote storage mode is enabled.
  */
 export function isKeypoolRemoteStorageEnabled(): boolean {
-	return remoteStorageConfig !== null;
+	const url = process.env[KEYPOOL_USAGE_DB_DIR_ENV] ?? "";
+	if (url && remoteStorageConfig) {
+		remoteStorageConfig.workerUrl = url;
+		return url.startsWith("https://") || url.startsWith("http://");
+	}
+	return false;
 }
 
 // ─── NDJSON usage recording ───────────────────────────────────────────────────
 // Compatible with apps/vscode/src/core/keypoollive/KeypoolUsageDb.ts record format.
 // Directory: KEYPOOL_USAGE_DB_DIR env var, or ~/.cline/data/keypoollive/
+// Usage recording can also use a https://github.com/sctg-development/ai-proxy-cloudflare backend for shared stats across multiple clients.
+// If KEYPOOL_USAGE_DB_DIR starts with "https://" or "http://", it is treated as a remote worker URL and usage is sent there instead of local NDJSON.
 
 const KEYPOOL_USAGE_DB_DIR_ENV = "KEYPOOL_USAGE_DB_DIR";
 
@@ -1390,7 +1397,7 @@ async function getUsageDbDir(): Promise<string> {
 async function recordKeypoolUsage(
 	entry: Omit<NdjsonUsageEntry, "ts">,
 ): Promise<void> {
-	if (remoteStorageConfig) {
+	if (isKeypoolRemoteStorageEnabled() && remoteStorageConfig) {
 		// Remote mode: send to Cloudflare Worker
 		try {
 			const response = await fetch(
@@ -1431,7 +1438,7 @@ async function recordKeypoolUsage(
 async function recordKeypoolError(
 	entry: Omit<NdjsonErrorEntry, "ts">,
 ): Promise<void> {
-	if (remoteStorageConfig) {
+	if (isKeypoolRemoteStorageEnabled() && remoteStorageConfig) {
 		// Remote mode: send to Cloudflare Worker
 		try {
 			const response = await fetch(
@@ -1474,10 +1481,61 @@ type KeyStats24h = {
 	requestCount: number;
 };
 
-/** Reads usage.ndjson and returns a map from keyHint → 24h aggregated stats for the given provider. */
+/** 
+ * Reads usage.ndjson and returns a map from keyHint → 24h aggregated stats for the given provider. 
+ * If environment variable is set, it will read from the remote storage instead.
+ * remote endpoint can be used with: `curl "$KEYPOOL_USAGE_DB_DIR/v1/keypool/stats?period=day" -H "Authorization: Bearer $KEYPOOL_LIVE_SECRET"`
+ * remote endpoint returns JSON of the form {"object":"list","data":[{"period":"2026-06-20","provider":"mistral","modelId":"mistral-vibe-cli-latest","keyOwner":"tester (apple)","keyHint":"***17ks0s12","promptTokens":39218,"completionTokens":559,"requestCount":3},{"period":"2026-06-20","provider":"mistral","modelId":"mistral-vibe-cli-latest","keyOwner":"example@none.com (microsoft)","keyHint":"***uUslaj","promptTokens":99348,"completionTokens":4987,"requestCount":8},{"period":"2026-06-20","provider":"mistral","modelId":"mistral-vibe-cli-latest","keyOwner":"user2.example.com","keyHint":"***a9ks98sd","promptTokens":48441,"completionTokens":2744,"requestCount":5}]
+ * */
 async function readProviderUsageStats24h(
 	providerName: string,
 ): Promise<Map<string, KeyStats24h>> {
+	if (isKeypoolRemoteStorageEnabled() && remoteStorageConfig) {
+		try {
+			const response = await fetch(
+				`${remoteStorageConfig.workerUrl}/v1/keypool/stats?period=day`,
+				{
+					method: "GET",
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: `Bearer ${remoteStorageConfig.authToken}`,
+					},
+				},
+			);
+			if (!response.ok) {
+				console.error(
+					`[keypoollive] Remote usage stats fetch failed: ${response.status}`,
+				);
+				return new Map();
+			}
+			const data = (await response.json()) as {
+				object: string;
+				data: Array<{
+					period: string;
+					provider: string;
+					keyHint: string;
+					promptTokens: number;
+					completionTokens: number;
+					requestCount: number;
+				}>;
+			};
+			const map = new Map<string, KeyStats24h>();
+			for (const entry of data.data) {
+				if (entry.provider !== providerName) continue;
+				map.set(entry.keyHint, {
+					completionTokens: entry.completionTokens,
+					promptTokens: entry.promptTokens,
+					requestCount: entry.requestCount,
+				});
+			}
+			return map;
+		} catch (e) {
+			console.error("[keypoollive] Failed to fetch remote usage stats:", e);
+			return new Map();
+		}
+	}
+
+	// Local mode: read from usage.ndjson
 	const map = new Map<string, KeyStats24h>();
 	try {
 		const [fs, path] = await Promise.all([

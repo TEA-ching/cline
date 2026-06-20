@@ -278,6 +278,7 @@ message ModelsApiOptions {
   optional string keypoollive_gateway_id = 47;
   optional bool keypoollive_gateway_cache_skip = 48;
   optional int32 keypoollive_max_db_size_mb = 49;
+  optional string keypoollive_remote_storage_url = 50;
 
   // Plan mode configurations
   optional ApiProvider plan_mode_api_provider = 100;

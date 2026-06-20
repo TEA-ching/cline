@@ -15,6 +15,7 @@ export async function keypoolGetVaultModels(controller: Controller, _request: Em
 	try {
 		const apiConfig = controller.stateManager.getApiConfiguration()
 		const vaultUrl = apiConfig.keypoolliveVaultUrl
+		const remoteStorageUrl = apiConfig.keypoolliveRemoteStorageUrl
 		const secret = apiConfig.keypoolliveSecret
 
 		if (!vaultUrl || !secret) {
@@ -23,6 +24,12 @@ export async function keypoolGetVaultModels(controller: Controller, _request: Em
 
 		// Inject the secret so loadAiVault can read process.env.KEYPOOL_LIVE_SECRET
 		process.env.KEYPOOL_LIVE_SECRET = secret
+
+		// If remoteStorageUrl is set, we need to inject it so KeypoolUsageDb can read process.env.KEYPOOL_LIVE_REMOTE_STORAGE_URL
+		if (remoteStorageUrl) {
+			Logger.info("[keypoolGetVaultModels] Injecting remote storage URL for KeypoolLive:", remoteStorageUrl)
+			process.env.KEYPOOL_LIVE_REMOTE_STORAGE_URL = remoteStorageUrl
+		}
 		const vault = await loadAiVault(vaultUrl)
 		const kplConfig = {
 			vaultUrl,

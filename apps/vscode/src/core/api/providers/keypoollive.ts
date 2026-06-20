@@ -102,6 +102,7 @@ function isKeyError(e: any): boolean {
 interface KeypoolLiveHandlerOptions extends CommonApiHandlerOptions {
 	keypoolliveVaultUrl?: string;
 	keypoolliveSecret?: string;
+	keypoolliveRemoteStorageUrl?: string;
 	keypoolliveGatewaySecret?: string;
 	keypoolliveUseGateway?: boolean;
 	keypoolliveGatewayId?: string;
