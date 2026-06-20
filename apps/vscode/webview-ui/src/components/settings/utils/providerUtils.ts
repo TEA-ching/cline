@@ -661,6 +661,7 @@ export function normalizeApiConfiguration(
 							]
 						: nousResearchModels[nousResearchDefaultModelId],
 			}
+		}
 		case "keypoollive": {
 			const kplCached = modelId ? getKplModelInfo(modelId) : undefined
 			const kplModelInfo: ModelInfo = {
