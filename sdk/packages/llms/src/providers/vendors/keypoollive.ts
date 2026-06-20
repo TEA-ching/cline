@@ -1344,15 +1344,30 @@ export function setKeypoolRemoteStorage(config: KeypoolRemoteStorageConfig): voi
 }
 
 /**
+ * Returns the effective remote storage config.
+ * Priority:
+ * 1. Explicitly set via setKeypoolRemoteStorage() (workerUrl overridden by env if HTTP)
+ * 2. Auto-detected from KEYPOOL_USAGE_DB_DIR (HTTP URL) + KEYPOOL_LIVE_SECRET
+ */
+function getEffectiveRemoteConfig(): KeypoolRemoteStorageConfig | null {
+	const envUrl = process.env[KEYPOOL_USAGE_DB_DIR_ENV] ?? "";
+	const isHttpUrl = envUrl.startsWith("https://") || envUrl.startsWith("http://");
+	if (remoteStorageConfig) {
+		return isHttpUrl ? { ...remoteStorageConfig, workerUrl: envUrl } : remoteStorageConfig;
+	}
+	// Auto-detect from env vars when no explicit config is set
+	const secret = process.env.KEYPOOL_LIVE_SECRET ?? "";
+	if (isHttpUrl && secret) {
+		return { workerUrl: envUrl, authToken: secret };
+	}
+	return null;
+}
+
+/**
  * Returns whether remote storage mode is enabled.
  */
 export function isKeypoolRemoteStorageEnabled(): boolean {
-	const url = process.env[KEYPOOL_USAGE_DB_DIR_ENV] ?? "";
-	if (url && remoteStorageConfig) {
-		remoteStorageConfig.workerUrl = url;
-		return url.startsWith("https://") || url.startsWith("http://");
-	}
-	return false;
+	return getEffectiveRemoteConfig() !== null;
 }
 
 // ─── NDJSON usage recording ───────────────────────────────────────────────────
@@ -1397,16 +1412,17 @@ async function getUsageDbDir(): Promise<string> {
 async function recordKeypoolUsage(
 	entry: Omit<NdjsonUsageEntry, "ts">,
 ): Promise<void> {
-	if (isKeypoolRemoteStorageEnabled() && remoteStorageConfig) {
+	const effectiveRemoteConfig = getEffectiveRemoteConfig();
+	if (effectiveRemoteConfig) {
 		// Remote mode: send to Cloudflare Worker
 		try {
 			const response = await fetch(
-				`${remoteStorageConfig.workerUrl}/v1/keypool/usage`,
+				`${effectiveRemoteConfig.workerUrl}/v1/keypool/usage`,
 				{
 					method: "POST",
 					headers: {
 						"Content-Type": "application/json",
-						Authorization: `Bearer ${remoteStorageConfig.authToken}`,
+						Authorization: `Bearer ${effectiveRemoteConfig.authToken}`,
 					},
 					body: JSON.stringify(entry),
 				},
@@ -1438,16 +1454,17 @@ async function recordKeypoolUsage(
 async function recordKeypoolError(
 	entry: Omit<NdjsonErrorEntry, "ts">,
 ): Promise<void> {
-	if (isKeypoolRemoteStorageEnabled() && remoteStorageConfig) {
+	const effectiveRemoteConfig = getEffectiveRemoteConfig();
+	if (effectiveRemoteConfig) {
 		// Remote mode: send to Cloudflare Worker
 		try {
 			const response = await fetch(
-				`${remoteStorageConfig.workerUrl}/v1/keypool/error`,
+				`${effectiveRemoteConfig.workerUrl}/v1/keypool/error`,
 				{
 					method: "POST",
 					headers: {
 						"Content-Type": "application/json",
-						Authorization: `Bearer ${remoteStorageConfig.authToken}`,
+						Authorization: `Bearer ${effectiveRemoteConfig.authToken}`,
 					},
 					body: JSON.stringify(entry),
 				},
@@ -1490,15 +1507,16 @@ type KeyStats24h = {
 async function readProviderUsageStats24h(
 	providerName: string,
 ): Promise<Map<string, KeyStats24h>> {
-	if (isKeypoolRemoteStorageEnabled() && remoteStorageConfig) {
+	const effectiveRemoteConfig = getEffectiveRemoteConfig();
+	if (effectiveRemoteConfig) {
 		try {
 			const response = await fetch(
-				`${remoteStorageConfig.workerUrl}/v1/keypool/stats?period=day`,
+				`${effectiveRemoteConfig.workerUrl}/v1/keypool/stats?period=day`,
 				{
 					method: "GET",
 					headers: {
 						"Content-Type": "application/json",
-						Authorization: `Bearer ${remoteStorageConfig.authToken}`,
+						Authorization: `Bearer ${effectiveRemoteConfig.authToken}`,
 					},
 				},
 			);

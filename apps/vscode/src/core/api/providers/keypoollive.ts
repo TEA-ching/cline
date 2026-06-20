@@ -139,6 +139,24 @@ export class KeypoolLiveHandler implements ApiHandler {
 		if (options.keypoolliveSecret) {
 			process.env.KEYPOOL_LIVE_SECRET = options.keypoolliveSecret;
 		}
+		// Inject the remote storage URL so KeypoolUsageDb.getEffectiveRemoteConfig()
+		// auto-detects remote mode without waiting for the model selector RPC.
+		if (options.keypoolliveRemoteStorageUrl) {
+			process.env.KEYPOOL_LIVE_REMOTE_STORAGE_URL = options.keypoolliveRemoteStorageUrl;
+		}
+		// Explicitly configure remote mode when both URL and secret are available.
+		// This is belt-and-suspenders on top of the env-var auto-detection.
+		if (
+			options.keypoolliveRemoteStorageUrl &&
+			options.keypoolliveSecret &&
+			(options.keypoolliveRemoteStorageUrl.startsWith("https://") ||
+				options.keypoolliveRemoteStorageUrl.startsWith("http://"))
+		) {
+			KeypoolUsageDb.setRemoteMode({
+				workerUrl: options.keypoolliveRemoteStorageUrl,
+				authToken: options.keypoolliveSecret,
+			});
+		}
 		if (options.keypoolliveVaultUrl) {
 			configureSessionKeyManager(options.keypoolliveVaultUrl);
 			// Preload vault so getCachedVaultModel() works synchronously in getModel()
