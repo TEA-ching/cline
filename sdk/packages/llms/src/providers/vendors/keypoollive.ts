@@ -1498,6 +1498,38 @@ type KeyStats24h = {
 	requestCount: number;
 };
 
+// Session-level accumulator: remote/file stats have latency (fire-and-forget
+// writes, HTTP caching at the CF Worker) so they may not yet reflect tokens
+// spent in this process. This map is updated synchronously after every
+// successful stream so the next key selection immediately sees the real cost
+// and can distribute load correctly across keys.
+const sessionStatsAccumulator = new Map<string, Map<string, KeyStats24h>>();
+
+function addToSessionStats(
+	providerName: string,
+	keyHint: string,
+	inputTokens: number,
+	outputTokens: number,
+): void {
+	let providerMap = sessionStatsAccumulator.get(providerName);
+	if (!providerMap) {
+		providerMap = new Map();
+		sessionStatsAccumulator.set(providerName, providerMap);
+	}
+	const existing = providerMap.get(keyHint);
+	if (existing) {
+		existing.completionTokens += outputTokens;
+		existing.promptTokens += inputTokens;
+		existing.requestCount += 1;
+	} else {
+		providerMap.set(keyHint, {
+			completionTokens: outputTokens,
+			promptTokens: inputTokens,
+			requestCount: 1,
+		});
+	}
+}
+
 /** 
  * Reads usage.ndjson and returns a map from keyHint → 24h aggregated stats for the given provider. 
  * If environment variable is set, it will read from the remote storage instead.
@@ -1594,6 +1626,35 @@ async function readProviderUsageStats24h(
 		// non-fatal: in-memory selection still works
 	}
 	return map;
+}
+
+/**
+ * Reads usage stats (remote or file) and merges with the in-process session
+ * accumulator. Session values are added on top of persistent stats so that
+ * tokens spent in the current process are immediately visible to the key
+ * selector even before the fire-and-forget write has completed.
+ */
+async function readProviderUsageStats24hMerged(
+	providerName: string,
+): Promise<Map<string, KeyStats24h>> {
+	const base = await readProviderUsageStats24h(providerName);
+	const session = sessionStatsAccumulator.get(providerName);
+	if (!session || session.size === 0) return base;
+
+	const merged = new Map(base);
+	for (const [keyHint, sessionStat] of session) {
+		const existing = merged.get(keyHint);
+		if (existing) {
+			merged.set(keyHint, {
+				completionTokens: existing.completionTokens + sessionStat.completionTokens,
+				promptTokens: existing.promptTokens + sessionStat.promptTokens,
+				requestCount: existing.requestCount + sessionStat.requestCount,
+			});
+		} else {
+			merged.set(keyHint, { ...sessionStat });
+		}
+	}
+	return merged;
 }
 
 // ─── Key state query ──────────────────────────────────────────────────────────
@@ -1737,9 +1798,10 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 			return vaultUrl;
 		};
 
-		// Read 24h usage stats once — used by selectNextKey to balance output tokens
+		// Read 24h usage stats merged with the in-process session accumulator so
+		// tokens spent earlier in this run are visible even before remote writes land.
 		const statsMap = isAuto
-			? await readProviderUsageStats24h(providerName)
+			? await readProviderUsageStats24hMerged(providerName)
 			: new Map<string, KeyStats24h>();
 
 		// Maximum number of key rotation attempts before giving up
@@ -1954,6 +2016,10 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 					keyOwner: resolvedKeyOwner,
 				});
 				if (inputTokens > 0 || outputTokens > 0) {
+					// Update session accumulator synchronously so the next key
+					// selection in this process reflects these tokens immediately,
+					// without waiting for the remote/file write to complete.
+					addToSessionStats(providerName, maskedKey, inputTokens, outputTokens);
 					context.keypoolEventHandler?.({
 						type: "usage-recorded",
 						providerName,
