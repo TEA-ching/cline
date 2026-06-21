@@ -25,6 +25,7 @@ import { createTool } from '@cline/agents'
 import { z } from 'zod'
 import type { AgentTool } from '@cline/agents'
 import type { VirtualFS } from '@/vfs/virtual-fs'
+import type * as TypeScript from 'typescript'
 import { runInSandbox } from './js-sandbox'
 
 const MATH_CTX = {
@@ -518,103 +519,76 @@ export function createOptionalTools(
           }
 
           // Create compiler configuration
-          const compilerOptions: ts.CompilerOptions = {
+          const compilerOptions: TypeScript.CompilerOptions = {
             target: targetMap[target] || ts.ScriptTarget.ES2015,
             module: moduleMap[module] || ts.ModuleKind.CommonJS,
             strict: strict ?? true,
             esModuleInterop: true,
-            skipLibCheck: true,
+            skipLibCheck: false,
             allowJs: false,
           }
 
-          // Create a source file from the code
-          const sourceFile = ts.createSourceFile(
-            file_path,
-            code,
-            ts.ScriptTarget.Latest,
-            true
-          )
-
-          // Create a program for type checking
-          const host: ts.CompilerHost = {
-            getSourceFile: (fileName: string) => {
-              if (fileName === file_path) {
-                return sourceFile
+          // ts.sys is undefined in edge/worker environments (no filesystem access).
+          // Use transpileModule (syntactic check + JS output, no semantic type-checking)
+          // when sys is unavailable; fall back to full type-checking via createProgram
+          // when sys is present (Node.js / Bun with real filesystem).
+          if (!ts.sys) {
+            const result = ts.transpileModule(code, {
+              compilerOptions,
+              fileName: file_path,
+              reportDiagnostics: true,
+            })
+            const diags = result.diagnostics ?? []
+            if (diags.length > 0) {
+              return {
+                success: false,
+                diagnostics: diags.map(d => ({
+                  message: typeof d.messageText === 'string'
+                    ? d.messageText
+                    : d.messageText.messageText,
+                  line: 0,
+                  character: 0,
+                  severity: ts.DiagnosticCategory[d.category].toLowerCase(),
+                })),
+                error: 'TypeScript compilation failed',
+                message: 'Compilation failed with diagnostics (syntactic check only)',
               }
-              // Try to load lib files from TypeScript installation
-              if (fileName.endsWith('.d.ts')) {
-                try {
-                  const libPath = ts.getDefaultLibFilePath({ target: compilerOptions.target })
-                  if (fileName === libPath) {
-                    // Read the actual lib file content
-                    try {
-                      const libContent = require('fs').readFileSync(libPath, 'utf8')
-                      return ts.createSourceFile(fileName, libContent, ts.ScriptTarget.Latest)
-                    } catch {
-                      // Fallback to minimal lib
-                      return ts.createSourceFile(fileName, `
-                        declare const Array: any;
-                        declare const Object: any;
-                        declare const String: any;
-                        declare const Number: any;
-                        declare const Boolean: any;
-                        declare const Symbol: any;
-                        declare function require(id: string): any;
-                        declare const module: { exports: any };
-                        declare const exports: any;
-                      `, ts.ScriptTarget.Latest)
-                    }
-                  }
-                } catch {
-                  // Fallback to empty file
-                }
-              }
-              return undefined
-            },
-            writeFile: (fileName: string, text: string) => {},
-            getDefaultLibFileName: (options: any) => ts.getDefaultLibFilePath(options),
-            useCaseSensitiveFileNames: () => true,
-            getCanonicalFileName: (fileName: string) => fileName,
-            getCurrentDirectory: () => '',
-            getNewLine: () => '\n',
-            fileExists: (fileName: string) => fileName === file_path || fileName.endsWith('.d.ts'),
-            readFile: (fileName: string) => {
-              if (fileName === file_path) {
-                return code
-              }
-              if (fileName.endsWith('.d.ts')) {
-                try {
-                  const libPath = ts.getDefaultLibFilePath({ target: compilerOptions.target })
-                  if (fileName === libPath) {
-                    return require('fs').readFileSync(libPath, 'utf8')
-                  }
-                } catch {
-                  return `
-                    declare const Array: any;
-                    declare const Object: any;
-                    declare const String: any;
-                    declare const Number: any;
-                    declare const Boolean: any;
-                    declare const Symbol: any;
-                    declare function require(id: string): any;
-                    declare const module: { exports: any };
-                    declare const exports: any;
-                  `
-                }
-              }
-              return undefined
-            },
-            directoryExists: () => true,
-            getDirectories: () => [],
+            }
+            return {
+              success: true,
+              compiled_code: result.outputText,
+              diagnostics: [],
+              message: 'TypeScript transpilation successful (syntactic check only — no semantic type-checking in this environment)',
+            }
           }
 
-          // Create program and check for errors
-          const program = ts.createProgram({
-            rootNames: [file_path],
-            options: compilerOptions,
-            host: host,
-          })
+          // Full type-checking path: ts.sys is available, use real TypeScript lib files.
+          // Spread is intentionally avoided: createCompilerHost returns prototype-based
+          // methods that are not own-enumerable and would be lost by object spread.
+          const sourceFile = ts.createSourceFile(file_path, code, ts.ScriptTarget.Latest, true)
+          const defaultHost = ts.createCompilerHost(compilerOptions)
+          const compilerHost: TypeScript.CompilerHost = {
+            getSourceFile: (fileName: string, languageVersion: TypeScript.ScriptTarget | TypeScript.CreateSourceFileOptions) =>
+              fileName === file_path
+                ? sourceFile
+                : defaultHost.getSourceFile(fileName, languageVersion),
+            writeFile: () => {},
+            getDefaultLibFileName: (opts: TypeScript.CompilerOptions) => defaultHost.getDefaultLibFileName(opts),
+            useCaseSensitiveFileNames: () => defaultHost.useCaseSensitiveFileNames(),
+            getCanonicalFileName: (fileName: string) => defaultHost.getCanonicalFileName(fileName),
+            getCurrentDirectory: () => defaultHost.getCurrentDirectory(),
+            getNewLine: () => defaultHost.getNewLine(),
+            fileExists: (fileName: string) => defaultHost.fileExists(fileName),
+            readFile: (fileName: string) => defaultHost.readFile(fileName),
+            directoryExists: defaultHost.directoryExists
+              ? (dirName: string) => defaultHost.directoryExists!(dirName)
+              : undefined,
+            getDirectories: defaultHost.getDirectories
+              ? (p: string) => defaultHost.getDirectories!(p)
+              : undefined,
+          }
 
+          const program = ts.createProgram({ rootNames: [file_path], options: compilerOptions, host: compilerHost })
           const diagnostics = ts.getPreEmitDiagnostics(program)
 
           if (diagnostics.length > 0) {
@@ -631,15 +605,10 @@ export function createOptionalTools(
             }
           }
 
-          // Emit JavaScript code
           let compiledCode = ''
-          const writeFileCallback = (fileName: string, data: string) => {
-            if (fileName.endsWith('.js')) {
-              compiledCode = data
-            }
-          }
-
-          const emitResult = program.emit(undefined, writeFileCallback)
+          const emitResult = program.emit(undefined, (fileName, data) => {
+            if (fileName.endsWith('.js')) compiledCode = data
+          })
 
           if (emitResult.emitSkipped || emitResult.diagnostics.length > 0) {
             return {
