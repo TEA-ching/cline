@@ -392,7 +392,7 @@ export class KeypoolLiveHandler implements ApiHandler {
 					provider: vaultProviderName,
 					modelId: vaultModelId || config.model.id,
 					keyOwner: config.keyOwner,
-					keyHint: config.apiKey.slice(-8),
+					keyHint: `***${config.apiKey.slice(-8)}`,
 					promptTokens,
 					completionTokens,
 				});
@@ -409,7 +409,7 @@ export class KeypoolLiveHandler implements ApiHandler {
 					provider: vaultProviderName,
 					modelId: vaultModelId || config.model.id,
 					keyOwner: config.keyOwner,
-					keyHint: config.apiKey.slice(-8),
+					keyHint: `***${config.apiKey.slice(-8)}`,
 					errorCode: e?.status ?? e?.statusCode ?? null,
 				});
 
