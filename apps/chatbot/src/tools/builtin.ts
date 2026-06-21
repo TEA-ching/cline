@@ -102,11 +102,55 @@ export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
      * ```
      */
    },
-  {
-    id: 'search_wikipedia',
-    name: 'Wikipedia',
-    description: 'Search and extract articles from Wikipedia in various languages using the Wikipedia REST API.',
-    icon: '📚',
-    tools: ['search_wikipedia'],
-  },
+   {
+     id: 'search_wikipedia',
+     name: 'Wikipedia',
+     description: 'Search and extract articles from Wikipedia in various languages using the Wikipedia REST API.',
+     icon: '📚',
+     tools: ['search_wikipedia'],
+   },
+
+   /** Test prompt
+    * ```markdown
+    * 1. Valide ce code TypeScript simple :
+    *    ```typescript
+    *    function add(a: number, b: number): number {
+    *      return a + b;
+    *    }
+    *    const result = add(2, 3);
+    *    console.log(result);
+    *    ```
+    *
+    * 2. Teste la détection d'erreurs de typage :
+    *    ```typescript
+    *    const name: string = "Alice";
+    *    name = 42; // Devrait générer une erreur de type
+    *    ```
+    *
+    * 3. Valide un code avec interface et classe :
+    *    ```typescript
+    *    interface User {
+    *      id: number;
+    *      name: string;
+    *      email: string;
+    *    }
+    *
+    *    class UserService {
+    *      getUser(id: number): User {
+    *        return { id, name: "John Doe", email: "john@example.com" };
+    *      }
+    *    }
+    *    ```
+    *
+    * 4. Teste la compilation avec différentes cibles (ES2015, ES2020)
+    *    et différents systèmes de modules (CommonJS, ES2015)
+    * ```
+    */
+   {
+     id: 'validate_typescript',
+     name: 'TypeScript Validator',
+     description: 'Validate TypeScript code compilation using the TypeScript compiler API. Supports various ECMAScript targets and module systems.',
+     icon: '🔍',
+     tools: ['validate_typescript'],
+   },
 ]

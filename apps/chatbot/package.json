@@ -19,6 +19,8 @@
     "@jitl/quickjs-singlefile-browser-release-asyncify": "^0.32.0",
     "@jitl/quickjs-singlefile-browser-release-sync": "^0.32.0",
     "@tailwindcss/vite": "^4.3.0",
+    "embed-eslint": "^3.1.0",
+    "embed-typescript": "^3.1.0",
     "idb": "^8.0.0",
     "lucide-react": "^1.17.0",
     "quickjs-emscripten": "^0.32.0",

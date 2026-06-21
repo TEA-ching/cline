@@ -460,5 +460,217 @@ export function createOptionalTools(
     }))
   }
 
+  if (toolId.includes('validate_typescript')) {
+    tools.push(createTool({
+      name: 'validate_typescript',
+      description:
+        'Validate TypeScript code compilation using the TypeScript compiler API. ' +
+        'Supports basic compilation with various target and module options. ' +
+        'Returns compilation success status, JavaScript output, and any diagnostics.',
+      inputSchema: z.object({
+        code: z.string().describe('TypeScript code to validate'),
+        file_path: z.string().optional().default('src/index.ts').describe(
+          'Virtual file path for the TypeScript source (e.g., "src/index.ts")'
+        ),
+        target: z.enum(['ES3', 'ES5', 'ES2015', 'ES2016', 'ES2017', 'ES2018', 'ES2019', 'ES2020', 'ES2021', 'ES2022', 'ES2023', 'ES2024', 'ES2025', 'ESNext'])
+          .default('ES2015').describe('ECMAScript target version'),
+        module: z.enum(['None', 'CommonJS', 'AMD', 'UMD', 'System', 'ES2015', 'ES2020', 'ES2022', 'ESNext', 'Node16', 'Node18', 'Node20', 'NodeNext'])
+          .default('CommonJS').describe('Module system target'),
+        strict: z.boolean().optional().default(true).describe('Enable strict type-checking options'),
+      }),
+      execute: async ({ code, file_path, target, module, strict }) => {
+        try {
+          // Import TypeScript compiler API
+          const ts = await import('typescript')
+
+          // Convert target and module strings to TypeScript enums
+          const targetMap: Record<string, any> = {
+            'ES3': ts.ScriptTarget.ES3,
+            'ES5': ts.ScriptTarget.ES5,
+            'ES2015': ts.ScriptTarget.ES2015,
+            'ES2016': ts.ScriptTarget.ES2016,
+            'ES2017': ts.ScriptTarget.ES2017,
+            'ES2018': ts.ScriptTarget.ES2018,
+            'ES2019': ts.ScriptTarget.ES2019,
+            'ES2020': ts.ScriptTarget.ES2020,
+            'ES2021': ts.ScriptTarget.ES2021,
+            'ES2022': ts.ScriptTarget.ES2022,
+            'ES2023': ts.ScriptTarget.ES2023,
+            'ES2024': ts.ScriptTarget.ES2024,
+            'ES2025': ts.ScriptTarget.ES2025,
+            'ESNext': ts.ScriptTarget.ESNext,
+          }
+
+          const moduleMap: Record<string, any> = {
+            'None': ts.ModuleKind.None,
+            'CommonJS': ts.ModuleKind.CommonJS,
+            'AMD': ts.ModuleKind.AMD,
+            'UMD': ts.ModuleKind.UMD,
+            'System': ts.ModuleKind.System,
+            'ES2015': ts.ModuleKind.ES2015,
+            'ES2020': ts.ModuleKind.ES2020,
+            'ES2022': ts.ModuleKind.ES2022,
+            'ESNext': ts.ModuleKind.ESNext,
+            'Node16': ts.ModuleKind.Node16,
+            'Node18': ts.ModuleKind.Node18,
+            'Node20': ts.ModuleKind.Node20,
+            'NodeNext': ts.ModuleKind.NodeNext,
+          }
+
+          // Create compiler configuration
+          const compilerOptions: ts.CompilerOptions = {
+            target: targetMap[target] || ts.ScriptTarget.ES2015,
+            module: moduleMap[module] || ts.ModuleKind.CommonJS,
+            strict: strict ?? true,
+            esModuleInterop: true,
+            skipLibCheck: true,
+            allowJs: false,
+          }
+
+          // Create a source file from the code
+          const sourceFile = ts.createSourceFile(
+            file_path,
+            code,
+            ts.ScriptTarget.Latest,
+            true
+          )
+
+          // Create a program for type checking
+          const host: ts.CompilerHost = {
+            getSourceFile: (fileName: string) => {
+              if (fileName === file_path) {
+                return sourceFile
+              }
+              // Try to load lib files from TypeScript installation
+              if (fileName.endsWith('.d.ts')) {
+                try {
+                  const libPath = ts.getDefaultLibFilePath({ target: compilerOptions.target })
+                  if (fileName === libPath) {
+                    // Read the actual lib file content
+                    try {
+                      const libContent = require('fs').readFileSync(libPath, 'utf8')
+                      return ts.createSourceFile(fileName, libContent, ts.ScriptTarget.Latest)
+                    } catch {
+                      // Fallback to minimal lib
+                      return ts.createSourceFile(fileName, `
+                        declare const Array: any;
+                        declare const Object: any;
+                        declare const String: any;
+                        declare const Number: any;
+                        declare const Boolean: any;
+                        declare const Symbol: any;
+                        declare function require(id: string): any;
+                        declare const module: { exports: any };
+                        declare const exports: any;
+                      `, ts.ScriptTarget.Latest)
+                    }
+                  }
+                } catch {
+                  // Fallback to empty file
+                }
+              }
+              return undefined
+            },
+            writeFile: (fileName: string, text: string) => {},
+            getDefaultLibFileName: (options: any) => ts.getDefaultLibFilePath(options),
+            useCaseSensitiveFileNames: () => true,
+            getCanonicalFileName: (fileName: string) => fileName,
+            getCurrentDirectory: () => '',
+            getNewLine: () => '\n',
+            fileExists: (fileName: string) => fileName === file_path || fileName.endsWith('.d.ts'),
+            readFile: (fileName: string) => {
+              if (fileName === file_path) {
+                return code
+              }
+              if (fileName.endsWith('.d.ts')) {
+                try {
+                  const libPath = ts.getDefaultLibFilePath({ target: compilerOptions.target })
+                  if (fileName === libPath) {
+                    return require('fs').readFileSync(libPath, 'utf8')
+                  }
+                } catch {
+                  return `
+                    declare const Array: any;
+                    declare const Object: any;
+                    declare const String: any;
+                    declare const Number: any;
+                    declare const Boolean: any;
+                    declare const Symbol: any;
+                    declare function require(id: string): any;
+                    declare const module: { exports: any };
+                    declare const exports: any;
+                  `
+                }
+              }
+              return undefined
+            },
+            directoryExists: () => true,
+            getDirectories: () => [],
+          }
+
+          // Create program and check for errors
+          const program = ts.createProgram({
+            rootNames: [file_path],
+            options: compilerOptions,
+            host: host,
+          })
+
+          const diagnostics = ts.getPreEmitDiagnostics(program)
+
+          if (diagnostics.length > 0) {
+            return {
+              success: false,
+              diagnostics: diagnostics.map(d => ({
+                message: d.messageText.toString(),
+                line: d.start ? sourceFile.getLineAndCharacterOfPosition(d.start).line + 1 : 0,
+                character: d.start ? sourceFile.getLineAndCharacterOfPosition(d.start).character + 1 : 0,
+                severity: ts.DiagnosticCategory[d.category].toLowerCase(),
+              })),
+              error: 'TypeScript compilation failed',
+              message: 'Compilation failed with diagnostics'
+            }
+          }
+
+          // Emit JavaScript code
+          let compiledCode = ''
+          const writeFileCallback = (fileName: string, data: string) => {
+            if (fileName.endsWith('.js')) {
+              compiledCode = data
+            }
+          }
+
+          const emitResult = program.emit(undefined, writeFileCallback)
+
+          if (emitResult.emitSkipped || emitResult.diagnostics.length > 0) {
+            return {
+              success: false,
+              diagnostics: emitResult.diagnostics.map(d => ({
+                message: d.messageText.toString(),
+                line: d.start ? sourceFile.getLineAndCharacterOfPosition(d.start).line + 1 : 0,
+                character: d.start ? sourceFile.getLineAndCharacterOfPosition(d.start).character + 1 : 0,
+                severity: ts.DiagnosticCategory[d.category].toLowerCase(),
+              })),
+              error: 'TypeScript emission failed',
+              message: 'Emission failed with diagnostics'
+            }
+          }
+
+          return {
+            success: true,
+            compiled_code: compiledCode,
+            diagnostics: [],
+            message: 'TypeScript compilation successful'
+          }
+        } catch (error) {
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to validate TypeScript code',
+            message: 'TypeScript validation error'
+          }
+        }
+      },
+    }))
+  }
+
   return tools
 }
