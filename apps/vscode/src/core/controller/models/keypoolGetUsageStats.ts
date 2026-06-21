@@ -5,6 +5,7 @@ import { KeypoolStatsRequest, KeypoolUsageStat, KeypoolUsageStatsResponse } from
 import { KeypoolUsageDb, UsagePeriod } from "@/core/keypoollive/KeypoolUsageDb"
 import { Logger } from "@/shared/services/Logger"
 import type { Controller } from ".."
+import { keypoolInjectEnvConfig } from "./keypoolInjectEnvConfig"
 
 const VALID_PERIODS: UsagePeriod[] = ["hour", "day", "week", "month"]
 
@@ -19,10 +20,11 @@ function toPeriod(raw: string): UsagePeriod {
  * Returns per-key usage statistics for the requested time period.
  */
 export async function keypoolGetUsageStats(
-	_controller: Controller,
+	controller: Controller,
 	request: KeypoolStatsRequest,
 ): Promise<KeypoolUsageStatsResponse> {
 	try {
+		keypoolInjectEnvConfig(controller)
 		const period = toPeriod(request.period)
 		const rows = await KeypoolUsageDb.getUsageStats(period)
 		const stats: KeypoolUsageStat[] = rows.map((r) =>

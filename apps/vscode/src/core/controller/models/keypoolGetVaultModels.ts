@@ -7,28 +7,21 @@ import { loadAiVault } from "@/core/keypoollive/AiVault"
 import { buildModelDescriptions } from "@/core/keypoollive/KeyPool"
 import { Logger } from "@/shared/services/Logger"
 import type { Controller } from ".."
+import { keypoolInjectEnvConfig } from "./keypoolInjectEnvConfig"
 
 /**
  * Returns the list of models available in the KeypoolLive vault.
  */
 export async function keypoolGetVaultModels(controller: Controller, _request: EmptyRequest): Promise<KeypoolVaultModelsResponse> {
 	try {
+		keypoolInjectEnvConfig(controller)
+
 		const apiConfig = controller.stateManager.getApiConfiguration()
 		const vaultUrl = apiConfig.keypoolliveVaultUrl
-		const remoteStorageUrl = apiConfig.keypoolliveRemoteStorageUrl
 		const secret = apiConfig.keypoolliveSecret
 
 		if (!vaultUrl || !secret) {
 			return KeypoolVaultModelsResponse.create({ models: [] })
-		}
-
-		// Inject the secret so loadAiVault can read process.env.KEYPOOL_LIVE_SECRET
-		process.env.KEYPOOL_LIVE_SECRET = secret
-
-		// If remoteStorageUrl is set, we need to inject it so KeypoolUsageDb can read process.env.KEYPOOL_LIVE_REMOTE_STORAGE_URL
-		if (remoteStorageUrl) {
-			Logger.info("[keypoolGetVaultModels] Injecting remote storage URL for KeypoolLive:", remoteStorageUrl)
-			process.env.KEYPOOL_LIVE_REMOTE_STORAGE_URL = remoteStorageUrl
 		}
 		const vault = await loadAiVault(vaultUrl)
 		const kplConfig = {

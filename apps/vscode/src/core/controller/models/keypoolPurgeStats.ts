@@ -6,15 +6,17 @@ import { KeypoolPurgeStatsResponse } from "@shared/proto/cline/models"
 import { KeypoolUsageDb } from "@/core/keypoollive/KeypoolUsageDb"
 import { Logger } from "@/shared/services/Logger"
 import type { Controller } from ".."
+import { keypoolInjectEnvConfig } from "./keypoolInjectEnvConfig"
 
 /**
  * Purges all usage and error statistics stored in the NDJSON files.
  */
 export async function keypoolPurgeStats(
-	_controller: Controller,
+	controller: Controller,
 	_request: EmptyRequest,
 ): Promise<KeypoolPurgeStatsResponse> {
 	try {
+		keypoolInjectEnvConfig(controller)
 		KeypoolUsageDb.purge()
 		Logger.info("[keypoolPurgeStats] Statistics purged successfully.")
 		return KeypoolPurgeStatsResponse.create({ success: true })
