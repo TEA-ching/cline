@@ -2,15 +2,22 @@
 // Copyright (c) 2024-2026 Ronan Le Meillat - SCTG Development
 //
 // Key rotation state hook — mirrors KeyPool.ts (apps/vscode) and
-// keypoollive-browser.ts (sdk/packages/llms) for the browser chatbot.
+// keypoollive.ts (sdk/packages/llms) for the browser chatbot.
 //
-// Persists the per-provider key index in localStorage so rotation survives
-// page refreshes. Filters out expired keys before rotation.
+// Selection strategy (same as VSCode and SDK):
+//   1. Fetch 24h usage stats from the remote worker on mount.
+//   2. Sort eligible (non-expired, non-failed) keys by:
+//        min completion tokens → min prompt tokens → min request count
+//   3. Expose the cheapest key as currentKey.
+//   4. markKeyFailedAndRotate() blacklists the current key for this session
+//      and re-derives the next best key automatically.
+//   5. rotateKey() advances the selection index within the sorted pool
+//      (useful for manual round-robin when the caller wants a different key).
 
-import { useCallback, useMemo } from 'react'
-import { useLocalStorageState } from '@/hooks/useLocalStorageState'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AiProvider, AiKey } from '@/types/ai-config'
-import { maskKey } from '@/lib/keypool-usage'
+import { getUsageStats, maskKey } from '@/lib/keypool-usage'
+import type { UsageStat } from '@/lib/keypool-usage'
 
 export interface KeypoolRotationState {
   /** The currently selected key object, or null if the provider has no keys. */
@@ -21,49 +28,105 @@ export interface KeypoolRotationState {
   currentKeyOwner: string
   /** Number of non-expired keys available for this provider. */
   poolSize: number
-  /** Rotate to the next key in round-robin order. */
+  /** Advance the selection to the next key in the sorted pool. */
   rotateKey: () => void
-  /** Mark the current key as failed and immediately rotate to the next one. */
+  /** Mark the current key as failed and move to the next available key. */
   markKeyFailedAndRotate: () => void
 }
 
 /**
- * Manages key rotation for a single vault provider.
+ * Manages key selection for a single vault provider.
  *
- * @param providerKey - Vault provider name (e.g. "openai"), used as localStorage key prefix.
+ * Keys are sorted by 24-hour usage statistics fetched from the remote worker
+ * so that the key with the lowest token consumption is preferred, matching
+ * the strategy used in apps/vscode KeyPool.ts and sdk keypoollive.ts.
+ * Falls back to original vault order when no stats are available.
+ *
+ * @param providerKey - Vault provider name (e.g. "openai"), used to filter stats.
  * @param provider    - The AiProvider object from the decrypted vault, or null if not loaded.
  */
 export function useKeypoolRotation(
   providerKey: string,
   provider: AiProvider | null,
 ): KeypoolRotationState {
-  // Persist rotation index across page refreshes
-  const [rawIndex, setRawIndex] = useLocalStorageState<number>(
-    `kpl_idx_${providerKey}`,
-    0,
-  )
+  // 24h usage stats fetched once per mount / provider change
+  const [stats, setStats] = useState<UsageStat[]>([])
 
-  // Only rotate among non-expired keys; fall back to all keys if all are expired
+  // Keys that failed in this session — blacklisted until page reload
+  const [failedKeys, setFailedKeys] = useState<Set<string>>(() => new Set())
+
+  // Manual rotation offset within the sorted pool
+  const [rotationOffset, setRotationOffset] = useState(0)
+
+  // Fetch stats whenever the provider changes
+  const fetchedForRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (fetchedForRef.current === providerKey) return
+    fetchedForRef.current = providerKey
+    setRotationOffset(0)
+    setFailedKeys(new Set())
+    getUsageStats('day')
+      .then(setStats)
+      .catch(() => setStats([]))
+  }, [providerKey])
+
+  // Build the eligible key pool (non-expired, not blacklisted this session)
   const pool: AiKey[] = useMemo(() => {
     const keys = provider?.keys ?? []
-    const usable = keys.filter(k => k.type !== 'expired')
-    return usable.length > 0 ? usable : keys
-  }, [provider])
+    const nonExpired = keys.filter(k => k.type !== 'expired')
+    const withoutFailed = nonExpired.filter(k => !failedKeys.has(k.key))
+    // Progressive fallback so there is always at least one key to try
+    if (withoutFailed.length > 0) return withoutFailed
+    if (nonExpired.length > 0) return nonExpired
+    return keys
+  }, [provider, failedKeys])
 
-  const effectiveIndex = pool.length > 0 ? rawIndex % pool.length : 0
-  const currentKey = pool[effectiveIndex] ?? null
+  // Build a per-key-hint usage map (normalize by stripping leading "***")
+  const statsMap = useMemo(() => {
+    const m = new Map<string, { out: number; inp: number; req: number }>()
+    for (const s of stats) {
+      if (s.provider !== providerKey) continue
+      // Normalize: "***abc12345" → "abc12345"
+      const hint = s.keyHint.replace(/^\*+/, '')
+      const ex = m.get(hint)
+      if (ex) {
+        ex.out += s.completionTokens
+        ex.inp += s.promptTokens
+        ex.req += s.requestCount
+      } else {
+        m.set(hint, { out: s.completionTokens, inp: s.promptTokens, req: s.requestCount })
+      }
+    }
+    return m
+  }, [stats, providerKey])
+
+  // Sort pool by min completion tokens → min prompt tokens → min requests
+  const sortedPool: AiKey[] = useMemo(() => {
+    if (pool.length <= 1) return pool
+    const hasAnyStats = pool.some(k => statsMap.has(k.key.slice(-8)))
+    if (!hasAnyStats) return pool   // no stats yet → keep vault order
+    return [...pool].sort((a, b) => {
+      const sa = statsMap.get(a.key.slice(-8)) ?? { out: 0, inp: 0, req: 0 }
+      const sb = statsMap.get(b.key.slice(-8)) ?? { out: 0, inp: 0, req: 0 }
+      if (sa.out !== sb.out) return sa.out - sb.out
+      if (sa.inp !== sb.inp) return sa.inp - sb.inp
+      return sa.req - sb.req
+    })
+  }, [pool, statsMap])
+
+  const effectiveIndex = sortedPool.length > 0 ? rotationOffset % sortedPool.length : 0
+  const currentKey = sortedPool[effectiveIndex] ?? null
 
   const rotateKey = useCallback(() => {
-    if (pool.length <= 1) return
-    setRawIndex(prev => {
-      const next = (prev + 1) % pool.length
-      return next
-    })
-  }, [pool.length, setRawIndex])
+    if (sortedPool.length <= 1) return
+    setRotationOffset(prev => (prev + 1) % sortedPool.length)
+  }, [sortedPool.length])
 
   const markKeyFailedAndRotate = useCallback(() => {
-    rotateKey()
-  }, [rotateKey])
+    if (!currentKey) return
+    setFailedKeys(prev => new Set([...prev, currentKey.key]))
+    setRotationOffset(0)  // reset offset; the failed key is excluded from the next pool
+  }, [currentKey])
 
   const currentKeyHint = currentKey ? maskKey(currentKey.key) : '—'
   const currentKeyOwner = currentKey?.owner ?? 'unknown'
