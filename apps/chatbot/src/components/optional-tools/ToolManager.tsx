@@ -57,27 +57,27 @@ export const ToolManager: React.FC<Props> = ({ enabledSkills, onToggle, onClose 
 
         {/* Tool list */}
         <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
-          {BUILTIN_OPTONAL_TOOLS.map(skill => {
-            const enabled = enabledSkills.includes(skill.id)
+          {BUILTIN_OPTONAL_TOOLS.map(tool => {
+            const enabled = enabledSkills.includes(tool.id)
             return (
               <button
-                key={skill.id}
+                key={tool.id}
                 type="button"
                 className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-all ${
                   enabled
                     ? 'border-primary-300 bg-primary-50 shadow-sm'
                     : 'border-default-200 bg-default-50 hover:border-default-300 hover:bg-default-100'
                 }`}
-                onClick={() => onToggle(skill.id)}
+                onClick={() => onToggle(tool.id)}
               >
-                <span className="text-xl leading-none mt-0.5">{skill.icon}</span>
+                <span className="text-xl leading-none mt-0.5">{tool.icon}</span>
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm font-medium ${enabled ? 'text-primary-700' : 'text-default-700'}`}>
-                    {skill.name}
+                    {tool.name}
                   </p>
-                  <p className="text-xs text-default-400 mt-0.5 leading-snug">{skill.description}</p>
+                  <p className="text-xs text-default-400 mt-0.5 leading-snug">{tool.description}</p>
                   <p className="text-xs text-default-300 mt-1 font-mono">
-                    Tool: {skill.tools.join(', ')}
+                    Tool: {tool.tools.join(', ')}
                   </p>
                 </div>
                 <div className={`shrink-0 w-4 h-4 rounded-full mt-0.5 transition-colors flex items-center justify-center ${
