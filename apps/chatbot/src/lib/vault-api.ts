@@ -1,6 +1,7 @@
 // MIT License
 // Copyright (c) 2024-2026 Ronan Le Meillat - SCTG Development
 import type { AiConfig } from '@/types/ai-config'
+import { decryptAiConfig } from './crypto'
 
 const VAULT_URL = import.meta.env.KEYPOOL_VAULT_URL as string
 const SESSION_KEY = 'ai_vault_token'
@@ -9,12 +10,12 @@ const SESSION_KEY = 'ai_vault_token'
  * GET vault URL from environment variable KEYPOOL_VAULT_URL
  * - legacy usage define import.meta.env.KEYPOOL_VAULT_URL = 'https://vault.exemple.com/path/ai.json.enc'
  * - new usage define import.meta.env.KEYPOOL_VAULT_URL = 'https://vault.exemple.com/path'
- * @returns vault URL
+ * @returns vault URL for encrypted config
  */
 export function getVaultUrl(): string {
   // Extract the base URL from the environment variable
-  const vaultUrl = VAULT_URL.replace(/\/ai\.json\.enc$/, '')
-  return `${vaultUrl}/ai.json`  
+  const vaultUrl = VAULT_URL.replace(/\/ai\.json(\.enc)?$/, '')
+  return `${vaultUrl}/ai.json.enc`
 }
 
 
@@ -35,6 +36,7 @@ export const VaultApi = {
     const token = this.getToken()
     if (!token) throw new Error('No authorization token')
 
+    // Use the encrypted endpoint to save CPU on the Cloudflare Worker
     const res = await fetch(`${getVaultUrl()}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -44,6 +46,8 @@ export const VaultApi = {
       throw new Error(body.message ?? body.error ?? `HTTP ${res.status}`)
     }
 
-    return res.json() as Promise<AiConfig>
+    const encryptedConfig = await res.text()
+    const decryptedConfig = await decryptAiConfig(encryptedConfig, token)
+    return JSON.parse(decryptedConfig) as AiConfig
   },
 }
