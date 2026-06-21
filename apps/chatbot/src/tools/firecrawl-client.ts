@@ -129,7 +129,7 @@ export async function searchWithFirecrawl(
     if (opts?.allowedDomains) body.allowedDomains = opts.allowedDomains
     if (opts?.blockedDomains) body.blockedDomains = opts.blockedDomains
 
-    const response = await fetch(`${config.endpoint}/v1/search`, {
+    const response = await fetch(`${config.endpoint}/search`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -146,15 +146,17 @@ export async function searchWithFirecrawl(
     }
 
     const data = (await response.json()) as {
-      data?: Array<{
-        title?: string
-        url?: string
-        description?: string
-        markdown?: string
-      }>
+      data?: {
+        web?: Array<{
+          title?: string
+          url?: string
+          description?: string
+          markdown?: string
+        }>
+      }
     }
 
-    return (data.data ?? []).map((item) => ({
+    return (data.data?.web ?? []).map((item) => ({
       title: item.title ?? '',
       url: item.url ?? '',
       description: item.description,

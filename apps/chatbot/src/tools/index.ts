@@ -422,6 +422,10 @@ export function createBrowserTools(
     },
   })
 
+  /**
+   * Sample test prompts for the tools:
+   * `recherche sur le web une liste de sites météo français`
+   */
   const searchWeb = createTool({
     name: 'search_web',
     description: 'Search the web and return results with titles, URLs, and markdown content.',
