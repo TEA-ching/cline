@@ -21,11 +21,14 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+import { Calculator, CalendarClock, Lock, Dice6, Palette, Zap, BookOpen, Search } from 'lucide-react'
+import type { ElementType } from 'react'
+
 export interface OptionalToolMeta {
   id: string
   name: string
   description: string
-  icon: string
+  icon: ElementType
   tools: string[]
 }
 
@@ -34,35 +37,35 @@ export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
     id: 'calculator',
     name: 'Calculator',
     description: 'Evaluate math expressions: sin, cos, sqrt, log, pow, etc. Constants PI and E.',
-    icon: '🧮',
+    icon: Calculator,
     tools: ['calculate'],
   },
   {
     id: 'datetime',
     name: 'Date & Time',
     description: 'Get current date/time in various formats and IANA timezones.',
-    icon: '🕐',
+    icon: CalendarClock,
     tools: ['get_datetime'],
   },
   {
     id: 'encoding',
     name: 'Encoding Tools',
     description: 'Base64, URL-encode, hex encode/decode; JSON format and minify.',
-    icon: '🔐',
+    icon: Lock,
     tools: ['encode_decode'],
   },
   {
     id: 'uuid',
     name: 'ID Generator',
     description: 'Generate UUID v4, hex tokens, or random alphanumeric strings.',
-    icon: '🎲',
+    icon: Dice6,
     tools: ['generate_id'],
   },
   {
     id: 'color',
     name: 'Color Tools',
     description: 'Convert colors between hex, RGB, and HSL formats.',
-    icon: '🎨',
+    icon: Palette,
     tools: ['color_convert'],
   },
   {
@@ -74,7 +77,7 @@ export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
       'Files created with vfs.write() appear instantly in the file manager. ' +
       'Network access (fetch) is available when allow_network: true is passed. ' +
       'CPU timeout: 30 s (sync) / 120 s (with network). No DOM, no Node.js APIs.',
-    icon: '⚡',
+    icon: Zap,
     tools: ['execute_js'],
     /**
      * Tests prompts (french):
@@ -101,56 +104,56 @@ export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
      * Note: Utilise TypeScript et ajoute des logs détaillés.
      * ```
      */
-   },
-   {
-     id: 'search_wikipedia',
-     name: 'Wikipedia',
-     description: 'Search and extract articles from Wikipedia in various languages using the Wikipedia REST API.',
-     icon: '📚',
-     tools: ['search_wikipedia'],
-   },
+  },
+  {
+    id: 'search_wikipedia',
+    name: 'Wikipedia',
+    description: 'Search and extract articles from Wikipedia in various languages using the Wikipedia REST API.',
+    icon: BookOpen,
+    tools: ['search_wikipedia'],
+  },
 
-   /** Test prompt
-    * ```markdown
-    * 1. Valide ce code TypeScript simple :
-    *    ```typescript
-    *    function add(a: number, b: number): number {
-    *      return a + b;
-    *    }
-    *    const result = add(2, 3);
-    *    console.log(result);
-    *    ```
-    *
-    * 2. Teste la détection d'erreurs de typage :
-    *    ```typescript
-    *    const name: string = "Alice";
-    *    name = 42; // Devrait générer une erreur de type
-    *    ```
-    *
-    * 3. Valide un code avec interface et classe :
-    *    ```typescript
-    *    interface User {
-    *      id: number;
-    *      name: string;
-    *      email: string;
-    *    }
-    *
-    *    class UserService {
-    *      getUser(id: number): User {
-    *        return { id, name: "John Doe", email: "john@example.com" };
-    *      }
-    *    }
-    *    ```
-    *
-    * 4. Teste la compilation avec différentes cibles (ES2015, ES2020)
-    *    et différents systèmes de modules (CommonJS, ES2015)
-    * ```
-    */
-   {
-     id: 'validate_typescript',
-     name: 'TypeScript Validator',
-     description: 'Validate TypeScript code compilation using the TypeScript compiler API. Supports various ECMAScript targets and module systems.',
-     icon: '🔍',
-     tools: ['validate_typescript'],
-   },
+  /** Test prompt
+   * ```markdown
+   * 1. Valide ce code TypeScript simple :
+   *    ```typescript
+   *    function add(a: number, b: number): number {
+   *      return a + b;
+   *    }
+   *    const result = add(2, 3);
+   *    console.log(result);
+   *    ```
+   *
+   * 2. Teste la détection d'erreurs de typage :
+   *    ```typescript
+   *    const name: string = "Alice";
+   *    name = 42; // Devrait générer une erreur de type
+   *    ```
+   *
+   * 3. Valide un code avec interface et classe :
+   *    ```typescript
+   *    interface User {
+   *      id: number;
+   *      name: string;
+   *      email: string;
+   *    }
+   *
+   *    class UserService {
+   *      getUser(id: number): User {
+   *        return { id, name: "John Doe", email: "john@example.com" };
+   *      }
+   *    }
+   *    ```
+   *
+   * 4. Teste la compilation avec différentes cibles (ES2015, ES2020)
+   *    et différents systèmes de modules (CommonJS, ES2015)
+   * ```
+   */
+  {
+    id: 'validate_typescript',
+    name: 'TypeScript Validator',
+    description: 'Validate TypeScript code compilation using the TypeScript compiler API. Supports various ECMAScript targets and module systems.',
+    icon: Search,
+    tools: ['validate_typescript'],
+  },
 ]

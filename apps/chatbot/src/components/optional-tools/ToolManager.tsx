@@ -70,7 +70,9 @@ export const ToolManager: React.FC<Props> = ({ enabledSkills, onToggle, onClose 
                 }`}
                 onClick={() => onToggle(tool.id)}
               >
-                <span className="text-xl leading-none mt-0.5">{tool.icon}</span>
+                <span className="text-xl leading-none mt-0.5">
+                  <tool.icon className="h-5 w-5" />
+                </span>
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm font-medium ${enabled ? 'text-primary-700' : 'text-default-700'}`}>
                     {tool.name}
