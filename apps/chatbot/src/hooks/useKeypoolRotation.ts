@@ -120,6 +120,9 @@ export function useKeypoolRotation(
   const rotateKey = useCallback(() => {
     if (sortedPool.length <= 1) return
     setRotationOffset(prev => (prev + 1) % sortedPool.length)
+    // Refresh stats so the sort order reflects latest usage after rotation.
+    // This also serves as a connectivity check for the remote worker.
+    getUsageStats('day').then(setStats).catch(() => {})
   }, [sortedPool.length])
 
   const markKeyFailedAndRotate = useCallback(() => {
