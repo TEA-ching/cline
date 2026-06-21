@@ -77,7 +77,7 @@ export const ToolManager: React.FC<Props> = ({ enabledSkills, onToggle, onClose 
                   </p>
                   <p className="text-xs text-default-400 mt-0.5 leading-snug">{skill.description}</p>
                   <p className="text-xs text-default-300 mt-1 font-mono">
-                    Tools: {skill.tools.join(', ')}
+                    Tool: {skill.tools.join(', ')}
                   </p>
                 </div>
                 <div className={`shrink-0 w-4 h-4 rounded-full mt-0.5 transition-colors flex items-center justify-center ${
@@ -94,7 +94,7 @@ export const ToolManager: React.FC<Props> = ({ enabledSkills, onToggle, onClose 
         <div className="border-t border-default-200 px-3 py-2 shrink-0">
           <p className="text-xs text-default-400 text-center">
             {enabledSkills.length === 0
-              ? 'No tools enabled'
+              ? 'No tools enabled, builtin tools are always available for web browsing, file management, and user interaction.'
               : `${enabledSkills.length} tool${enabledSkills.length !== 1 ? 's' : ''} enabled`}
           </p>
         </div>
