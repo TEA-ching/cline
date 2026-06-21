@@ -95,6 +95,13 @@ function isKeyRelatedError(msg: string): boolean {
   )
 }
 
+function parseRetryAfterSeconds(message: string): number | null {
+  const match = message.match(/\[retry_after=(\d+(?:\.\d+)?)\]/)
+  if (!match) return null
+  const seconds = parseFloat(match[1])
+  return isNaN(seconds) || seconds <= 0 ? null : seconds
+}
+
 // ---------------------------------------------------------------------------
 // Imported types (type-only, erased at runtime)
 // ---------------------------------------------------------------------------
@@ -133,6 +140,10 @@ function postTurnError(error: string): void {
 
 function postKeyError(error: string): void {
   self.postMessage({ type: 'key_error', error })
+}
+
+function postRateLimited(retryAfterSeconds: number, attempt: number, maxRetries: number): void {
+  self.postMessage({ type: 'rate_limited', retryAfterSeconds, attempt, maxRetries })
 }
 
 function postFileCreated(path: string, content: string): void {
@@ -269,39 +280,66 @@ async function handleRun(msg: RunMessage): Promise<void> {
     return
   }
 
-  try {
-    let runInput: string | AgentMessage
+  const MAX_RATE_LIMIT_RETRIES = 3
 
-    if (msg.images && msg.images.length > 0) {
-      runInput = {
-        id: `user_${Date.now()}`,
-        role: 'user' as const,
-        content: [
-          { type: 'text' as const, text: msg.message },
-          ...msg.images.map((url) => ({
-            type: 'image' as const,
-            image: url,
-            mediaType: url.startsWith('data:image/png') ? 'image/png' : 'image/jpeg',
-          })),
-        ],
-        createdAt: Date.now(),
-      } satisfies AgentMessage
-    } else {
-      runInput = msg.message
+  let runInput: string | AgentMessage
+  if (msg.images && msg.images.length > 0) {
+    runInput = {
+      id: `user_${Date.now()}`,
+      role: 'user' as const,
+      content: [
+        { type: 'text' as const, text: msg.message },
+        ...msg.images.map((url) => ({
+          type: 'image' as const,
+          image: url,
+          mediaType: url.startsWith('data:image/png') ? 'image/png' : 'image/jpeg',
+        })),
+      ],
+      createdAt: Date.now(),
+    } satisfies AgentMessage
+  } else {
+    runInput = msg.message
+  }
+
+  // Snapshot messages before the run so we can restore and retry cleanly
+  const preRunMessages = agent.snapshot().messages
+
+  for (let attempt = 0; attempt <= MAX_RATE_LIMIT_RETRIES; attempt++) {
+    if (attempt > 0) {
+      // Restore to pre-run state: remove the partial failed turn from history
+      agent.restore(preRunMessages)
     }
 
-    console.log('[agent.worker] calling agent.run(), baseUrl check — input type:', typeof runInput)
+    console.log('[agent.worker] calling agent.run(), attempt:', attempt, 'input type:', typeof runInput)
     const result = await agent.run(runInput)
-    console.log('[agent.worker] agent.run() completed, messages:', result.messages.length)
-    console.log('[agent.worker] messages summary:', result.messages.map(m => ({ role: m.role, contentTypes: Array.isArray(m.content) ? m.content.map((c: any) => c.type) : typeof m.content })))
-    postTurnComplete(result.messages, result.usage)
-  } catch (error) {
-    const message = error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error)
-    console.error('[agent.worker] handleRun error:', message)
-    if (isKeyRelatedError(message)) {
-      postKeyError(message)
+
+    if (result.status !== 'failed') {
+      console.log('[agent.worker] agent.run() completed, messages:', result.messages.length)
+      postTurnComplete(result.messages, result.usage)
+      return
     }
-    postTurnError(message)
+
+    // Run failed — check if it's a rate-limit with a retry delay
+    const errorMsg = result.error?.message ?? 'Run failed'
+    const retryAfter = parseRetryAfterSeconds(errorMsg)
+
+    if (retryAfter !== null && attempt < MAX_RATE_LIMIT_RETRIES) {
+      console.log('[agent.worker] rate limited, retrying in', retryAfter, 's (attempt', attempt + 1, '/', MAX_RATE_LIMIT_RETRIES, ')')
+      postRateLimited(retryAfter, attempt + 1, MAX_RATE_LIMIT_RETRIES)
+      await new Promise<void>((resolve) => setTimeout(resolve, Math.ceil(retryAfter) * 1000))
+      continue
+    }
+
+    // Non-retryable error or exhausted retries
+    // Strip the encoded retry_after tag from the user-facing message
+    const cleanMsg = errorMsg.replace(/\n\[retry_after=\d+(?:\.\d+)?\]$/, '')
+    const fullMsg = result.error?.stack ? `${cleanMsg}\n${result.error.stack}` : cleanMsg
+    console.error('[agent.worker] handleRun error:', fullMsg)
+    if (isKeyRelatedError(fullMsg)) {
+      postKeyError(fullMsg)
+    }
+    postTurnError(fullMsg)
+    return
   }
 }
 

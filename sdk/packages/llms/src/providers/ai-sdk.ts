@@ -634,12 +634,46 @@ function extractGoogleThoughtMetadata(
 	return Object.keys(metadata).length > 0 ? metadata : undefined;
 }
 
+/**
+ * Extracts retry_after_seconds from a provider error response.
+ * Handles Vercel AI SDK's APICallError (responseBody JSON) and Retry-After headers.
+ */
+function extractRetryAfterSeconds(error: unknown): number | null {
+	if (!error || typeof error !== "object") return null;
+	const e = error as Record<string, unknown>;
+
+	// Check Vercel AI SDK APICallError.responseBody (JSON string from provider)
+	if (typeof e.responseBody === "string") {
+		try {
+			const body = JSON.parse(e.responseBody) as Record<string, unknown>;
+			const errObj = body.error as Record<string, unknown> | undefined;
+			const meta = errObj?.metadata as Record<string, unknown> | undefined;
+			if (typeof meta?.retry_after_seconds === "number" && meta.retry_after_seconds > 0) {
+				return meta.retry_after_seconds;
+			}
+		} catch { /* ignore */ }
+	}
+
+	// Check Retry-After response header (seconds format)
+	const headers = e.responseHeaders as Record<string, string> | undefined;
+	if (headers) {
+		const retryAfter = headers["retry-after"] ?? headers["Retry-After"];
+		if (typeof retryAfter === "string") {
+			const val = parseInt(retryAfter, 10);
+			if (!isNaN(val) && val > 0) return val;
+		}
+	}
+
+	return null;
+}
+
 async function* emitAiSdkEvents(
 	stream: AiSdkStreamResult,
 	request: GatewayStreamRequest,
 	context: GatewayProviderContext,
 	pricingValue?: unknown,
 	capturedError?: { current: string | undefined },
+	capturedRetryAfter?: { current: number | null },
 ): AsyncIterable<AgentModelEvent> {
 	let sawToolCalls = false;
 	const emittedToolCallIds = new Set<string>();
@@ -772,6 +806,10 @@ async function* emitAiSdkEvents(
 		// Prefer the real provider error from onError over the generic
 		// NoOutputGeneratedError the AI SDK throws when 0 steps are recorded.
 		streamError = capturedError?.current ?? extractErrorMessage(error);
+		// Capture retry-after from raw error if not already captured via onError
+		if (capturedRetryAfter && capturedRetryAfter.current === null) {
+			capturedRetryAfter.current = extractRetryAfterSeconds(error);
+		}
 	}
 
 	// Prefer stream.usage (has raw cost data) over finish part usage.
@@ -803,10 +841,16 @@ async function* emitAiSdkEvents(
 		};
 	}
 
+	const retryAfterSeconds = capturedRetryAfter?.current ?? null;
+	const errorString = streamError
+		? retryAfterSeconds !== null
+			? `${streamError}\n[retry_after=${retryAfterSeconds}]`
+			: streamError
+		: undefined;
 	yield {
 		type: "finish",
 		reason: streamError ? "error" : mapFinishReason(finishReason, sawToolCalls),
-		error: streamError,
+		error: errorString,
 	};
 }
 
@@ -897,6 +941,9 @@ function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
 			const capturedError: { current: string | undefined } = {
 				current: undefined,
 			};
+			const capturedRetryAfter: { current: number | null } = {
+				current: null,
+			};
 			try {
 				const provider = await createProviderModule(
 					kind,
@@ -946,6 +993,9 @@ function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
 						? { maxOutputTokens: request.maxTokens }
 						: {}),
 					abortSignal: request.signal,
+					// Disable the AI SDK's own immediate retries — we handle retries
+					// at a higher level with proper Retry-After delay respect.
+					maxRetries: 0,
 					experimental_telemetry: {
 						isEnabled: langfuse,
 					},
@@ -953,6 +1003,7 @@ function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
 					onError: ({ error: streamError }) => {
 						const msg = extractErrorMessage(streamError);
 						capturedError.current = msg;
+						capturedRetryAfter.current = extractRetryAfterSeconds(streamError);
 						if (log?.error) {
 							log.error("[ai-sdk] stream error", {
 								providerId: request.providerId,
@@ -992,12 +1043,14 @@ function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
 					context,
 					context.model.metadata?.pricing,
 					capturedError,
+					capturedRetryAfter,
 				);
 			} catch (error) {
 				suppressDanglingStreamPromises(stream);
 				// Prefer the real provider error captured in onError over the generic
 				// NoOutputGeneratedError that the AI SDK throws when 0 steps are recorded.
 				const msg = capturedError.current ?? extractErrorMessage(error);
+				const outerRetryAfter = capturedRetryAfter.current ?? extractRetryAfterSeconds(error);
 				if (log?.error) {
 					log.error("[ai-sdk] provider error", {
 						providerId: request.providerId,
@@ -1025,7 +1078,9 @@ function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
 				yield {
 					type: "finish",
 					reason: "error",
-					error: msg,
+					error: outerRetryAfter !== null
+						? `${msg}\n[retry_after=${outerRetryAfter}]`
+						: msg,
 				};
 			}
 		},

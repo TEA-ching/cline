@@ -85,6 +85,12 @@ export interface UseAgentReturn {
    * error (401/403/429 or pattern match). Reset to null on the next sendMessage.
    */
   lastKeyError: string | null
+  /**
+   * Non-null while the worker is waiting for a rate-limit window to expire
+   * before auto-retrying. Value is the Unix timestamp (ms) when the retry
+   * will fire. Resets to null once the retry starts or the turn ends.
+   */
+  rateLimitRetryAt: number | null
   sendMessage: (text: string, images?: string[]) => void
   abort: () => void
   reset: () => void
@@ -107,6 +113,7 @@ type WorkerOutgoingMessage =
   | { type: 'turn_complete'; messages: AgentMessage[]; usage?: AgentUsage }
   | { type: 'turn_error'; error: string }
   | { type: 'key_error'; error: string }
+  | { type: 'rate_limited'; retryAfterSeconds: number; attempt: number; maxRetries: number }
   | { type: 'approval_req'; toolName: string; input: unknown; port: MessagePort }
   | { type: 'ask_question'; question: string; options: string[]; port: MessagePort }
   | { type: 'file_created'; path: string; content: string }
@@ -137,6 +144,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
   const [streamedTokens, setStreamedTokens] = useState(0)
   const [lastTurnUsage, setLastTurnUsage] = useState<AgentUsage | null>(null)
   const [lastKeyError, setLastKeyError] = useState<string | null>(null)
+  const [rateLimitRetryAt, setRateLimitRetryAt] = useState<number | null>(null)
 
   const streamingMsgIdRef = useRef<string | null>(null)
 
@@ -241,6 +249,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
         case 'turn_complete': {
           setIsRunning(false)
           setTurnStartedAt(null)
+          setRateLimitRetryAt(null)
           streamingMsgIdRef.current = null
           if (msg.usage) setLastTurnUsage(msg.usage)
           setMessages((prev) =>
@@ -254,9 +263,15 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
           break
         }
 
+        case 'rate_limited': {
+          setRateLimitRetryAt(Date.now() + Math.ceil(msg.retryAfterSeconds) * 1000)
+          break
+        }
+
         case 'turn_error': {
           setIsRunning(false)
           setTurnStartedAt(null)
+          setRateLimitRetryAt(null)
           streamingMsgIdRef.current = null
           const errorMsg: ChatMessage = {
             id: uid(),
@@ -380,6 +395,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
       setTurnStartedAt(Date.now())
       setStreamedTokens(0)
       setLastKeyError(null)
+      setRateLimitRetryAt(null)
       streamingMsgIdRef.current = null
       workerRef.current.postMessage({ type: 'run', message: text, images })
     },
@@ -450,6 +466,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     streamedTokens,
     lastTurnUsage,
     lastKeyError,
+    rateLimitRetryAt,
     sendMessage,
     abort,
     reset,

@@ -152,6 +152,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     streamedTokens,
     lastTurnUsage,
     lastKeyError,
+    rateLimitRetryAt,
     sendMessage: agentSend,
     abort,
     reset,
@@ -208,6 +209,24 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     }, 0)
     return Math.round((chars + systemPrompt.length) / 4)
   }, [messages, systemPrompt])
+
+  // -------------------------------------------------------------------------
+  // Rate-limit countdown (ticks every second while waiting for auto-retry)
+  // -------------------------------------------------------------------------
+  const [rateLimitSecondsLeft, setRateLimitSecondsLeft] = useState<number | null>(null)
+  useEffect(() => {
+    if (rateLimitRetryAt === null) {
+      setRateLimitSecondsLeft(null)
+      return
+    }
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((rateLimitRetryAt - Date.now()) / 1000))
+      setRateLimitSecondsLeft(left)
+    }
+    tick()
+    const id = setInterval(tick, 500)
+    return () => clearInterval(id)
+  }, [rateLimitRetryAt])
 
   // -------------------------------------------------------------------------
   // Session auto-save
@@ -377,6 +396,17 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
             <MessageList messages={messages} />
             <ThinkingIndicator startedAt={turnStartedAt} streamedTokens={streamedTokens} />
           </div>
+
+          {/* Rate-limit retry banner */}
+          {rateLimitSecondsLeft !== null && (
+            <div className="mx-4 mb-2 px-3 py-2 rounded-md bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200 text-sm flex items-center gap-2">
+              <span>⏳</span>
+              <span>
+                Rate limited — retrying automatically in{' '}
+                <strong>{rateLimitSecondsLeft}s</strong>
+              </span>
+            </div>
+          )}
 
           {/* Input */}
           <InputBar
