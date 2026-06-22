@@ -23,7 +23,7 @@
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { Button } from '@heroui/react'
-import { Settings, PanelLeftOpen, PanelLeftClose, History, Zap, Plus } from 'lucide-react'
+import { Settings, PanelLeftOpen, PanelLeftClose, History, Wrench, Plus } from 'lucide-react'
 
 import { MessageList } from './MessageList'
 import { InputBar } from './InputBar'
@@ -88,7 +88,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   const [showSettings, setShowSettings] = useState(false)
   const [showFiles, setShowFiles] = useState(true)
   const [showSessions, setShowSessions] = useState(false)
-  const [showSkills, setShowSkills] = useState(false)
+  const [showSkills, setShowTools] = useState(false)
   const [sessionId, setSessionId] = useState(() => `sess_${Date.now()}`)
   const [systemPrompt, setSystemPrompt] = useLocalStorageState('chatbot_system_prompt', DEFAULT_SYSTEM_PROMPT)
   const [enabledTools, setEnabledTools] = useLocalStorageState<string[]>('chatbot_enabled_optional_tools', [])
@@ -302,7 +302,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
           setShowSessions(true)
           return
         case '/tools':
-          setShowSkills(true)
+          setShowTools(true)
           return
         case '/prompt':
           if (arg) {
@@ -395,8 +395,8 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
             <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSessions(true)} aria-label="Saved conversations">
               <History className="h-4 w-4" />
             </Button>
-            <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSkills(true)} aria-label="Optional tools">
-              <Zap className="h-4 w-4" />
+            <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowTools(true)} aria-label="Optional tools">
+              <Wrench className="h-4 w-4" />
             </Button>
             <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSettings(v => !v)} aria-label="Settings">
               <Settings className="h-4 w-4" />
@@ -466,7 +466,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
           <ToolManager
             enabledSkills={enabledTools}
             onToggle={handleToggleSkill}
-            onClose={() => setShowSkills(false)}
+            onClose={() => setShowTools(false)}
             selectedModel={selectedModel}
             selectedProviderId={selectedProviderId}
           />
