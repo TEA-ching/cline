@@ -28,9 +28,10 @@ import type { ChatMessage } from '@/hooks/useAgent'
 interface Props {
   messages: ChatMessage[]
   onImageCaptured?: (path: string, dataUrl: string) => void
+  onFork?: (messageId: string) => void
 }
 
-export const MessageList: React.FC<Props> = ({ messages, onImageCaptured }) => {
+export const MessageList: React.FC<Props> = ({ messages, onImageCaptured, onFork }) => {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -51,7 +52,7 @@ export const MessageList: React.FC<Props> = ({ messages, onImageCaptured }) => {
   return (
     <div className="flex flex-col gap-3 p-4">
       {messages.map(msg => (
-        <MessageItem key={msg.id} message={msg} onImageCaptured={onImageCaptured} />
+        <MessageItem key={msg.id} message={msg} onImageCaptured={onImageCaptured} onFork={onFork} />
       ))}
       <div ref={bottomRef} />
     </div>

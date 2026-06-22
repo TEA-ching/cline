@@ -261,6 +261,14 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     setShowSessions(false)
   }, [loadMessages, handleModelChange])
 
+  const handleForkAtMessage = useCallback((messageId: string) => {
+    const forkIndex = messages.findIndex(m => m.id === messageId)
+    if (forkIndex === -1) return
+    const forkedMessages = messages.slice(0, forkIndex + 1)
+    setSessionId(`sess_${Date.now()}`)
+    loadMessages(forkedMessages)
+  }, [messages, loadMessages])
+
   // -------------------------------------------------------------------------
   // Slash command dispatch
   // -------------------------------------------------------------------------
@@ -411,7 +419,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
           {/* Messages + thinking indicator */}
           <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
             <SystemPromptBanner systemPrompt={systemPrompt} defaultSystemPrompt={DEFAULT_SYSTEM_PROMPT} onUpdate={setSystemPrompt} />
-            <MessageList messages={messages} onImageCaptured={handleImageCaptured} />
+            <MessageList messages={messages} onImageCaptured={handleImageCaptured} onFork={handleForkAtMessage} />
             <ThinkingIndicator startedAt={turnStartedAt} streamedTokens={streamedTokens} />
           </div>
 

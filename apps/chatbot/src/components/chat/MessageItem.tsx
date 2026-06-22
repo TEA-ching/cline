@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 import React, { useState } from 'react'
-import { Bot, User, Terminal, Copy, Check, Download } from 'lucide-react'
+import { Bot, User, Terminal, Copy, Check, Download, GitBranch } from 'lucide-react'
 import { AssistantMessage } from './AssistantMessage'
 import { ToolCallCard } from './ToolCallCard'
 import type { ChatMessage } from '@/hooks/useAgent'
@@ -57,9 +57,10 @@ const CopyButton: React.FC<{ text: string; light?: boolean }> = ({ text, light }
 interface Props {
   message: ChatMessage
   onImageCaptured?: (path: string, dataUrl: string) => void
+  onFork?: (messageId: string) => void
 }
 
-export const MessageItem: React.FC<Props> = ({ message, onImageCaptured }) => {
+export const MessageItem: React.FC<Props> = ({ message, onImageCaptured, onFork }) => {
   if (message.role === 'tool') {
     return (
       <ToolCallCard
@@ -156,7 +157,22 @@ export const MessageItem: React.FC<Props> = ({ message, onImageCaptured }) => {
         )}
       </div>
 
-      <CopyButton text={message.content} light={isUser} />
+      <div className="flex flex-col gap-1">
+        <CopyButton text={message.content} light={isUser} />
+        {onFork && !message.isStreaming && (
+          <button
+            onClick={() => onFork(message.id)}
+            title="Forker la conversation ici"
+            className={`self-start shrink-0 rounded opacity-20 group-hover:opacity-100 transition-opacity ${
+              isUser
+                ? 'text-white/60 hover:text-white/90 hover:bg-white/10'
+                : 'text-default-400 hover:text-default-600 hover:bg-default-100'
+            }`}
+          >
+            <GitBranch className="h-3 w-3" />
+          </button>
+        )}
+      </div>
     </div>
   )
 }
