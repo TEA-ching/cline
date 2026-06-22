@@ -41,7 +41,7 @@ const CopyButton: React.FC<{ text: string; light?: boolean }> = ({ text, light }
     <button
       onClick={handleCopy}
       title="Copier"
-      className={`self-start mt-2 shrink-0 rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity ${
+      className={`self-start mt-1 shrink-0 rounded opacity-20 group-hover:opacity-100 transition-opacity ${
         light
           ? 'text-white/60 hover:text-white/90 hover:bg-white/10'
           : 'text-default-400 hover:text-default-600 hover:bg-default-100'
@@ -92,7 +92,7 @@ export const MessageItem: React.FC<Props> = ({ message, onImageCaptured }) => {
     <div className={`flex gap-3 group items-start ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
       <div className={`shrink-0 rounded-full p-1.5 ${isUser ? 'bg-primary-100' : 'bg-default-100'}`}>
         {isUser
-          ? <User className="h-4 w-4 text-primary-600" />
+          ? <><div className="flex items-center gap-2"><CopyButton text={message.content}/><User className="h-4 w-4 text-primary-600" /></div></>
           : <Bot className="h-4 w-4 text-default-600" />}
       </div>
 
