@@ -45,6 +45,7 @@ import { useVault } from '@/hooks/useVault'
 import { useModelSelection } from '@/hooks/useModelSelection'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { useKeypoolRotation } from '@/hooks/useKeypoolRotation'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { listChatModels, modelSupportsImages, getFirecrawlKeys } from '@/lib/model-utils'
 import { BUILTIN_OPTONAL_TOOLS } from '@/tools/builtin'
 import { recordKeyUsage, recordKeyError, extractErrorCode } from '@/lib/keypool-usage'
@@ -86,12 +87,22 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
 
   const { selectedProviderId, selectedModelId, handleModelChange } = useModelSelection(vaultConfig)
   const [showSettings, setShowSettings] = useState(false)
-  const [showFiles, setShowFiles] = useState(true)
   const [showSessions, setShowSessions] = useState(false)
   const [showSkills, setShowTools] = useState(false)
   const [sessionId, setSessionId] = useState(() => `sess_${Date.now()}`)
   const [systemPrompt, setSystemPrompt] = useLocalStorageState('chatbot_system_prompt', DEFAULT_SYSTEM_PROMPT)
   const [enabledTools, setEnabledTools] = useLocalStorageState<string[]>('chatbot_enabled_optional_tools', [])
+
+  // Detect mobile screen size
+  const isMobile = useMediaQuery('(max-width: 767px)')
+  const [showFiles, setShowFiles] = useState(!isMobile)
+
+  // Update sidebar visibility when screen size changes
+  useEffect(() => {
+    if (isMobile) {
+      setShowFiles(false)
+    }
+  }, [isMobile])
 
   const models = useMemo(() => listChatModels(vaultConfig), [vaultConfig])
   const selectedModel = models.find(
