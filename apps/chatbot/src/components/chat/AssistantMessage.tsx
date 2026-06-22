@@ -27,6 +27,7 @@ import hljs from 'highlight.js'
 import DOMPurify from 'dompurify'
 import mermaid from 'mermaid'
 import { FileType, Check, SquareMinus } from 'lucide-react'
+import 'highlight.js/styles/github.css'
 
 interface Props {
   content: string
