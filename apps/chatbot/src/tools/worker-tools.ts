@@ -27,7 +27,7 @@ import type { AgentTool } from '@cline/agents'
 import type { VirtualFS } from '@/vfs/virtual-fs'
 import type * as TypeScript from 'typescript'
 import { runInSandbox } from './js-sandbox'
-import markdownDocx, { Packer } from 'markdown-docx'
+import {MarkdownDocx, Packer, type MarkdownDocxOptions } from 'markdown-docx'
 
 const MATH_CTX = {
   sin: Math.sin, cos: Math.cos, tan: Math.tan,
@@ -721,8 +721,12 @@ export function createOptionalTools(
       execute: async ({ markdown, filename }) => {
         try {
           // Convert Markdown to DOCX
-          const doc = await markdownDocx(markdown)
+          const converter = new MarkdownDocx(markdown)
 
+          const config: MarkdownDocxOptions = { }
+
+          const doc = await converter.toDocument()
+          
           // Generate DOCX blob
           const blob = await Packer.toBlob(doc)
 
