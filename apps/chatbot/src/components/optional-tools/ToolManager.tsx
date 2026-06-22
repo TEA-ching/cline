@@ -28,14 +28,14 @@ import { BUILTIN_OPTONAL_TOOLS } from '@/tools/builtin'
 import type { AiModel } from '@/types/ai-config'
 
 interface Props {
-  enabledSkills: string[]
+  enabledTools: string[]
   onToggle: (skillId: string) => void
   onClose: () => void
   selectedModel?: AiModel
   selectedProviderId?: string
 }
 
-export const ToolManager: React.FC<Props> = ({ enabledSkills, onToggle, onClose, selectedModel, selectedProviderId }) => {
+export const ToolManager: React.FC<Props> = ({ enabledTools, onToggle, onClose, selectedModel, selectedProviderId }) => {
   const visibleTools = BUILTIN_OPTONAL_TOOLS.filter(tool =>
     !tool.filter || (selectedModel && selectedProviderId
       ? tool.filter(selectedModel, selectedProviderId)
@@ -67,7 +67,7 @@ export const ToolManager: React.FC<Props> = ({ enabledSkills, onToggle, onClose,
         {/* Tool list */}
         <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
           {visibleTools.map(tool => {
-            const enabled = enabledSkills.includes(tool.id)
+            const enabled = enabledTools.includes(tool.id)
             return (
               <button
                 key={tool.id}
@@ -104,9 +104,9 @@ export const ToolManager: React.FC<Props> = ({ enabledSkills, onToggle, onClose,
         {/* Active count */}
         <div className="border-t border-default-200 px-3 py-2 shrink-0">
           <p className="text-xs text-default-400 text-center">
-            {enabledSkills.length === 0
+            {enabledTools.length === 0
               ? 'No tools enabled, builtin tools are always available for web browsing, file management, and user interaction.'
-              : `${enabledSkills.length} tool${enabledSkills.length !== 1 ? 's' : ''} enabled`}
+              : `${enabledTools.length} tool${enabledTools.length !== 1 ? 's' : ''} enabled`}
           </p>
         </div>
       </div>

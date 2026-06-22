@@ -39,7 +39,7 @@ export interface AgentConfig {
   systemPrompt?: string
   firecrawlKeys: string[]
   firecrawlEndpoint: string
-  enabledSkills?: string[]
+  enabledTools?: string[]
 }
 
 export interface ChatMessage {
@@ -174,7 +174,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
       firecrawlKeys: config.firecrawlKeys,
       firecrawlEndpoint: config.firecrawlEndpoint,
       systemPrompt: config.systemPrompt ?? '',
-      enabledSkills: config.enabledSkills ?? [],
+      enabledTools: config.enabledTools ?? [],
     })
 
     // -------------------------------------------------------------------------
@@ -319,9 +319,16 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
 
         case 'file_created': {
           const { path, content } = msg
-          const blobUrl = URL.createObjectURL(
-            new Blob([content], { type: 'text/plain' }),
-          )
+          let blobUrl: string
+          if (content.startsWith('data:')) {
+            const commaIdx = content.indexOf(',')
+            const mimeMatch = content.slice(0, commaIdx).match(/:(.*?);/)
+            const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream'
+            const u8arr = Uint8Array.from(atob(content.slice(commaIdx + 1)), c => c.charCodeAt(0))
+            blobUrl = URL.createObjectURL(new Blob([u8arr], { type: mime }))
+          } else {
+            blobUrl = URL.createObjectURL(new Blob([content], { type: 'text/plain' }))
+          }
           setGeneratedFiles((prev) => [
             ...prev,
             { path, blobUrl, timestamp: Date.now() },
@@ -394,7 +401,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     JSON.stringify(config?.firecrawlKeys),
     config?.firecrawlEndpoint,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    JSON.stringify(config?.enabledSkills),
+    JSON.stringify(config?.enabledTools),
   ])
 
   // ---------------------------------------------------------------------------

@@ -36,7 +36,7 @@ interface InitMessage {
   firecrawlKeys: string[]
   firecrawlEndpoint: string
   systemPrompt: string
-  enabledSkills: string[]
+  enabledTools: string[]
 }
 
 interface RunMessage {
@@ -229,7 +229,7 @@ async function handleInit(msg: InitMessage): Promise<void> {
         onFileCreated: postFileCreated,
         onAskQuestion,
       }),
-      ...createSkillTools(msg.enabledSkills ?? [], {
+      ...createSkillTools(msg.enabledTools ?? [], {
         vfs,
         onFileCreated: postFileCreated,
         apiKey: msg.apiKey,

@@ -167,4 +167,11 @@ export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
     filter: (model, providerId) =>
       providerId === 'mistral' && (model.outputModalities?.includes('image') ?? false),
   },
+  {
+    id: 'create_docx',
+    name: 'DOCX Creator',
+    description: 'Create DOCX documents from Markdown content. Converts Markdown to Word document format.',
+    icon: BookOpen,
+    tools: ['create_docx'],
+  },
 ]

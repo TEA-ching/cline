@@ -464,7 +464,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
         {/* Optional tool manager */}
         {showSkills && (
           <ToolManager
-            enabledSkills={enabledTools}
+            enabledTools={enabledTools}
             onToggle={handleToggleSkill}
             onClose={() => setShowTools(false)}
             selectedModel={selectedModel}

@@ -27,6 +27,7 @@ import type { AgentTool } from '@cline/agents'
 import type { VirtualFS } from '@/vfs/virtual-fs'
 import type * as TypeScript from 'typescript'
 import { runInSandbox } from './js-sandbox'
+import markdownDocx, { Packer } from 'markdown-docx'
 
 const MATH_CTX = {
   sin: Math.sin, cos: Math.cos, tan: Math.tan,
@@ -697,6 +698,62 @@ export function createOptionalTools(
           success: true,
           vfsPath,
           message: 'Image displayed in chat. Do NOT write a markdown image or file path — just confirm to the user.',
+        }
+      },
+    }))
+  }
+
+  if (toolId.includes('create_docx')) {
+    tools.push(createTool({
+      name: 'create_docx',
+      description:
+        'Create a DOCX document from Markdown content. Converts Markdown to Word document format (DOCX). ' +
+        'The generated DOCX file is saved to the virtual filesystem and can be downloaded by the user. ' +
+        'Supports standard Markdown syntax including headings, lists, tables, links, and images.',
+      inputSchema: z.object({
+        markdown: z.string().describe('Markdown content to convert to DOCX'),
+        filename: z.string().optional().default('document.docx').describe(
+          'Output filename for the DOCX file (e.g., "report.docx")'
+        ),
+      }),
+      timeoutMs: 30_000,
+      execute: async ({ markdown, filename }) => {
+        try {
+          // Convert Markdown to DOCX
+          const doc = await markdownDocx(markdown)
+
+          // Generate DOCX blob
+          const blob = await Packer.toBlob(doc)
+
+          // Convert blob to base64 for storage in VFS (browser-safe, no Buffer)
+          const arrayBuffer = await blob.arrayBuffer()
+          const bytes = new Uint8Array(arrayBuffer)
+          let binary = ''
+          for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+          const base64Content = btoa(binary)
+          const mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          const dataUrl = `data:${mimeType};base64,${base64Content}`
+
+          // Save to virtual filesystem
+          const vfsPath = filename
+          if (ctx?.vfs) {
+            ctx.vfs.write(vfsPath, base64Content, mimeType)
+            ctx.onFileCreated?.(vfsPath, dataUrl)
+          }
+
+          return {
+            success: true,
+            vfsPath,
+            filename,
+            size: blob.size,
+            message: 'DOCX document created successfully and saved to virtual filesystem'
+          }
+        } catch (error) {
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to create DOCX document',
+            message: 'DOCX creation error'
+          }
         }
       },
     }))

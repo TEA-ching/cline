@@ -36,24 +36,72 @@ function stripUnsupportedConstraints(s: Record<string, unknown>): Record<string,
 }
 
 /**
+ * Flattens a oneOf schema into a single object schema Cohere can accept with strict_tools=true.
+ * Cohere rejects oneOf/discriminatedUnion schemas entirely.
+ *
+ * Strategy:
+ * - All-object branches: merge properties (union), required = intersection across all branches.
+ *   Discriminator fields with const values are merged into a single enum.
+ * - Mixed or non-object branches: fall back to {type:"string"}.
+ */
+function flattenOneOf(branches: unknown[]): Record<string, unknown> {
+	const patchedBranches = branches.map(b => patchObjectSchemaRequired(b)) as Record<string, unknown>[]
+	const allObjects = patchedBranches.every(b => b.type === "object" && b.properties && typeof b.properties === "object")
+	if (!allObjects) {
+		return { type: "string" }
+	}
+	const mergedProps: Record<string, unknown> = {}
+	for (const branch of patchedBranches) {
+		const props = branch.properties as Record<string, unknown>
+		for (const [k, v] of Object.entries(props)) {
+			if (!(k in mergedProps)) {
+				mergedProps[k] = v
+			} else {
+				// Merge discriminator field: combine const/enum values into a single enum
+				const existing = mergedProps[k] as Record<string, unknown>
+				const incoming = v as Record<string, unknown>
+				const existingVals: unknown[] = existing.const !== undefined ? [existing.const] : (existing.enum as unknown[] | undefined) ?? []
+				const incomingVals: unknown[] = incoming.const !== undefined ? [incoming.const] : (incoming.enum as unknown[] | undefined) ?? []
+				if (existingVals.length > 0 || incomingVals.length > 0) {
+					mergedProps[k] = { type: "string", enum: [...existingVals, ...incomingVals] }
+				}
+			}
+		}
+	}
+	const requiredSets = patchedBranches.map(b => (b.required as string[] | undefined) ?? [])
+	const intersection = requiredSets.length > 0
+		? requiredSets.reduce((acc, reqs) => acc.filter(r => reqs.includes(r)))
+		: []
+	const required = intersection.length > 0 ? intersection : (Object.keys(mergedProps).length > 0 ? [Object.keys(mergedProps)[0]] : undefined)
+	return stripUnsupportedConstraints({
+		type: "object",
+		properties: mergedProps,
+		...(required ? { required } : {}),
+	})
+}
+
+/**
  * Recursively patches tool parameter schemas for Cohere strict_tools=true compatibility:
  * 1. Strips unsupported JSON Schema constraints (minItems, maxItems, minLength, maxLength,
  *    pattern, minimum, maximum, multipleOf).
  * 2. Ensures every non-empty object schema has at least one required field.
  * 3. Converts empty object schemas ({type:"object", properties:{}}) to {} so Cohere
  *    accepts no-parameter tools.
- * 4. Recurses into anyOf/oneOf/allOf sub-schemas (produced by Zod's .nullable(), z.union(), etc.).
+ * 4. Flattens oneOf (discriminated unions) into a single merged object schema, since Cohere
+ *    strict_tools=true rejects oneOf entirely.
+ * 5. Recurses into anyOf/allOf sub-schemas (produced by Zod's .nullable(), etc.).
  */
 function patchObjectSchemaRequired(schema: unknown): unknown {
 	if (!schema || typeof schema !== "object") return schema
 	const s = schema as Record<string, unknown>
-	// Recurse into anyOf/oneOf/allOf: Zod's .nullable() generates {anyOf: [{type: "integer", maximum: ...}, {type: "null"}]},
+	// Cohere strict_tools=true rejects oneOf entirely — flatten variants into a single object.
+	if (Array.isArray(s.oneOf)) {
+		return flattenOneOf(s.oneOf)
+	}
+	// Recurse into anyOf/allOf: Zod's .nullable() generates {anyOf: [{type: "integer", maximum: ...}, {type: "null"}]},
 	// so constraints inside sub-schemas must be stripped too.
 	if (Array.isArray(s.anyOf)) {
 		return stripUnsupportedConstraints({ ...s, anyOf: (s.anyOf as unknown[]).map(patchObjectSchemaRequired) })
-	}
-	if (Array.isArray(s.oneOf)) {
-		return stripUnsupportedConstraints({ ...s, oneOf: (s.oneOf as unknown[]).map(patchObjectSchemaRequired) })
 	}
 	if (Array.isArray(s.allOf)) {
 		return stripUnsupportedConstraints({ ...s, allOf: (s.allOf as unknown[]).map(patchObjectSchemaRequired) })
