@@ -30,6 +30,7 @@ import {
   searchWithFirecrawl,
   pickFirecrawlKey,
 } from './firecrawl-client'
+import { emulateShellCommands } from './shell-emulator'
 
 export interface BrowserToolContext {
   vfs: VirtualFS
@@ -463,12 +464,15 @@ export function createBrowserTools(
   const runCommands = createTool({
     name: 'run_commands',
     description:
-      'Run shell commands. NOTE: Shell command execution is not available in the browser environment.',
+      'Emulate a safe subset of common shell commands in the browser using the virtual file system. Supports command separators ; and &&, multiline commands with trailing backslash, and selected commands such as date, time, uname, find, grep, cat, ls, wc, head, tail, sort, uniq.',
     inputSchema: z.object({
       commands: z.array(z.string()).min(1),
     }),
-    execute: async () => {
-      return 'Shell command execution is not available in the browser environment. Use the VFS tools to read and write files instead.'
+    execute: async ({ commands }) => {
+      return emulateShellCommands(commands, {
+        vfs: ctx.vfs,
+        onFileCreated: ctx.onFileCreated,
+      })
     },
   })
 
