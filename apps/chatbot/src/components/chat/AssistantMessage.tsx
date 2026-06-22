@@ -26,7 +26,7 @@ import { marked, type Tokens } from 'marked'
 import hljs from 'highlight.js'
 import DOMPurify from 'dompurify'
 import mermaid from 'mermaid'
-import { FileType, Check, SquareMinus } from 'lucide-react'
+import { FileType, Check, SquareMinus, GlobeCheck } from 'lucide-react'
 import 'highlight.js/styles/github.css'
 
 interface Props {
@@ -111,6 +111,7 @@ export const AssistantMessage: React.FC<Props> = ({ content, isStreaming }) => {
   const [safeHtml, setSafeHtml] = useState('')
   const [copiedText, setCopiedText] = useState(false)
   const [copiedRaw, setCopiedRaw] = useState(false)
+  const [copiedHtml, setCopiedHtml] = useState(false)
 
   // Markdown → sanitised HTML
   useEffect(() => {
@@ -157,6 +158,15 @@ export const AssistantMessage: React.FC<Props> = ({ content, isStreaming }) => {
     }).catch(() => {})
   }, [content])
 
+  // Copy rendered HTML content
+  const handleCopyHtml = useCallback(() => {
+    const html = contentRef.current?.innerHTML ?? safeHtml
+    navigator.clipboard.writeText(html).then(() => {
+      setCopiedHtml(true)
+      setTimeout(() => setCopiedHtml(false), 2000)
+    }).catch(() => {})
+  }, [safeHtml])
+
   return (
     <div className="group relative prose prose-sm max-w-none text-default-800 dark:prose-invert">
       {/* Action buttons — appear on hover */}
@@ -182,6 +192,17 @@ export const AssistantMessage: React.FC<Props> = ({ content, isStreaming }) => {
           {copiedRaw
             ? <Check className="h-3.5 w-3.5 text-green-500" />
             : <SquareMinus className="h-3.5 w-3.5" />}
+        </button>
+        <button
+          type="button"
+          onClick={handleCopyHtml}
+          className="p-1 rounded text-default-400 hover:text-default-600 hover:bg-default-100 dark:hover:bg-default-800"
+          aria-label="Copy HTML"
+          title="Copy HTML"
+        >
+          {copiedHtml
+            ? <Check className="h-3.5 w-3.5 text-green-500" />
+            : <GlobeCheck className="h-3.5 w-3.5" />}
         </button>
       </div>
 
