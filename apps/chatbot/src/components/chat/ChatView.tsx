@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
-import { Button } from '@heroui/react'
+import { Button, Drawer } from '@heroui/react'
 import { Settings, PanelLeftOpen, PanelLeftClose, History, Wrench, Plus } from 'lucide-react'
 
 import { MessageList } from './MessageList'
@@ -445,40 +445,73 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
           />
         </div>
 
-        {/* Settings panel */}
-        {showSettings && (
-          <SettingsPanel
-            config={vaultConfig}
-            selectedProviderId={selectedProviderId}
-            selectedModelId={selectedModelId}
-            onModelChange={handleModelChange}
-            onClose={() => setShowSettings(false)}
-            currentKeyHint={currentKeyHint}
-            canRotate={poolSize > 1}
-            onRotateKey={rotateKey}
-          />
-        )}
+        {/* Settings Drawer */}
+        <Drawer>
+          <Drawer.Backdrop isOpen={showSettings} onOpenChange={setShowSettings}>
+            <Drawer.Content placement="right">
+              <Drawer.Dialog>
+                <Drawer.CloseTrigger />
+                <Drawer.Header>
+                  <Drawer.Heading>Settings</Drawer.Heading>
+                </Drawer.Header>
+                <Drawer.Body>
+                  <SettingsPanel
+                    config={vaultConfig}
+                    selectedProviderId={selectedProviderId}
+                    selectedModelId={selectedModelId}
+                    onModelChange={handleModelChange}
+                    currentKeyHint={currentKeyHint}
+                    canRotate={poolSize > 1}
+                    onRotateKey={rotateKey}
+                  />
+                </Drawer.Body>
+              </Drawer.Dialog>
+            </Drawer.Content>
+          </Drawer.Backdrop>
+        </Drawer>
 
-        {/* Session browser */}
-        {showSessions && (
-          <SessionBrowser
-            currentProviderId={selectedProviderId}
-            currentModelId={selectedModelId}
-            onLoad={handleLoadSession}
-            onClose={() => setShowSessions(false)}
-          />
-        )}
+        {/* Session Browser Drawer */}
+        <Drawer>
+          <Drawer.Backdrop isOpen={showSessions} onOpenChange={setShowSessions}>
+            <Drawer.Content placement="right">
+              <Drawer.Dialog>
+                <Drawer.CloseTrigger />
+                <Drawer.Header>
+                  <Drawer.Heading>Sessions</Drawer.Heading>
+                </Drawer.Header>
+                <Drawer.Body>
+                  <SessionBrowser
+                    currentProviderId={selectedProviderId}
+                    currentModelId={selectedModelId}
+                    onLoad={handleLoadSession}
+                  />
+                </Drawer.Body>
+              </Drawer.Dialog>
+            </Drawer.Content>
+          </Drawer.Backdrop>
+        </Drawer>
 
-        {/* Optional tool manager */}
-        {showSkills && (
-          <ToolManager
-            enabledTools={enabledTools}
-            onToggle={handleToggleSkill}
-            onClose={() => setShowTools(false)}
-            selectedModel={selectedModel}
-            selectedProviderId={selectedProviderId}
-          />
-        )}
+        {/* Tool Manager Drawer */}
+        <Drawer>
+          <Drawer.Backdrop isOpen={showSkills} onOpenChange={setShowTools}>
+            <Drawer.Content placement="right">
+              <Drawer.Dialog>
+                <Drawer.CloseTrigger />
+                <Drawer.Header>
+                  <Drawer.Heading>Optional Tools</Drawer.Heading>
+                </Drawer.Header>
+                <Drawer.Body>
+                  <ToolManager
+                    enabledTools={enabledTools}
+                    onToggle={handleToggleSkill}
+                    selectedModel={selectedModel}
+                    selectedProviderId={selectedProviderId}
+                  />
+                </Drawer.Body>
+              </Drawer.Dialog>
+            </Drawer.Content>
+          </Drawer.Backdrop>
+        </Drawer>
 
         {/* Tool approval */}
         {pendingApproval && (

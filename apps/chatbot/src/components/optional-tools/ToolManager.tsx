@@ -30,12 +30,12 @@ import type { AiModel } from '@/types/ai-config'
 interface Props {
   enabledTools: string[]
   onToggle: (skillId: string) => void
-  onClose: () => void
+  onClose?: () => void
   selectedModel?: AiModel
   selectedProviderId?: string
 }
 
-export const ToolManager: React.FC<Props> = ({ enabledTools, onToggle, onClose, selectedModel, selectedProviderId }) => {
+export const ToolManager: React.FC<Props> = ({ enabledTools, onToggle, selectedModel, selectedProviderId }) => {
   const visibleTools = BUILTIN_OPTONAL_TOOLS.filter(tool =>
     !tool.filter || (selectedModel && selectedProviderId
       ? tool.filter(selectedModel, selectedProviderId)
@@ -43,72 +43,59 @@ export const ToolManager: React.FC<Props> = ({ enabledTools, onToggle, onClose, 
   )
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-end">
-      <div className="absolute inset-0 bg-black/20" onClick={onClose} />
-      <div className="relative h-full w-72 bg-background border-l border-default-200 flex flex-col shadow-xl">
+    <div className="flex flex-col h-full p-3 space-y-3">
+      <div className="flex items-start gap-2 bg-default-50 p-3 rounded border border-default-100">
+        <Info className="h-3.5 w-3.5 text-default-400 mt-0.5 shrink-0" />
+        <p className="text-xs text-default-400">
+          Add extra tools to the AI agent. Toggle a tool and start a new conversation
+          (or use <span className="font-mono">/new</span>) to activate it.
+        </p>
+      </div>
 
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-default-200 px-3 py-2 shrink-0">
-          <span className="text-sm font-medium">Tool Manager</span>
-          <Button isIconOnly variant="ghost" size="sm" onPress={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+      {/* Tool list */}
+      <div className="flex-1 overflow-y-auto flex flex-col gap-2">
+        {visibleTools.map(tool => {
+          const enabled = enabledTools.includes(tool.id)
+          return (
+            <button
+              key={tool.id}
+              type="button"
+              className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-all ${
+                enabled
+                  ? 'border-primary-300 bg-primary-50 shadow-sm'
+                  : 'border-default-200 bg-default-50 hover:border-default-300 hover:bg-default-100'
+              }`}
+              onClick={() => onToggle(tool.id)}
+            >
+              <span className="text-xl leading-none mt-0.5">
+                <tool.icon className="h-5 w-5" />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm font-medium ${enabled ? 'text-primary-700' : 'text-default-700'}`}>
+                  {tool.name}
+                </p>
+                <p className="text-xs text-default-400 mt-0.5 leading-snug">{tool.description}</p>
+                <p className="text-xs text-default-300 mt-1 font-mono">
+                  Tool: {tool.tools.join(', ')}
+                </p>
+              </div>
+              <div className={`shrink-0 w-4 h-4 rounded-full mt-0.5 transition-colors flex items-center justify-center ${
+                enabled ? 'bg-primary-600 border-2 border-primary-600' : 'bg-transparent'
+              }`}>
+                {enabled && <span className="text-gray-300 text-xs font-bold">●</span>}
+              </div>
+            </button>
+          )
+        })}
+      </div>
 
-        {/* Info */}
-        <div className="flex items-start gap-2 px-3 py-2 border-b border-default-100 bg-default-50 shrink-0">
-          <Info className="h-3.5 w-3.5 text-default-400 mt-0.5 shrink-0" />
-          <p className="text-xs text-default-400">
-            Add extra tools to the AI agent. Toggle a tool and start a new conversation
-            (or use <span className="font-mono">/new</span>) to activate it.
-          </p>
-        </div>
-
-        {/* Tool list */}
-        <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
-          {visibleTools.map(tool => {
-            const enabled = enabledTools.includes(tool.id)
-            return (
-              <button
-                key={tool.id}
-                type="button"
-                className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-all ${
-                  enabled
-                    ? 'border-primary-300 bg-primary-50 shadow-sm'
-                    : 'border-default-200 bg-default-50 hover:border-default-300 hover:bg-default-100'
-                }`}
-                onClick={() => onToggle(tool.id)}
-              >
-                <span className="text-xl leading-none mt-0.5">
-                  <tool.icon className="h-5 w-5" />
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium ${enabled ? 'text-primary-700' : 'text-default-700'}`}>
-                    {tool.name}
-                  </p>
-                  <p className="text-xs text-default-400 mt-0.5 leading-snug">{tool.description}</p>
-                  <p className="text-xs text-default-300 mt-1 font-mono">
-                    Tool: {tool.tools.join(', ')}
-                  </p>
-                </div>
-                <div className={`shrink-0 w-4 h-4 rounded-full mt-0.5 transition-colors flex items-center justify-center ${
-                  enabled ? 'bg-primary-600 border-2 border-primary-600' : 'bg-transparent'
-                }`}>
-                  {enabled && <span className="text-gray-300 text-xs font-bold">●</span>}
-                </div>
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Active count */}
-        <div className="border-t border-default-200 px-3 py-2 shrink-0">
-          <p className="text-xs text-default-400 text-center">
-            {enabledTools.length === 0
-              ? 'No tools enabled, builtin tools are always available for web browsing, file management, and user interaction.'
-              : `${enabledTools.length} tool${enabledTools.length !== 1 ? 's' : ''} enabled`}
-          </p>
-        </div>
+      {/* Active count */}
+      <div className="pt-2 border-t border-default-200">
+        <p className="text-xs text-default-400 text-center">
+          {enabledTools.length === 0
+            ? 'No tools enabled, builtin tools are always available for web browsing, file management, and user interaction.'
+            : `${enabledTools.length} tool${enabledTools.length !== 1 ? 's' : ''} enabled`}
+        </p>
       </div>
     </div>
   )
