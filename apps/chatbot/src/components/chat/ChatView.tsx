@@ -46,6 +46,7 @@ import { useModelSelection } from '@/hooks/useModelSelection'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { useKeypoolRotation } from '@/hooks/useKeypoolRotation'
 import { listChatModels, modelSupportsImages, getFirecrawlKeys } from '@/lib/model-utils'
+import { BUILTIN_OPTONAL_TOOLS } from '@/tools/builtin'
 import { recordKeyUsage, recordKeyError, extractErrorCode } from '@/lib/keypool-usage'
 import { SessionStore } from '@/session/session-store'
 import type { Session } from '@/session/session-store'
@@ -90,7 +91,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   const [showSkills, setShowSkills] = useState(false)
   const [sessionId, setSessionId] = useState(() => `sess_${Date.now()}`)
   const [systemPrompt, setSystemPrompt] = useLocalStorageState('chatbot_system_prompt', DEFAULT_SYSTEM_PROMPT)
-  const [enabledSkills, setEnabledSkills] = useLocalStorageState<string[]>('chatbot_enabled_optional_tools', [])
+  const [enabledTools, setEnabledTools] = useLocalStorageState<string[]>('chatbot_enabled_optional_tools', [])
 
   const models = useMemo(() => listChatModels(vaultConfig), [vaultConfig])
   const selectedModel = models.find(
@@ -126,7 +127,11 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
       systemPrompt,
       firecrawlKeys: firecrawlKeys.length > 0 ? firecrawlKeys : getFirecrawlKeys(vaultConfig),
       firecrawlEndpoint,
-      enabledSkills,
+      enabledTools: enabledTools.filter(toolId => {
+        const meta = BUILTIN_OPTONAL_TOOLS.find(t => t.id === toolId)
+        if (!meta?.filter) return true
+        return selectedModel ? meta.filter(selectedModel, selectedProviderId) : false
+      }),
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -139,7 +144,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     // biome-ignore lint/correctness/useExhaustiveDependencies: stable serialisation
     JSON.stringify(firecrawlKeys),
     // biome-ignore lint/correctness/useExhaustiveDependencies: stable serialisation
-    JSON.stringify(enabledSkills),
+    JSON.stringify(enabledTools),
   ])
 
   const {
@@ -323,10 +328,10 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   // Skill toggle
   // -------------------------------------------------------------------------
   const handleToggleSkill = useCallback((skillId: string) => {
-    setEnabledSkills(prev =>
+    setEnabledTools(prev =>
       prev.includes(skillId) ? prev.filter(id => id !== skillId) : [...prev, skillId],
     )
-  }, [setEnabledSkills])
+  }, [setEnabledTools])
 
   const handleImageCaptured = useCallback((path: string, dataUrl: string) => {
     // Canvas capture succeeded (CORS allowed) — overwrite the URL reference with actual pixel data
@@ -373,9 +378,9 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
             <div className="flex-1 min-w-0 px-1">
               <p className="text-xs text-default-500 truncate font-mono">
                 {selectedModelId || 'No model selected'}
-                {enabledSkills.length > 0 && (
+                {enabledTools.length > 0 && (
                   <span className="ml-1.5 text-primary-400">
-                    +{enabledSkills.length} optional tool{enabledSkills.length !== 1 ? 's' : ''}
+                    +{enabledTools.length} optional tool{enabledTools.length !== 1 ? 's' : ''}
                   </span>
                 )}
               </p>
@@ -459,7 +464,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
         {/* Optional tool manager */}
         {showSkills && (
           <ToolManager
-            enabledSkills={enabledSkills}
+            enabledSkills={enabledTools}
             onToggle={handleToggleSkill}
             onClose={() => setShowSkills(false)}
             selectedModel={selectedModel}
