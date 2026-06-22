@@ -643,9 +643,14 @@ enum ApiProvider {
   OPENAI_CODEX = 40;
   WANDB = 41;
   CLINE_PASS = 42;
+  POOLSIDE = 45;
+  V0 = 46;
+  XIAOMI = 47;
+  ZAI_CODING_PLAN = 49;
+  reserved 43, 44, 48;
+  reserved "OPENAI_CODEX_CLI", "OPENCODE", "KILO";
   KEYPOOLLIVE = 9942;
   COHERE = 9943;
-  POOLSIDE = 9944;
 }
 
 enum ApiFormat {
