@@ -150,6 +150,10 @@ function postFileCreated(path: string, content: string): void {
   self.postMessage({ type: 'file_created', path, content })
 }
 
+function postImageGenerated(url: string, vfsPath: string): void {
+  self.postMessage({ type: 'image_generated', url, vfsPath })
+}
+
 function postWorkerError(error: string): void {
   self.postMessage({ type: 'worker_error', error })
 }
@@ -225,7 +229,13 @@ async function handleInit(msg: InitMessage): Promise<void> {
         onFileCreated: postFileCreated,
         onAskQuestion,
       }),
-      ...createSkillTools(msg.enabledSkills ?? [], { vfs, onFileCreated: postFileCreated }),
+      ...createSkillTools(msg.enabledSkills ?? [], {
+        vfs,
+        onFileCreated: postFileCreated,
+        apiKey: msg.apiKey,
+        providerId: msg.providerId,
+        onImageGenerated: postImageGenerated,
+      }),
     ]
 
     console.log('[agent.worker] Agent config:', {

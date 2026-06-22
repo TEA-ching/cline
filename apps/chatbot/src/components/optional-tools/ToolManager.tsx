@@ -25,14 +25,23 @@ import React from 'react'
 import { Button } from '@heroui/react'
 import { X, Info } from 'lucide-react'
 import { BUILTIN_OPTONAL_TOOLS } from '@/tools/builtin'
+import type { AiModel } from '@/types/ai-config'
 
 interface Props {
   enabledSkills: string[]
   onToggle: (skillId: string) => void
   onClose: () => void
+  selectedModel?: AiModel
+  selectedProviderId?: string
 }
 
-export const ToolManager: React.FC<Props> = ({ enabledSkills, onToggle, onClose }) => {
+export const ToolManager: React.FC<Props> = ({ enabledSkills, onToggle, onClose, selectedModel, selectedProviderId }) => {
+  const visibleTools = BUILTIN_OPTONAL_TOOLS.filter(tool =>
+    !tool.filter || (selectedModel && selectedProviderId
+      ? tool.filter(selectedModel, selectedProviderId)
+      : false)
+  )
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-end">
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
@@ -57,7 +66,7 @@ export const ToolManager: React.FC<Props> = ({ enabledSkills, onToggle, onClose 
 
         {/* Tool list */}
         <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
-          {BUILTIN_OPTONAL_TOOLS.map(tool => {
+          {visibleTools.map(tool => {
             const enabled = enabledSkills.includes(tool.id)
             return (
               <button

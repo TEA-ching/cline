@@ -45,8 +45,9 @@ export const AssistantMessage: React.FC<Props> = ({ content, isStreaming }) => {
             </pre>
           )
         }
-        // Simple inline formatting: **bold**, `code`
+        // Simple inline formatting: **bold**, `code`, ![alt](url)
         const html = part
+          .replace(/!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g, '<img src="$2" alt="$1" class="rounded-lg max-h-64 max-w-full object-contain border border-default-200 my-1" />')
           .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
           .replace(/`([^`]+)`/g, '<code class="bg-default-100 rounded px-1 py-0.5 text-xs font-mono">$1</code>')
           .replace(/\n/g, '<br/>')

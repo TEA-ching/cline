@@ -45,7 +45,13 @@ const MATH_CTX = {
 // biome-ignore lint/suspicious/noExplicitAny: tool input/output types vary
 export function createOptionalTools(
   toolId: string[],
-  ctx?: { vfs?: VirtualFS; onFileCreated?: (path: string, content: string) => void }
+  ctx?: {
+    vfs?: VirtualFS
+    onFileCreated?: (path: string, content: string) => void
+    apiKey?: string
+    providerId?: string
+    onImageGenerated?: (url: string, vfsPath: string) => void
+  }
 ): AgentTool<any, any>[] {
   const tools: AgentTool<any, any>[] = []
 
@@ -636,6 +642,61 @@ export function createOptionalTools(
             error: error instanceof Error ? error.message : 'Failed to validate TypeScript code',
             message: 'TypeScript validation error'
           }
+        }
+      },
+    }))
+  }
+
+  if (toolId.includes('generate_image')) {
+    tools.push(createTool({
+      name: 'generate_image',
+      description:
+        'Generate an image from a text description using Mistral image generation. ' +
+        'The generated image is automatically displayed in the chat interface — do NOT write a markdown image ' +
+        'tag (![...](...)) or any file path in your response. Simply confirm to the user that the image ' +
+        'has been generated and describe it briefly. ' +
+        'Only works with Mistral models that have image generation capability.',
+      inputSchema: z.object({
+        description: z.string().describe('Detailed text description of the image to generate'),
+      }),
+      timeoutMs: 60_000,
+      execute: async ({ description }) => {
+        if (!ctx?.apiKey) return { success: false, error: 'No API key configured.' }
+
+        const response = await fetch('https://api.mistral.ai/v1/conversations', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${ctx.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: ctx.providerId === 'mistral' ? 'mistral-medium-latest' : 'mistral-medium-latest',
+            inputs: [{ role: 'user', content: description }],
+            tools: [{ type: 'image_generation' }],
+            completion_args: { temperature: 0.7, max_tokens: 2048 },
+          }),
+        })
+
+        if (!response.ok) {
+          const errText = await response.text().catch(() => '')
+          return { success: false, error: `Mistral API error ${response.status}: ${errText}` }
+        }
+
+        // biome-ignore lint/suspicious/noExplicitAny: Mistral API response shape
+        const data: any = await response.json()
+        // biome-ignore lint/suspicious/noExplicitAny: Mistral API response shape
+        const output = data.outputs?.find((o: any) => o.info?.result != null)
+        if (!output) return { success: false, error: 'No image generated in the response.' }
+
+        const { url } = JSON.parse(output.info.result) as { url: string }
+
+        const vfsPath = `generated_images/img_${Date.now()}.jpg`
+        // Pass URL and VFS path — display via <img> (no CORS needed), URL stored in VFS as text
+        ctx.onImageGenerated?.(url, vfsPath)
+        return {
+          success: true,
+          vfsPath,
+          message: 'Image displayed in chat. Do NOT write a markdown image or file path — just confirm to the user.',
         }
       },
     }))

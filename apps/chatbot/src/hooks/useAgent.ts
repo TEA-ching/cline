@@ -102,6 +102,7 @@ export interface UseAgentReturn {
   loadMessages: (messages: ChatMessage[]) => void
   syncVfsFile: (path: string, content: string) => void
   removeVfsFile: (path: string) => void
+  addGeneratedFile: (path: string, blobUrl: string) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -117,6 +118,7 @@ type WorkerOutgoingMessage =
   | { type: 'approval_req'; toolName: string; input: unknown; port: MessagePort }
   | { type: 'ask_question'; question: string; options: string[]; port: MessagePort }
   | { type: 'file_created'; path: string; content: string }
+  | { type: 'image_generated'; url: string; vfsPath: string }
   | { type: 'worker_error'; error: string }
   | { type: 'worker_ready' }
 
@@ -327,6 +329,28 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
           break
         }
 
+        case 'image_generated': {
+          const { url, vfsPath } = msg
+          // Push a dedicated assistant message for the image (arrives before LLM text response)
+          setMessages(prev => [...prev, {
+            id: uid(),
+            role: 'assistant' as const,
+            content: '',
+            images: [url],
+            timestamp: Date.now(),
+          }])
+          // Store the signed URL as a text file in VFS — readable by the JS sandbox
+          workerRef.current?.postMessage({ type: 'vfs_add', path: vfsPath, content: url })
+          // Add to the file sidebar (Azure URL works as download link for JPEG)
+          setGeneratedFiles(prev => {
+            const entry = { path: vfsPath, blobUrl: url, timestamp: Date.now() }
+            const idx = prev.findIndex(f => f.path === vfsPath)
+            if (idx >= 0) { const u = [...prev]; u[idx] = entry; return u }
+            return [...prev, entry]
+          })
+          break
+        }
+
         case 'worker_error': {
           console.error('[agent.worker] error:', msg.error)
           setIsRunning(false)
@@ -456,6 +480,19 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     workerRef.current?.postMessage({ type: 'vfs_remove', path })
   }, [])
 
+  const addGeneratedFile = useCallback((path: string, blobUrl: string) => {
+    setGeneratedFiles(prev => {
+      const entry = { path, blobUrl, timestamp: Date.now() }
+      const idx = prev.findIndex(f => f.path === path)
+      if (idx >= 0) {
+        const updated = [...prev]
+        updated[idx] = entry
+        return updated
+      }
+      return [...prev, entry]
+    })
+  }, [])
+
   return {
     messages,
     isRunning,
@@ -475,5 +512,6 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     loadMessages,
     syncVfsFile,
     removeVfsFile,
+    addGeneratedFile,
   }
 }

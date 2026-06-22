@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 import React, { useState } from 'react'
-import { Bot, User, Terminal, Copy, Check } from 'lucide-react'
+import { Bot, User, Terminal, Copy, Check, Download } from 'lucide-react'
 import { AssistantMessage } from './AssistantMessage'
 import { ToolCallCard } from './ToolCallCard'
 import type { ChatMessage } from '@/hooks/useAgent'
@@ -54,9 +54,12 @@ const CopyButton: React.FC<{ text: string; light?: boolean }> = ({ text, light }
   )
 }
 
-interface Props { message: ChatMessage }
+interface Props {
+  message: ChatMessage
+  onImageCaptured?: (path: string, dataUrl: string) => void
+}
 
-export const MessageItem: React.FC<Props> = ({ message }) => {
+export const MessageItem: React.FC<Props> = ({ message, onImageCaptured }) => {
   if (message.role === 'tool') {
     return (
       <ToolCallCard
@@ -97,7 +100,7 @@ export const MessageItem: React.FC<Props> = ({ message }) => {
         isUser ? 'bg-primary-500 text-gray-300' : 'bg-default-50 border border-default-200'
       }`}>
         {/* Image thumbnails for user messages */}
-        {message.images && message.images.length > 0 && (
+        {isUser && message.images && message.images.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1">
             {message.images.map((src, i) => (
               <img key={i} src={src} alt="" className="h-20 w-20 rounded object-cover border border-white/20" />
@@ -109,6 +112,48 @@ export const MessageItem: React.FC<Props> = ({ message }) => {
           ? <p className="text-sm whitespace-pre-wrap">{message.content}</p>
           : <AssistantMessage content={message.content} isStreaming={message.isStreaming} />
         }
+
+        {/* Generated images for assistant messages */}
+        {!isUser && message.images && message.images.length > 0 && (
+          <div className={`flex flex-wrap gap-2 ${message.content ? 'mt-2' : ''}`}>
+            {message.images.map((src, i) => (
+              <div key={i} className="relative group inline-block">
+                <img
+                  src={src}
+                  alt="Generated image"
+                  className="rounded-lg max-h-64 max-w-full object-contain border border-default-200"
+                  onLoad={(e) => {
+                    if (!onImageCaptured) return
+                    const img = e.currentTarget
+                    try {
+                      const canvas = document.createElement('canvas')
+                      canvas.width = img.naturalWidth
+                      canvas.height = img.naturalHeight
+                      const ctx2d = canvas.getContext('2d')
+                      if (!ctx2d) return
+                      ctx2d.drawImage(img, 0, 0)
+                      const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
+                      const path = `generated_images/img_${message.id}_${i}.jpg`
+                      onImageCaptured(path, dataUrl)
+                    } catch {
+                      // Canvas tainted — cross-origin image without CORS headers; image still displays
+                    }
+                  }}
+                />
+                <a
+                  href={src}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="absolute top-1.5 right-1.5 p-1 rounded-md bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Open / download image"
+                  onClick={e => e.stopPropagation()}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </a>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <CopyButton text={message.content} light={isUser} />

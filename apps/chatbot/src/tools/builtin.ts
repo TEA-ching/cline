@@ -21,8 +21,9 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { Calculator, CalendarClock, Lock, Dice6, Palette, Zap, BookOpen, Search } from 'lucide-react'
+import { Calculator, CalendarClock, Lock, Dice6, Palette, Zap, BookOpen, Search, Image } from 'lucide-react'
 import type { ElementType } from 'react'
+import type { AiModel } from '@/types/ai-config'
 
 export interface OptionalToolMeta {
   id: string
@@ -30,6 +31,7 @@ export interface OptionalToolMeta {
   description: string
   icon: ElementType
   tools: string[]
+  filter?: (model: AiModel, providerId: string) => boolean
 }
 
 export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
@@ -155,5 +157,14 @@ export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
     description: 'Validate TypeScript code compilation using the TypeScript compiler API. Supports various ECMAScript targets and module systems.',
     icon: Search,
     tools: ['validate_typescript'],
+  },
+  {
+    id: 'generate_image',
+    name: 'Image Generation',
+    description: 'Generate images from text descriptions using Mistral image generation. Requires a Mistral model with outputModalities: image (e.g. mistral-medium-latest).',
+    icon: Image,
+    tools: ['generate_image'],
+    filter: (model, providerId) =>
+      providerId === 'mistral' && (model.outputModalities?.includes('image') ?? false),
   },
 ]

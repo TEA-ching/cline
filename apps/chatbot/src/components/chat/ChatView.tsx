@@ -161,6 +161,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     loadMessages,
     syncVfsFile,
     removeVfsFile,
+    addGeneratedFile,
   } = useAgent(agentConfig)
 
   // -------------------------------------------------------------------------
@@ -327,6 +328,18 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     )
   }, [setEnabledSkills])
 
+  const handleImageCaptured = useCallback((path: string, dataUrl: string) => {
+    // Canvas capture succeeded (CORS allowed) — overwrite the URL reference with actual pixel data
+    syncVfsFile(path, dataUrl)
+    // Also expose in the file manager for download
+    const arr = dataUrl.split(',')
+    const mimeMatch = arr[0].match(/:(.*?);/)
+    if (!mimeMatch) return
+    const u8arr = Uint8Array.from(atob(arr[1]), c => c.charCodeAt(0))
+    const blob = new Blob([u8arr], { type: mimeMatch[1] })
+    addGeneratedFile(path, URL.createObjectURL(blob))
+  }, [syncVfsFile, addGeneratedFile])
+
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
@@ -393,7 +406,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
           {/* Messages + thinking indicator */}
           <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
             <SystemPromptBanner systemPrompt={systemPrompt} defaultSystemPrompt={DEFAULT_SYSTEM_PROMPT} onUpdate={setSystemPrompt} />
-            <MessageList messages={messages} />
+            <MessageList messages={messages} onImageCaptured={handleImageCaptured} />
             <ThinkingIndicator startedAt={turnStartedAt} streamedTokens={streamedTokens} />
           </div>
 
@@ -449,6 +462,8 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
             enabledSkills={enabledSkills}
             onToggle={handleToggleSkill}
             onClose={() => setShowSkills(false)}
+            selectedModel={selectedModel}
+            selectedProviderId={selectedProviderId}
           />
         )}
 
