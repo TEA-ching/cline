@@ -477,6 +477,23 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     setTurnStartedAt(null)
     setStreamedTokens(0)
     streamingMsgIdRef.current = null
+    if (workerRef.current) {
+      const agentMessages = msgs
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => {
+          const content: { type: 'text'; text: string }[] = [{ type: 'text', text: m.content }]
+          if (m.role === 'user' && m.images?.length) {
+            const imageParts = m.images.map((url) => ({
+              type: 'image' as const,
+              image: url,
+              mediaType: url.startsWith('data:image/png') ? 'image/png' : 'image/jpeg',
+            }))
+            return { id: m.id, role: m.role, content: [...content, ...imageParts], createdAt: m.timestamp }
+          }
+          return { id: m.id, role: m.role, content, createdAt: m.timestamp }
+        })
+      workerRef.current.postMessage({ type: 'restore_messages', messages: agentMessages })
+    }
   }, [])
 
   const syncVfsFile = useCallback((path: string, content: string) => {

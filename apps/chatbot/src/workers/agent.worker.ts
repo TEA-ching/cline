@@ -65,6 +65,11 @@ interface ApprovalResponseMessage {
   port: MessagePort
 }
 
+interface RestoreMessagesMessage {
+  type: 'restore_messages'
+  messages: unknown[]
+}
+
 type WorkerIncomingMessage =
   | InitMessage
   | RunMessage
@@ -72,6 +77,7 @@ type WorkerIncomingMessage =
   | VfsRemoveMessage
   | AbortMessage
   | ApprovalResponseMessage
+  | RestoreMessagesMessage
 
 // ---------------------------------------------------------------------------
 // Key error detection (mirrors isKeyRelatedError in lib/keypool-usage.ts)
@@ -385,6 +391,13 @@ self.onmessage = (ev: MessageEvent<WorkerIncomingMessage>) => {
       break
 
     case 'approval_response':
+      break
+
+    case 'restore_messages':
+      if (agent) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        agent.restore(msg.messages as any[])
+      }
       break
 
     default: {
