@@ -21,15 +21,16 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import React, { useState, useRef, KeyboardEvent } from 'react'
+import React, { useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { Button, Modal, Input } from '@heroui/react'
-import { Send, Paperclip, Square, ImagePlus, Link } from 'lucide-react'
+import { Send, Paperclip, Square, ImagePlus, Link, GripHorizontal } from 'lucide-react'
 import {
   isGitHubUrl,
   parseGitHubUrl,
   fetchGitHubFile,
   fetchGitHubDirectory
 } from '../../utils/github'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 
 export interface SlashCommand {
   cmd: string
@@ -45,9 +46,51 @@ interface Props {
   commands?: SlashCommand[]
 }
 
+const DESKTOP_INIT_HEIGHT = 120
+const MOBILE_INIT_HEIGHT = 80
+
 export const InputBar: React.FC<Props> = ({
   onSend, onAbort, isRunning, supportsImages, onUploadFiles, commands = [],
 }) => {
+  const isMobile = useMediaQuery('(max-width: 767px)')
+  const [panelHeight, setPanelHeight] = useState(MOBILE_INIT_HEIGHT)
+  const isDragging = useRef(false)
+  const dragStartY = useRef(0)
+  const dragStartH = useRef(0)
+
+  // Set initial height based on screen size, and reset on breakpoint change
+  useEffect(() => {
+    setPanelHeight(isMobile ? MOBILE_INIT_HEIGHT : DESKTOP_INIT_HEIGHT)
+  }, [isMobile])
+
+  // Global drag handlers for resize
+  useEffect(() => {
+    const onMove = (e: MouseEvent | TouchEvent) => {
+      if (!isDragging.current) return
+      const y = 'touches' in e ? e.touches[0].clientY : e.clientY
+      const delta = dragStartY.current - y
+      setPanelHeight(Math.max(60, Math.min(600, dragStartH.current + delta)))
+    }
+    const onUp = () => { isDragging.current = false }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    window.addEventListener('touchmove', onMove, { passive: false })
+    window.addEventListener('touchend', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('touchmove', onMove)
+      window.removeEventListener('touchend', onUp)
+    }
+  }, [])
+
+  const onResizeStart = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault()
+    isDragging.current = true
+    dragStartY.current = 'touches' in e ? e.touches[0].clientY : e.clientY
+    dragStartH.current = panelHeight
+  }
+
   const [text, setText] = useState('')
   const [images, setImages] = useState<string[]>([])
   const [suggestionIdx, setSuggestionIdx] = useState(-1)
@@ -253,11 +296,27 @@ export const InputBar: React.FC<Props> = ({
   }
 
   return (
-    <div className="border-t border-default-200 bg-background p-3">
+    <div
+      className="border-t border-default-200 bg-background flex flex-col relative"
+      style={{ height: panelHeight }}
+    >
+
+      {/* Drag zone — in-flow so it receives pointer events reliably */}
+      <div
+        className="relative h-4 shrink-0 cursor-ns-resize select-none group"
+        onMouseDown={onResizeStart}
+        onTouchStart={onResizeStart}
+        aria-label="Resize input area"
+      >
+        {/* Visual handle centered on the border-t line */}
+        <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center w-9 h-5 rounded-full bg-background border border-default-200 group-hover:bg-default-100 transition-colors">
+          <GripHorizontal className="h-3.5 w-3.5 text-default-400 group-hover:text-default-600 transition-colors" />
+        </div>
+      </div>
 
       {/* Slash command suggestions */}
       {suggestions.length > 0 && (
-        <div className="mb-2 rounded-xl border border-default-200 bg-background shadow-md overflow-hidden">
+        <div className="mx-3 mb-2 rounded-xl border border-default-200 bg-background shadow-md overflow-hidden shrink-0">
           {suggestions.map((s, i) => (
             <button
               key={s.cmd}
@@ -279,7 +338,7 @@ export const InputBar: React.FC<Props> = ({
 
       {/* Image preview strip */}
       {images.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-1">
+        <div className="px-3 mb-2 flex flex-wrap gap-1 shrink-0">
           {images.map((src, i) => (
             <div key={i} className="relative">
               <img src={src} alt="" className="h-14 w-14 rounded object-cover border border-default-200" />
@@ -293,7 +352,7 @@ export const InputBar: React.FC<Props> = ({
         </div>
       )}
 
-      <div className="flex items-end gap-2">
+      <div className="flex-1 flex items-end gap-2 px-3 pb-3 min-h-0">
         {/* Add from URL button */}
         <Button
           isIconOnly variant="ghost" size="sm"
@@ -392,14 +451,7 @@ export const InputBar: React.FC<Props> = ({
           onChange={e => { setText(e.target.value); setSuggestionIdx(-1) }}
           onKeyDown={onKeyDown}
           placeholder="Message… or type / for commands (Enter to send, Shift+Enter for newline)"
-          rows={1}
-          className="flex-1 resize-none rounded-xl border border-default-300 bg-default-50 px-3 py-2 text-sm outline-none focus:border-primary-400 focus:ring-1 focus:ring-primary-400 min-h-10 max-h-40"
-          style={{ height: 'auto' }}
-          onInput={e => {
-            const el = e.currentTarget
-            el.style.height = 'auto'
-            el.style.height = `${Math.min(el.scrollHeight, 160)}px`
-          }}
+          className="flex-1 self-stretch resize-none rounded-xl border border-default-300 bg-default-50 px-3 py-2 text-sm outline-none focus:border-primary-400 focus:ring-1 focus:ring-primary-400"
         />
 
         {/* Send / Abort */}
