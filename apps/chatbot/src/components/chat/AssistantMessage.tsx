@@ -170,7 +170,7 @@ export const AssistantMessage: React.FC<Props> = ({ content, isStreaming }) => {
   return (
     <div className="group relative prose prose-sm max-w-none text-default-800 dark:prose-invert">
       {/* Action buttons — appear on hover */}
-      <div className="absolute -top-1 right-0 z-10 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute -top-10 right-0 z-10 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           type="button"
           onClick={handleCopyText}
