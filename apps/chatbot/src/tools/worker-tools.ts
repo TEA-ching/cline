@@ -709,7 +709,8 @@ export function createOptionalTools(
       description:
         'Create a DOCX document from Markdown content. Converts Markdown to Word document format (DOCX). ' +
         'The generated DOCX file is saved to the virtual filesystem and can be downloaded by the user. ' +
-        'Supports standard Markdown syntax including headings, lists, tables, links, and images.',
+        'Supports standard Markdown syntax including headings, lists, tables, links, and images.' +
+        'DOCX documents cannot be edited after creation, so you need to create a new one if you want to make changes.',
       inputSchema: z.object({
         markdown: z.string().describe('Markdown content to convert to DOCX'),
         filename: z.string().optional().default('document.docx').describe(

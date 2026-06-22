@@ -167,6 +167,25 @@ export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
     filter: (model, providerId) =>
       providerId === 'mistral' && (model.outputModalities?.includes('image') ?? false),
   },
+  /**
+   * Test prompt (french): 
+   * ```markdown
+   * Utilise l'outil de création de DOCX pour convertir ce contenu Markdown en document Word :
+   * ```markdown
+   * # Titre du document
+   * ## Section 1
+   * Voici un paragraphe avec du **texte en gras**, de l'*italique*, et une [lien](https://example.com).
+   * - Liste à puces
+   * - Deuxième élément
+   * 
+   * ## Section 2
+   * Voici un tableau :
+   * | Colonne 1 | Colonne 2 |
+   * |------------|------------|
+   * | Cellule A1 | Cellule B1 |
+   * | Cellule A2 | Cellule B2 |
+   * ```
+   */
   {
     id: 'create_docx',
     name: 'DOCX Creator',
