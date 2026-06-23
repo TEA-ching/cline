@@ -215,6 +215,7 @@ export const LoginScreen: React.FC = () => {
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                       variant="secondary"
+                      className="w-full"
                     />
 
                     <Button
@@ -250,6 +251,7 @@ export const LoginScreen: React.FC = () => {
                       value={crawlerKey}
                       onChange={(e) => setCrawlerKey(e.target.value)}
                       variant="secondary"
+                      className="w-full"
                     />
 
                     <Button
