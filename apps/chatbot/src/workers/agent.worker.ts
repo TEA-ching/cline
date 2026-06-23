@@ -241,6 +241,7 @@ async function handleInit(msg: InitMessage): Promise<void> {
         apiKey: msg.apiKey,
         providerId: msg.providerId,
         onImageGenerated: postImageGenerated,
+        onAskQuestion,
       }),
     ]
 

@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { Calculator, CalendarClock, Lock, Dice6, Palette, Zap, BookOpen, Search, Image, BarChart2 } from 'lucide-react'
+import { Calculator, CalendarClock, Lock, Dice6, Palette, Zap, BookOpen, Search, Image, BarChart2, Terminal } from 'lucide-react'
 import type { ElementType } from 'react'
 import type { AiModel } from '@/types/ai-config'
 
@@ -206,5 +206,15 @@ export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
     description: 'Generate charts (bar, line, pie, scatter) from JSON data using Vega-Lite.',
     icon: BarChart2,
     tools: ['create_chart'],
+  },
+  {
+    id: 'execute_python_code',
+    name: 'Python Sandbox',
+    description:
+      'Execute Python code in a Pyodide WASM sandbox. ' +
+      'Supports scientific packages: numpy, pandas, sympy, scipy, etc. ' +
+      'VFS read/write access via "import vfs". First load requires ~7 MB download.',
+    icon: Terminal,
+    tools: ['execute_python_code'],
   },
 ]

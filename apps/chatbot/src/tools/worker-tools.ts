@@ -27,6 +27,7 @@ import type { AgentTool } from '@cline/agents'
 import type { VirtualFS } from '@/vfs/virtual-fs'
 import type * as TypeScript from 'typescript'
 import { runInSandbox } from './js-sandbox'
+import { runPython } from './python-sandbox'
 import {MarkdownDocx, Packer, type MarkdownDocxOptions } from 'markdown-docx'
 
 const MATH_CTX = {
@@ -52,6 +53,7 @@ export function createOptionalTools(
     apiKey?: string
     providerId?: string
     onImageGenerated?: (url: string, vfsPath: string) => void
+    onAskQuestion?: (question: string, options: string[]) => Promise<string>
   }
 ): AgentTool<any, any>[] {
   const tools: AgentTool<any, any>[] = []
@@ -1028,6 +1030,36 @@ export function createOptionalTools(
         };
       },
     }));
+  }
+
+  if (toolId.includes('execute_python_code')) {
+    tools.push(createTool({
+      name: 'execute_python_code',
+      description:
+        'Execute Python code in a Pyodide WASM sandbox. ' +
+        'Supports scientific packages available in Pyodide (numpy, pandas, sympy, scipy, etc.). ' +
+        'VFS access is available via "import vfs; vfs.read(path), vfs.write(path, content), vfs.list(), vfs.delete(path), vfs.exists(path)". ' +
+        'Network access (urllib, requests, httpx) is blocked by default; set allow_network=true to request user permission. ' +
+        'First invocation downloads ~7 MB and requires user consent. Subsequent calls reuse the cached runtime.',
+      inputSchema: z.object({
+        code: z.string().describe('Python code to execute'),
+        packages: z.array(z.string()).optional().default([])
+          .describe('Pyodide packages to load before running (e.g. ["numpy", "pandas", "sympy"])'),
+        allow_network: z.boolean().optional().default(false)
+          .describe('Request user permission to allow network access from Python code'),
+      }),
+      timeoutMs: 120_000,
+      execute: async ({ code, packages, allow_network }) => {
+        const result = await runPython(code, packages ?? [], allow_network ?? false, ctx?.vfs, ctx?.onAskQuestion)
+        if (ctx?.onFileCreated && ctx.vfs) {
+          for (const path of result.filesWritten) {
+            const content = ctx.vfs.read(path)
+            if (content !== null) ctx.onFileCreated(path, content)
+          }
+        }
+        return result
+      },
+    }))
   }
 
   return tools
