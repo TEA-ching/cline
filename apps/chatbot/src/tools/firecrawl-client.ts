@@ -62,7 +62,7 @@ export async function scrapeWithFirecrawl(
     : undefined
 
   try {
-    const response = await fetch(`${config.endpoint}/v1/scrape`, {
+    const response = await fetch(`${config.endpoint}/scrape`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
