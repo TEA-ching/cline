@@ -59,7 +59,7 @@ describe("formatStatusBarUsageText", () => {
 				totalCost: 0.123,
 				showCost: true,
 			}),
-		).toBe("(12,345) $0.12");
+		).toBe("(12,345 tokens) $0.12");
 	});
 
 	it("omits cost when usage cost is hidden", () => {
@@ -69,7 +69,7 @@ describe("formatStatusBarUsageText", () => {
 				totalCost: 0.123,
 				showCost: false,
 			}),
-		).toBe("(12,345)");
+		).toBe("(12,345 tokens)");
 	});
 });
 
