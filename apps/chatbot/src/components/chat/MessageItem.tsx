@@ -58,9 +58,11 @@ interface Props {
   message: ChatMessage
   onImageCaptured?: (path: string, dataUrl: string) => void
   onFork?: (messageId: string) => void
+  showReasoning?: boolean
+  getReasoningSteps?: () => string[]
 }
 
-export const MessageItem: React.FC<Props> = ({ message, onImageCaptured, onFork }) => {
+export const MessageItem: React.FC<Props> = ({ message, onImageCaptured, onFork, showReasoning, getReasoningSteps }) => {
   if (message.role === 'tool') {
     return (
       <ToolCallCard
@@ -111,7 +113,7 @@ export const MessageItem: React.FC<Props> = ({ message, onImageCaptured, onFork 
 
         {isUser
           ? <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-          : <AssistantMessage content={message.content} isStreaming={message.isStreaming} />
+          : <AssistantMessage content={message.content} isStreaming={message.isStreaming} reasoning={getReasoningSteps?.()} showReasoning={showReasoning} />
         }
 
         {/* Generated images for assistant messages */}

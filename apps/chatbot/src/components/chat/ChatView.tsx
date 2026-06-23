@@ -23,7 +23,7 @@
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { Button, Drawer } from '@heroui/react'
-import { Settings, PanelLeftOpen, PanelLeftClose, History, Wrench, Plus, UserRoundKey } from 'lucide-react'
+import { Settings, PanelLeftOpen, PanelLeftClose, History, Wrench, Plus, UserRoundKey, Brain } from 'lucide-react'
 
 import { MessageList } from './MessageList'
 import { InputBar } from './InputBar'
@@ -91,6 +91,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   const [showSessions, setShowSessions] = useState(false)
   const [showSkills, setShowTools] = useState(false)
   const [showByokConfig, setShowByokConfig] = useState(false)
+  const [showReasoning, setShowReasoning] = useLocalStorageState('show_reasoning', false)
   const [sessionId, setSessionId] = useState(() => `sess_${Date.now()}`)
   const [systemPrompt, setSystemPrompt] = useLocalStorageState('chatbot_system_prompt', DEFAULT_SYSTEM_PROMPT)
   const [enabledTools, setEnabledTools] = useLocalStorageState<string[]>('chatbot_enabled_optional_tools', [])
@@ -180,6 +181,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     syncVfsFile,
     removeVfsFile,
     addGeneratedFile,
+    getReasoningSteps,
   } = useAgent(agentConfig)
 
   // -------------------------------------------------------------------------
@@ -424,6 +426,9 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
                 <UserRoundKey className="h-4 w-4" />
               </Button>
             )}
+            <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowReasoning(v => !v)} aria-label="Afficher le raisonnement" className={showReasoning ? 'text-primary-500' : ''}>
+              <Brain className="h-4 w-4" />
+            </Button>
             <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSettings(v => !v)} aria-label="Settings">
               <Settings className="h-4 w-4" />
             </Button>
@@ -434,12 +439,18 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
             <ContextBar usedTokens={contextUsedTokens} totalTokens={contextWindow} />
           )}
 
-          {/* Messages + thinking indicator */}
-          <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
-            <SystemPromptBanner systemPrompt={systemPrompt} defaultSystemPrompt={DEFAULT_SYSTEM_PROMPT} onUpdate={setSystemPrompt} />
-            <MessageList messages={messages} onImageCaptured={handleImageCaptured} onFork={handleForkAtMessage} />
-            <ThinkingIndicator startedAt={turnStartedAt} streamedTokens={streamedTokens} />
-          </div>
+            {/* Messages + thinking indicator */}
+            <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
+              <SystemPromptBanner systemPrompt={systemPrompt} defaultSystemPrompt={DEFAULT_SYSTEM_PROMPT} onUpdate={setSystemPrompt} />
+              <MessageList
+                messages={messages}
+                onImageCaptured={handleImageCaptured}
+                onFork={handleForkAtMessage}
+                showReasoning={showReasoning}
+                getReasoningSteps={getReasoningSteps}
+              />
+              <ThinkingIndicator startedAt={turnStartedAt} streamedTokens={streamedTokens} />
+            </div>
 
           {/* Rate-limit retry banner */}
           {rateLimitSecondsLeft !== null && (

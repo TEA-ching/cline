@@ -29,9 +29,11 @@ interface Props {
   messages: ChatMessage[]
   onImageCaptured?: (path: string, dataUrl: string) => void
   onFork?: (messageId: string) => void
+  showReasoning?: boolean
+  getReasoningSteps?: () => string[]
 }
 
-export const MessageList: React.FC<Props> = ({ messages, onImageCaptured, onFork }) => {
+export const MessageList: React.FC<Props> = ({ messages, onImageCaptured, onFork, showReasoning, getReasoningSteps }) => {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -52,7 +54,14 @@ export const MessageList: React.FC<Props> = ({ messages, onImageCaptured, onFork
   return (
     <div className="flex flex-col gap-3 p-4">
       {messages.map(msg => (
-        <MessageItem key={msg.id} message={msg} onImageCaptured={onImageCaptured} onFork={onFork} />
+        <MessageItem
+          key={msg.id}
+          message={msg}
+          onImageCaptured={onImageCaptured}
+          onFork={onFork}
+          showReasoning={showReasoning}
+          getReasoningSteps={getReasoningSteps}
+        />
       ))}
       <div ref={bottomRef} />
     </div>

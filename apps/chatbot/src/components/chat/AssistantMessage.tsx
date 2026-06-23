@@ -32,6 +32,8 @@ import 'highlight.js/styles/github.css'
 interface Props {
   content: string
   isStreaming?: boolean
+  reasoning?: string[]
+  showReasoning?: boolean
 }
 
 // ── One-time library initialisation (runs when the module is first imported) ──
@@ -106,7 +108,7 @@ const PURIFY_CONFIG = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export const AssistantMessage: React.FC<Props> = ({ content, isStreaming }) => {
+export const AssistantMessage: React.FC<Props> = ({ content, isStreaming, reasoning, showReasoning }) => {
   const contentRef = useRef<HTMLDivElement>(null)
   const [safeHtml, setSafeHtml] = useState('')
   const [copiedText, setCopiedText] = useState(false)
@@ -206,6 +208,20 @@ export const AssistantMessage: React.FC<Props> = ({ content, isStreaming }) => {
         </button>
       </div>
 
+      {showReasoning && reasoning && reasoning.length > 0 && (
+        <details className="mb-3 text-xs bg-default-50 rounded-md p-2 border border-default-200">
+          <summary className="cursor-pointer font-mono text-default-500 hover:text-default-700">
+            🧠 Voir le raisonnement ({reasoning.length} étapes)
+          </summary>
+          <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
+            {reasoning.map((step, idx) => (
+              <div key={idx} className="border-l-2 border-primary-300 pl-2 py-0.5 text-default-600">
+                {step}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
       <div
         ref={contentRef}
         className="markdown-content"

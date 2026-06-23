@@ -103,6 +103,8 @@ export interface UseAgentReturn {
   syncVfsFile: (path: string, content: string) => void
   removeVfsFile: (path: string) => void
   addGeneratedFile: (path: string, blobUrl: string) => void
+  /** Get the current reasoning steps (tool calls) for the current turn */
+  getReasoningSteps: () => string[]
 }
 
 // ---------------------------------------------------------------------------
@@ -149,6 +151,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
   const [rateLimitRetryAt, setRateLimitRetryAt] = useState<number | null>(null)
 
   const streamingMsgIdRef = useRef<string | null>(null)
+  const reasoningStepsRef = useRef<string[]>([])
 
   // ---------------------------------------------------------------------------
   // Create / recreate worker when config changes
@@ -212,6 +215,9 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
             })
           } else if (event.type === 'tool-started') {
             const toolCall = event.toolCall
+            // Capture reasoning step
+            reasoningStepsRef.current.push(`🔧 Appel de l'outil "${toolCall.toolName}" avec les paramètres : ${JSON.stringify(toolCall.input)}`)
+
             const toolMsg: ChatMessage = {
               id: uid(),
               role: 'tool',
@@ -428,6 +434,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
       setLastKeyError(null)
       setRateLimitRetryAt(null)
       streamingMsgIdRef.current = null
+      reasoningStepsRef.current = [] // Clear reasoning steps for new turn
       workerRef.current.postMessage({ type: 'run', message: text, images })
     },
     [],
@@ -517,6 +524,10 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     })
   }, [])
 
+  const getReasoningSteps = useCallback(() => {
+    return [...reasoningStepsRef.current]
+  }, [])
+
   return {
     messages,
     isRunning,
@@ -537,5 +548,6 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     syncVfsFile,
     removeVfsFile,
     addGeneratedFile,
+    getReasoningSteps,
   }
 }
