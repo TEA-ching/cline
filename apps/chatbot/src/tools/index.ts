@@ -131,7 +131,17 @@ export function createBrowserTools(
     execute: async ({ paths }) => {
       const results: Record<string, string | null> = {}
       for (const path of paths) {
-        results[path] = ctx.vfs.read(path)
+        const raw = ctx.vfs.read(path)
+        if (raw !== null && raw.startsWith('data:') && raw.includes(';base64,')) {
+          // Binary file — return metadata only to avoid flooding the context window.
+          const mimeEnd = raw.indexOf(';base64,')
+          const mime = raw.slice(5, mimeEnd)
+          const base64 = raw.slice(mimeEnd + 8)
+          const byteSize = Math.floor(base64.length * 0.75)
+          results[path] = `[binary:${mime} size=${byteSize}B — file available for download in the VFS panel; use execute_python_code to process it]`
+        } else {
+          results[path] = raw
+        }
       }
       return results
     },

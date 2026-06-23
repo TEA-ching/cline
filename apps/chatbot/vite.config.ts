@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { viteStaticCopy } from 'vite-plugin-static-copy'
 import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig(({ mode }) => {
@@ -21,7 +22,19 @@ export default defineConfig(({ mode }) => {
       "process.removeListener": "(() => {})",
       "process.exit": "(() => {})",
     },
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      viteStaticCopy({
+        targets: [
+          { src: 'node_modules/pyodide/pyodide.mjs',       dest: 'pyodide' },
+          { src: 'node_modules/pyodide/pyodide.asm.mjs',    dest: 'pyodide' },
+          { src: 'node_modules/pyodide/pyodide.asm.wasm',  dest: 'pyodide' },
+          { src: 'node_modules/pyodide/python_stdlib.zip', dest: 'pyodide' },
+          { src: 'node_modules/pyodide/pyodide-lock.json', dest: 'pyodide' },
+        ],
+      }),
+    ],
 
     resolve: {
       alias: [

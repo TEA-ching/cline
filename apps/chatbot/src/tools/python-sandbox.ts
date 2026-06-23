@@ -23,7 +23,8 @@
  */
 import type { VirtualFS } from '@/vfs/virtual-fs'
 
-const PYODIDE_CDN = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/'
+// CDN used only for package wheels (numpy, pandas…) — the core WASM is served locally.
+const PYODIDE_CDN = 'https://cdn.jsdelivr.net/pyodide/v314.0.0/full/'
 
 export interface PythonSandboxResult {
   output: string
@@ -34,54 +35,104 @@ export interface PythonSandboxResult {
 // biome-ignore lint/suspicious/noExplicitAny: Pyodide types are dynamic
 type PyodideInterface = any
 
-// Singleton per worker session — avoids re-downloading ~7 MB on every call.
+// Resolve the local indexURL from the worker's origin so that pyodide.asm.wasm,
+// python_stdlib.zip, and pyodide-lock.json are served from the Vite asset pipeline
+// instead of the CDN.
+function getLocalIndexURL(): string {
+  return `${globalThis.location.origin}/pyodide/`
+}
+
+// Singleton per worker session — avoids re-loading ~12 MB on every call.
 let pyodidePromise: Promise<PyodideInterface> | null = null
-// Tracks whether the user already approved network access for Python code this session.
-let networkPermissionGranted = false
 
-async function loadPyodideOnce(
-  onAskQuestion: (q: string, opts: string[]) => Promise<string>,
-): Promise<PyodideInterface> {
+async function loadPyodideOnce(): Promise<PyodideInterface> {
   if (!pyodidePromise) {
-    const answer = await onAskQuestion(
-      `Pyodide (Python WASM) requires downloading ~7 MB from ${PYODIDE_CDN}. Authorize?`,
-      ['Yes', 'No'],
-    )
-    if (answer !== 'Yes') throw new Error('Pyodide load refused by user.')
-
     const { loadPyodide } = await import('pyodide')
-    pyodidePromise = loadPyodide({ indexURL: PYODIDE_CDN })
+    pyodidePromise = loadPyodide({ indexURL: getLocalIndexURL() })
   }
   return pyodidePromise
 }
 
+// Load requested packages by reading the locally-served lock file and constructing
+// explicit CDN URLs for the wheel files (which are not included in the npm package).
+// biome-ignore lint/suspicious/noExplicitAny: lock file shape is untyped JSON
+async function loadPackagesFromCDN(pyodide: PyodideInterface, packages: string[]): Promise<void> {
+  if (!packages.length) return
+  const indexURL = getLocalIndexURL()
+  const lock: { packages: Record<string, { file_name: string }> } =
+    await fetch(`${indexURL}pyodide-lock.json`).then(r => r.json())
+  for (const pkg of packages) {
+    const info = lock.packages[pkg]
+    if (!info) {
+      throw new Error(`Package "${pkg}" not found in pyodide-lock.json v314.0.0. Check the package name or use micropip for PyPI packages.`)
+    }
+    await pyodide.loadPackage([`${PYODIDE_CDN}${info.file_name}`])
+  }
+}
+
+const BINARY_DATA_PREFIX = 'data:application/octet-stream;base64,'
+
+// Python bytes/bytearray arrive as a Pyodide PyProxy. Convert to a plain base64
+// data-URL string so the VFS (string-only) and postMessage (structured clone) can
+// handle the content without errors.
+// biome-ignore lint/suspicious/noExplicitAny: Pyodide PyProxy is untyped
+function encodeVfsContent(raw: unknown): string {
+  if (typeof raw === 'string') return raw
+  // biome-ignore lint/suspicious/noExplicitAny: PyProxy.toJs() returns JS value
+  const js = (raw as any)?.toJs?.() ?? raw
+  let arr: Uint8Array | null = null
+  if (js instanceof Uint8Array) arr = js
+  else if (js instanceof ArrayBuffer) arr = new Uint8Array(js)
+  if (arr) {
+    // btoa on large buffers: build the binary string in chunks to avoid stack overflows.
+    let binary = ''
+    const chunkSize = 8192
+    for (let i = 0; i < arr.length; i += chunkSize) {
+      binary += String.fromCharCode(...arr.subarray(i, i + chunkSize))
+    }
+    return BINARY_DATA_PREFIX + btoa(binary)
+  }
+  return String(raw)
+}
+
 function injectVfsBridge(pyodide: PyodideInterface, vfs: VirtualFS, filesWritten: string[]): void {
   pyodide.globals.set('_vfs_read', (path: string): string | null => vfs.read(path))
-  pyodide.globals.set('_vfs_write', (path: string, content: string): void => {
-    vfs.write(path, content)
+  pyodide.globals.set('_vfs_write', (path: string, content: unknown): void => {
+    vfs.write(path, encodeVfsContent(content))
     filesWritten.push(path)
   })
   pyodide.globals.set('_vfs_list', (prefix?: string): string[] => vfs.list(prefix ?? undefined))
   pyodide.globals.set('_vfs_delete', (path: string): boolean => vfs.delete(path))
   pyodide.globals.set('_vfs_exists', (path: string): boolean => vfs.read(path) !== null)
 
-  // Install a minimal VFS module so Python code can do: from vfs import read, write, …
+  // Install a vfs Python module. Binary files are stored as base64 data URLs;
+  // vfs.read() decodes them back to bytes transparently so round-trips work.
   pyodide.runPython(`
-import sys, types as _types
+import sys, types as _types, base64 as _b64
+
+_BINARY_PREFIX = '${BINARY_DATA_PREFIX}'
+
+def _vfs_smart_read(path):
+    raw = _vfs_read(path)
+    if raw is None:
+        return None
+    s = str(raw)
+    if s.startswith(_BINARY_PREFIX):
+        return _b64.b64decode(s[len(_BINARY_PREFIX):])
+    return s
 
 _vfs_mod = _types.ModuleType('vfs')
-_vfs_mod.read   = lambda path: _vfs_read(path)
+_vfs_mod.read   = _vfs_smart_read
 _vfs_mod.write  = lambda path, content: _vfs_write(path, content)
 _vfs_mod.list   = lambda prefix=None: list(_vfs_list(prefix))
 _vfs_mod.delete = lambda path: _vfs_delete(path)
 _vfs_mod.exists = lambda path: _vfs_exists(path)
 sys.modules['vfs'] = _vfs_mod
-del _vfs_mod, _types
+del _vfs_mod, _types, _b64, _vfs_smart_read, _BINARY_PREFIX
 `)
 }
 
 function installNetworkBlocker(pyodide: PyodideInterface): void {
-  // Monkey-patch Python's network primitives so they raise a clear error.
   pyodide.runPython(`
 import sys
 
@@ -90,7 +141,6 @@ class _NetworkDisabled(Exception):
 
 try:
     import urllib.request as _ur
-    _original_urlopen = _ur.urlopen
     def _blocked_urlopen(*a, **kw):
         raise _NetworkDisabled(
             "Network access is disabled. Pass allow_network=true to the tool."
@@ -101,7 +151,6 @@ except Exception:
 
 try:
     import socket as _sock
-    _original_socket_connect = _sock.socket.connect
     def _blocked_connect(self, *a, **kw):
         raise _NetworkDisabled(
             "Network access is disabled. Pass allow_network=true to the tool."
@@ -119,18 +168,14 @@ export async function runPython(
   vfs?: VirtualFS,
   onAskQuestion?: (q: string, opts: string[]) => Promise<string>,
 ): Promise<PythonSandboxResult> {
-  if (!onAskQuestion) {
-    return { output: '', error: 'Python sandbox requires interactive permission — onAskQuestion not available.', filesWritten: [] }
-  }
-
   let pyodide: PyodideInterface
   try {
-    pyodide = await loadPyodideOnce(onAskQuestion)
+    pyodide = await loadPyodideOnce()
   } catch (err) {
-    return { output: '', error: err instanceof Error ? err.message : String(err), filesWritten: [] }
+    return { output: '', error: `Failed to initialize Python runtime: ${err instanceof Error ? err.message : String(err)}`, filesWritten: [] }
   }
 
-  if (allowNetwork && !networkPermissionGranted) {
+  if (allowNetwork && onAskQuestion) {
     const answer = await onAskQuestion(
       'This Python code is requesting network access (urllib, requests, etc.). Authorize?',
       ['Yes', 'No'],
@@ -138,23 +183,19 @@ export async function runPython(
     if (answer !== 'Yes') {
       return { output: '', error: 'Network access refused by user.', filesWritten: [] }
     }
-    networkPermissionGranted = true
   }
 
   const filesWritten: string[] = []
 
   if (vfs) injectVfsBridge(pyodide, vfs, filesWritten)
 
-  // Load requested packages (Pyodide bundled wheels)
-  for (const pkg of packages) {
-    try {
-      await pyodide.loadPackage(pkg)
-    } catch (err) {
-      return {
-        output: '',
-        error: `Failed to load package "${pkg}": ${err instanceof Error ? err.message : String(err)}`,
-        filesWritten,
-      }
+  try {
+    await loadPackagesFromCDN(pyodide, packages)
+  } catch (err) {
+    return {
+      output: '',
+      error: err instanceof Error ? err.message : String(err),
+      filesWritten,
     }
   }
 
