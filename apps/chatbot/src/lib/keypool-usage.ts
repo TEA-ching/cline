@@ -88,36 +88,80 @@ export type UsagePeriod = 'hour' | 'day' | 'week' | 'month'
  * Records a successful API-key usage event on the remote worker.
  * Fire-and-forget — never throws.
  */
-export function recordKeyUsage(entry: KeyUsageEntry): void {
-  void remotePost('/v1/keypool/usage', entry)
+export function recordKeyUsage(entry: KeyUsageEntry, mode: 'vault' | 'byok' = 'vault'): void {
+  if (mode === 'byok') {
+    // Use local storage for BYOK mode
+    void (async () => {
+      try {
+        const { recordLocalUsage } = await import('./local-usage-store')
+        await recordLocalUsage(entry)
+      } catch {
+        // fire-and-forget — usage recording is non-critical
+      }
+    })()
+  } else {
+    void remotePost('/v1/keypool/usage', entry)
+  }
 }
 
 /**
  * Records a failed API-key request on the remote worker.
  * Fire-and-forget — never throws.
  */
-export function recordKeyError(entry: KeyErrorEntry): void {
-  void remotePost('/v1/keypool/error', entry)
+export function recordKeyError(entry: KeyErrorEntry, mode: 'vault' | 'byok' = 'vault'): void {
+  if (mode === 'byok') {
+    // Use local storage for BYOK mode
+    void (async () => {
+      try {
+        const { recordLocalError } = await import('./local-usage-store')
+        await recordLocalError(entry)
+      } catch {
+        // fire-and-forget — usage recording is non-critical
+      }
+    })()
+  } else {
+    void remotePost('/v1/keypool/error', entry)
+  }
 }
 
 /**
- * Fetches usage statistics from the remote worker.
+ * Fetches usage statistics from the remote worker or local storage.
  * Returns an empty array if remote mode is not configured or the call fails.
  */
-export async function getUsageStats(period: UsagePeriod = 'day'): Promise<UsageStat[]> {
-  const base = getWorkerBaseUrl()
-  if (!base) return []
-  const auth = getAuthHeader()
-  if (!auth) return []
-  try {
-    const res = await fetch(`${base}/v1/keypool/stats?period=${period}`, {
-      headers: { Authorization: auth },
-    })
-    if (!res.ok) return []
-    const data = await res.json() as { data?: UsageStat[] }
-    return data.data ?? []
-  } catch {
-    return []
+export async function getUsageStats(period: UsagePeriod = 'day', mode: 'vault' | 'byok' = 'vault'): Promise<UsageStat[]> {
+  if (mode === 'byok') {
+    try {
+      const { getLocalStats } = await import('./local-usage-store')
+      const stats = await getLocalStats(period)
+      // Convert local stats format to UsageStat format
+      return stats.map(stat => ({
+        period,
+        provider: stat.provider,
+        modelId: '', // Not stored in local stats
+        keyOwner: stat.keyOwner || 'user',
+        keyHint: stat.keyHint,
+        promptTokens: stat.promptTokens,
+        completionTokens: stat.completionTokens,
+        requestCount: stat.count
+      }))
+    } catch {
+      return []
+    }
+  } else {
+    const base = getWorkerBaseUrl()
+    if (!base) return []
+    const auth = getAuthHeader()
+    if (!auth) return []
+    try {
+      const res = await fetch(`${base}/v1/keypool/stats?period=${period}`, {
+        headers: { Authorization: auth },
+      })
+      if (!res.ok) return []
+      const data = await res.json() as { data?: UsageStat[] }
+      return data.data ?? []
+    } catch {
+      return []
+    }
   }
 }
 

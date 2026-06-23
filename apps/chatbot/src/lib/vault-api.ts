@@ -51,3 +51,19 @@ export const VaultApi = {
     return JSON.parse(decryptedConfig) as AiConfig
   },
 }
+
+/**
+ * Fetch the public models list for BYOK mode
+ * Returns an AiConfig structure with empty keys arrays
+ */
+export async function fetchPublicModels(): Promise<AiConfig> {
+  const baseUrl = new URL(VAULT_URL).origin
+  const res = await fetch(`${baseUrl}/v1/keypool/byok/models`)
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { message?: string; error?: string }
+    throw new Error(body.message ?? body.error ?? `HTTP ${res.status}`)
+  }
+
+  return res.json() as Promise<AiConfig>
+}

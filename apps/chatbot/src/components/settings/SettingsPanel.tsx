@@ -21,11 +21,12 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { Button } from '@heroui/react'
-import { X, LogOut, RefreshCw, RotateCcw } from 'lucide-react'
+import { LogOut, RefreshCw, RotateCcw } from 'lucide-react'
 import { ModelSelector } from './ModelSelector'
 import { useVault } from '@/hooks/useVault'
+import { getUsageStats, type UsagePeriod } from '@/lib/keypool-usage'
 import type { AiConfig } from '@/types/ai-config'
 
 interface Props {
@@ -40,13 +41,26 @@ interface Props {
   canRotate?: boolean
   /** Called when the user manually triggers a key rotation. */
   onRotateKey?: () => void
+  /** Current authentication mode */
+  mode: 'vault' | 'byok'
 }
 
 export const SettingsPanel: React.FC<Props> = ({
   config, selectedProviderId, selectedModelId, onModelChange,
-  currentKeyHint, canRotate, onRotateKey,
+  currentKeyHint, canRotate, onRotateKey, mode,
 }) => {
   const { logout, refresh, loading } = useVault()
+  const [statsPeriod, setStatsPeriod] = useState<UsagePeriod>('day')
+  const [stats, setStats] = useState<any[]>([])
+
+  // Load stats automatically for BYOK mode
+  useEffect(() => {
+    if (mode === 'byok') {
+      getUsageStats(statsPeriod, mode)
+        .then(setStats)
+        .catch(() => setStats([]))
+    }
+  }, [statsPeriod, mode])
 
   return (
     <div className="flex flex-col h-full p-3 space-y-4">
@@ -60,27 +74,83 @@ export const SettingsPanel: React.FC<Props> = ({
         />
       </div>
 
-      <div className="text-xs text-default-400 space-y-1">
-        <p className="font-semibold uppercase tracking-wide">Vault</p>
-        <p>{Object.keys(config.providers).length} providers · {Object.keys(config.crawlers).length} crawlers</p>
-      </div>
+      {mode === 'byok' ? (
+        <>
+          <div className="text-xs text-default-400 space-y-1">
+            <p className="font-semibold uppercase tracking-wide">BYOK Management</p>
+            <p>Bring Your Own Key mode active</p>
+          </div>
 
-      {currentKeyHint && (
-        <div className="text-xs text-default-400 space-y-2">
-          <p className="font-semibold uppercase tracking-wide">API Key</p>
-          <p className="font-mono text-default-500 break-all">{currentKeyHint}</p>
-          {canRotate && onRotateKey && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full"
-              onPress={onRotateKey}
-            >
-              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-              Rotate Key
-            </Button>
+          <div className="text-xs text-default-400 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="font-semibold uppercase tracking-wide">Usage Statistics</p>
+e              <select
+                value={statsPeriod}
+                onChange={(e) => setStatsPeriod(e.target.value as UsagePeriod)}
+                className="text-xs p-1 border rounded"
+              >
+                <option value="hour">Last hour</option>
+                <option value="day">Last 24h</option>
+                <option value="week">Last 7 days</option>
+                <option value="month">Last 30 days</option>
+              </select>
+            </div>
+
+            {stats.length > 0 ? (
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-default-200">
+                      <th className="text-left py-1">Provider</th>
+                      <th className="text-left py-1">Key</th>
+                      <th className="text-right py-1">Requests</th>
+                      <th className="text-right py-1">Tokens</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.map((stat, idx) => (
+                      <tr key={idx} className="border-b border-default-100">
+                        <td className="py-1">{stat.provider}</td>
+                        <td className="py-1 font-mono">{stat.keyHint}</td>
+                        <td className="py-1 text-right">{stat.requestCount}</td>
+                        <td className="py-1 text-right">
+                          {Math.round((stat.promptTokens + stat.completionTokens) / 1000)}K
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-default-500">No usage data available for this period.</p>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="text-xs text-default-400 space-y-1">
+            <p className="font-semibold uppercase tracking-wide">Vault</p>
+            <p>{Object.keys(config.providers).length} providers · {Object.keys(config.crawlers).length} crawlers</p>
+          </div>
+
+          {currentKeyHint && (
+            <div className="text-xs text-default-400 space-y-2">
+              <p className="font-semibold uppercase tracking-wide">API Key</p>
+              <p className="font-mono text-default-500 break-all">{currentKeyHint}</p>
+              {canRotate && onRotateKey && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full"
+                  onPress={onRotateKey}
+                >
+                  <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                  Rotate Key
+                </Button>
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
 
       <div className="mt-auto pt-3 border-t border-default-200 flex gap-2">

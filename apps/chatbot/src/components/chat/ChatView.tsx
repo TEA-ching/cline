@@ -23,7 +23,7 @@
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { Button, Drawer } from '@heroui/react'
-import { Settings, PanelLeftOpen, PanelLeftClose, History, Wrench, Plus } from 'lucide-react'
+import { Settings, PanelLeftOpen, PanelLeftClose, History, Wrench, Plus, UserRoundKey } from 'lucide-react'
 
 import { MessageList } from './MessageList'
 import { InputBar } from './InputBar'
@@ -37,6 +37,7 @@ import { DropZone } from '@/components/files/DropZone'
 import { SettingsPanel } from '@/components/settings/SettingsPanel'
 import { SessionBrowser } from '@/components/sessions/SessionBrowser'
 import { ToolManager } from '@/components/optional-tools/ToolManager'
+import { ByokConfigEditor } from '@/components/byok/ByokConfigEditor'
 
 import { useAgent } from '@/hooks/useAgent'
 import type { ChatMessage } from '@/hooks/useAgent'
@@ -83,12 +84,13 @@ function uid() {
 interface Props { vaultConfig: AiConfig }
 
 export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
-  const { firecrawlKeys } = useVault()
+  const { firecrawlKeys, mode: vaultMode } = useVault()
 
   const { selectedProviderId, selectedModelId, handleModelChange } = useModelSelection(vaultConfig)
   const [showSettings, setShowSettings] = useState(false)
   const [showSessions, setShowSessions] = useState(false)
   const [showSkills, setShowTools] = useState(false)
+  const [showByokConfig, setShowByokConfig] = useState(false)
   const [sessionId, setSessionId] = useState(() => `sess_${Date.now()}`)
   const [systemPrompt, setSystemPrompt] = useLocalStorageState('chatbot_system_prompt', DEFAULT_SYSTEM_PROMPT)
   const [enabledTools, setEnabledTools] = useLocalStorageState<string[]>('chatbot_enabled_optional_tools', [])
@@ -192,9 +194,9 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
       keyHint: currentKeyHint,
       promptTokens: lastTurnUsage.inputTokens,
       completionTokens: lastTurnUsage.outputTokens,
-    })
+    }, vaultMode)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastTurnUsage])
+  }, [lastTurnUsage, vaultMode])
 
   // -------------------------------------------------------------------------
   // Keypool: detect key errors, record them, and rotate automatically
@@ -207,10 +209,10 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
       keyOwner: currentKeyOwner,
       keyHint: currentKeyHint,
       errorCode: extractErrorCode(lastKeyError),
-    })
+    }, vaultMode)
     markKeyFailedAndRotate()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastKeyError])
+  }, [lastKeyError, vaultMode])
 
   const vfs = useVirtualFS(syncVfsFile)
 
@@ -417,6 +419,11 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
             <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowTools(true)} aria-label="Optional tools">
               <Wrench className="h-4 w-4" />
             </Button>
+            {vaultMode === 'byok' && (
+              <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowByokConfig(true)} aria-label="BYOK Configuration">
+                <UserRoundKey className="h-4 w-4" />
+              </Button>
+            )}
             <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSettings(v => !v)} aria-label="Settings">
               <Settings className="h-4 w-4" />
             </Button>
@@ -474,6 +481,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
                     currentKeyHint={currentKeyHint}
                     canRotate={poolSize > 1}
                     onRotateKey={rotateKey}
+                    mode={vaultMode}
                   />
                 </Drawer.Body>
               </Drawer.Dialog>
@@ -518,6 +526,23 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
                     selectedModel={selectedModel}
                     selectedProviderId={selectedProviderId}
                   />
+                </Drawer.Body>
+              </Drawer.Dialog>
+            </Drawer.Content>
+          </Drawer.Backdrop>
+        </Drawer>
+
+        {/* BYOK Configuration Drawer */}
+        <Drawer>
+          <Drawer.Backdrop isOpen={showByokConfig} onOpenChange={setShowByokConfig}>
+            <Drawer.Content placement="right">
+              <Drawer.Dialog>
+                <Drawer.CloseTrigger />
+                <Drawer.Header>
+                  <Drawer.Heading>BYOK Configuration</Drawer.Heading>
+                </Drawer.Header>
+                <Drawer.Body>
+                  <ByokConfigEditor onClose={() => setShowByokConfig(false)} />
                 </Drawer.Body>
               </Drawer.Dialog>
             </Drawer.Content>
