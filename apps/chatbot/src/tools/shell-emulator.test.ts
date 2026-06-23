@@ -120,19 +120,32 @@ describe('emulateShellCommands', () => {
     expect(timestamp).toBeLessThan(3000000000) // Reasonable timestamp
   })
 
-  it('should handle date +%H:%M:%S (time format)', async () => {
-    const vfs = new MockVirtualFS()
-    const result = await emulateShellCommands(['date +%H:%M:%S'], {
-      vfs,
-      onFileCreated: vi.fn(),
-    })
+   it('should handle date +%H:%M:%S (time format)', async () => {
+     const vfs = new MockVirtualFS()
+     const result = await emulateShellCommands(['date +%H:%M:%S'], {
+       vfs,
+       onFileCreated: vi.fn(),
+     })
 
-    expect(result).toContain('$ date +%H:%M:%S')
-    // Should return time in HH:MM:SS format
-    expect(result).toMatch(/\d{2}:\d{2}:\d{2}/)
-  })
+     expect(result).toContain('$ date +%H:%M:%S')
+     // Should return time in HH:MM:SS format
+     expect(result).toMatch(/\d{2}:\d{2}:\d{2}/)
+   })
 
-  it('should handle echo command', async () => {
+   it('should handle date +%Z (timezone name)', async () => {
+     const vfs = new MockVirtualFS()
+     const result = await emulateShellCommands(['date +%Z'], {
+       vfs,
+       onFileCreated: vi.fn(),
+     })
+
+     expect(result).toContain('$ date +%Z')
+     // Should return a timezone name (e.g., UTC, CEST, GMT+2, etc.)
+     // The format can vary: UTC, GMT+2, GMT-5, CEST, etc.
+     expect(result).toMatch(/UTC|GMT[+-]?\d*|CEST|CST|EST|PST|[A-Z]{3,5}/)
+   })
+
+   it('should handle echo command', async () => {
     const vfs = new MockVirtualFS()
     const result = await emulateShellCommands(['echo "hello world"'], {
       vfs,

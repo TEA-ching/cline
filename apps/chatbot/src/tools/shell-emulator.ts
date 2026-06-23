@@ -229,6 +229,15 @@ function handleDateCommand(args: string[]): EmulatedCommandResult {
     const minutes = String(now.getMinutes()).padStart(2, '0')
     const seconds = String(now.getSeconds()).padStart(2, '0')
     dateString = `${hours}:${minutes}:${seconds}`
+  } else if (args.includes('+%Z')) {
+    // Timezone name (e.g., UTC, CEST, etc.)
+    // Using Intl.DateTimeFormat to get the timezone name
+    const tzName = new Intl.DateTimeFormat('en-US', {
+      timeZoneName: 'short',
+    })
+      .formatToParts(now)
+      .find((part) => part.type === 'timeZoneName')?.value
+    dateString = tzName || 'UTC'
   } else if (args.length > 0) {
     // For other unknown arguments, return a simple format
     dateString = now.toString()
