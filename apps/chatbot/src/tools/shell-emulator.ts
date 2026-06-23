@@ -278,7 +278,7 @@ async function handleFindCommand(
     return { stdout: '', stderr: 'find: missing path', exitCode: 1 }
   }
 
-  let prefix = args[0]
+  const prefix = args[0]
   let namePattern: string | undefined
   let typeF = false
 
@@ -406,7 +406,7 @@ async function handleLsCommand(
   args: string[],
   ctx: ShellEmulatorContext,
 ): Promise<EmulatedCommandResult> {
-  let prefix = args.length > 0 && !args[0].startsWith('-') ? args[0] : '.'
+  const prefix = args.length > 0 && !args[0].startsWith('-') ? args[0] : '.'
   const paths = ctx.vfs.list(prefix)
 
   if (paths.length === 0) {

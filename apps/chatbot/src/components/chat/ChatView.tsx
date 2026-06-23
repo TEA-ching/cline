@@ -618,12 +618,8 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
           />
         )}
 
-        {/* Sources panel */}
-        {showSources && (
-          <div className="w-80 shrink-0 border-l border-default-200 overflow-hidden">
-            <SourcesPanel sources={sources} onClose={() => setShowSources(false)} />
-          </div>
-        )}
+        {/* Sources Drawer */}
+        <SourcesPanel sources={sources} onClose={() => setShowSources(false)} isOpen={showSources} />
       </div>
     </DropZone>
   )

@@ -22,7 +22,8 @@
  * SOFTWARE.
  */
 import React from 'react';
-import { X, ExternalLink, FileText } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
+import { Drawer } from '@heroui/react';
 
 export interface Source {
   id: number;
@@ -34,27 +35,34 @@ export interface Source {
 interface Props {
   sources: Source[];
   onClose: () => void;
+  isOpen: boolean;
 }
 
-export const SourcesPanel: React.FC<Props> = ({ sources, onClose }) => {
+export const SourcesPanel: React.FC<Props> = ({ sources, onClose, isOpen }) => {
   return (
-    <div className="w-80 border-l border-default-200 bg-background flex flex-col h-full">
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <h3 className="text-sm font-semibold">📚 Sources ({sources.length})</h3>
-        <button onClick={onClose} className="p-1 hover:bg-default-100 rounded">
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {sources.map((src) => (
-          <div key={src.id} id={`source-${src.id}`} className="border-l-2 border-primary-400 pl-3 py-1">
-            <a href={src.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary-600 hover:underline flex items-center gap-1">
-              {src.title} <ExternalLink className="h-3 w-3" />
-            </a>
-            <p className="text-xs text-default-500 mt-1 line-clamp-2">{src.snippet}</p>
-          </div>
-        ))}
-      </div>
-    </div>
+    <Drawer>
+      <Drawer.Backdrop isOpen={isOpen} onOpenChange={onClose}>
+        <Drawer.Content placement="right">
+          <Drawer.Dialog>
+            <Drawer.CloseTrigger />
+            <Drawer.Header>
+              <Drawer.Heading>📚 Sources ({sources.length})</Drawer.Heading>
+            </Drawer.Header>
+            <Drawer.Body>
+              <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                {sources.map((src) => (
+                  <div key={src.id} id={`source-${src.id}`} className="border-l-2 border-primary-400 pl-3 py-1">
+                    <a href={src.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary-600 hover:underline flex items-center gap-1">
+                      {src.title} <ExternalLink className="h-3 w-3" />
+                    </a>
+                    <p className="text-xs text-default-500 mt-1 line-clamp-2">{src.snippet}</p>
+                  </div>
+                ))}
+              </div>
+            </Drawer.Body>
+          </Drawer.Dialog>
+        </Drawer.Content>
+      </Drawer.Backdrop>
+    </Drawer>
   );
 }

@@ -32,7 +32,7 @@ export function recordProviderRequestCapture(_input: any): void {
 }
 
 // biome-ignore lint: stubs intentionally use any
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 export function wrapFetchForProviderRequestCapture(
   fetch: any,
   _request: any,
