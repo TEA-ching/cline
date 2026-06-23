@@ -120,6 +120,18 @@ describe('emulateShellCommands', () => {
     expect(timestamp).toBeLessThan(3000000000) // Reasonable timestamp
   })
 
+  it('should handle date +%H:%M:%S (time format)', async () => {
+    const vfs = new MockVirtualFS()
+    const result = await emulateShellCommands(['date +%H:%M:%S'], {
+      vfs,
+      onFileCreated: vi.fn(),
+    })
+
+    expect(result).toContain('$ date +%H:%M:%S')
+    // Should return time in HH:MM:SS format
+    expect(result).toMatch(/\d{2}:\d{2}:\d{2}/)
+  })
+
   it('should handle echo command', async () => {
     const vfs = new MockVirtualFS()
     const result = await emulateShellCommands(['echo "hello world"'], {

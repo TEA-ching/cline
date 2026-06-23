@@ -223,6 +223,12 @@ function handleDateCommand(args: string[]): EmulatedCommandResult {
   } else if (args.includes('+%s')) {
     // Unix timestamp in seconds
     dateString = Math.floor(now.getTime() / 1000).toString()
+  } else if (args.includes('+%H:%M:%S')) {
+    // Time format HH:MM:SS
+    const hours = String(now.getHours()).padStart(2, '0')
+    const minutes = String(now.getMinutes()).padStart(2, '0')
+    const seconds = String(now.getSeconds()).padStart(2, '0')
+    dateString = `${hours}:${minutes}:${seconds}`
   } else if (args.length > 0) {
     // For other unknown arguments, return a simple format
     dateString = now.toString()
