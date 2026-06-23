@@ -38,8 +38,6 @@
     "shiki": "^3.0.0",
     "sucrase": "^3.35.1",
     "tailwindcss": "^4.3.0",
-    "vega": "^6.2.0",
-    "vega-lite": "^6.4.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
