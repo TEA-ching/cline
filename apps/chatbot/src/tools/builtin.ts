@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { Calculator, CalendarClock, Lock, Dice6, Palette, Zap, BookOpen, Search, Image } from 'lucide-react'
+import { Calculator, CalendarClock, Lock, Dice6, Palette, Zap, BookOpen, Search, Image, BarChart2 } from 'lucide-react'
 import type { ElementType } from 'react'
 import type { AiModel } from '@/types/ai-config'
 
@@ -168,7 +168,7 @@ export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
       providerId === 'mistral' && (model.outputModalities?.includes('image') ?? false),
   },
   /**
-   * Test prompt (french): 
+   * Test prompt (french):
    * ```markdown
    * Utilise l'outil de création de DOCX pour convertir ce contenu Markdown en document Word :
    * ```markdown
@@ -177,7 +177,7 @@ export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
    * Voici un paragraphe avec du **texte en gras**, de l'*italique*, et une [lien](https://example.com).
    * - Liste à puces
    * - Deuxième élément
-   * 
+   *
    * ## Section 2
    * Voici un tableau :
    * | Colonne 1 | Colonne 2 |
@@ -192,5 +192,19 @@ export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
     description: 'Create DOCX documents from Markdown content. Converts Markdown to Word document format.',
     icon: BookOpen,
     tools: ['create_docx'],
+  },
+  {
+    id: 'pdf_tool',
+    name: 'PDF Tools',
+    description: 'Generate PDFs from text/Markdown or extract text from existing PDFs in the VFS.',
+    icon: BookOpen,
+    tools: ['pdf_tool'],
+  },
+  {
+    id: 'create_chart',
+    name: 'Chart Creator',
+    description: 'Generate charts (bar, line, pie, scatter) from JSON data using Vega-Lite.',
+    icon: BarChart2,
+    tools: ['create_chart'],
   },
 ]

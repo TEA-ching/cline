@@ -726,7 +726,7 @@ export function createOptionalTools(
           const config: MarkdownDocxOptions = { }
 
           const doc = await converter.toDocument()
-          
+
           // Generate DOCX blob
           const blob = await Packer.toBlob(doc)
 
@@ -762,6 +762,138 @@ export function createOptionalTools(
         }
       },
     }))
+  }
+
+  if (toolId.includes('pdf_tool')) {
+    tools.push(createTool({
+      name: 'pdf_tool',
+      description: 'Génère un PDF à partir de texte/Markdown ou extrait le texte d\'un PDF existant dans le VFS.',
+      inputSchema: z.discriminatedUnion('operation', [
+        z.object({
+          operation: z.literal('generate'),
+          content: z.string().describe('Contenu Markdown ou texte à transformer en PDF'),
+          filename: z.string().default('document.pdf'),
+        }),
+        z.object({
+          operation: z.literal('extract'),
+          path: z.string().describe('Chemin du fichier PDF dans le VFS'),
+        }),
+      ]),
+      execute: async (input) => {
+        if (input.operation === 'generate') {
+          // On utilise pdf-lib pour créer un PDF basique
+          const { PDFDocument, rgb } = await import('pdf-lib');
+          const doc = await PDFDocument.create();
+          const page = doc.addPage([600, 800]);
+          const { width, height } = page.getSize();
+          // On ajoute du texte simple (pour le markdown, il faudrait un renderer plus avancé)
+          const lines = input.content.split('\n').filter(l => l.trim());
+          let y = height - 50;
+          for (const line of lines.slice(0, 40)) { // Limité en hauteur
+            if (y < 50) break;
+            page.drawText(line, { x: 50, y, size: 12, color: rgb(0, 0, 0) });
+            y -= 20;
+          }
+          const pdfBytes = await doc.save();
+          const base64 = btoa(String.fromCharCode(...pdfBytes));
+          const dataUrl = `data:application/pdf;base64,${base64}`;
+
+          // On sauvegarde dans le VFS
+          if (ctx?.vfs) {
+            ctx.vfs.write(input.filename, base64, 'application/pdf');
+            ctx.onFileCreated?.(input.filename, dataUrl);
+          }
+          return { success: true, message: `PDF généré : ${input.filename}`, vfsPath: input.filename };
+        } else {
+          // Extraction de texte d'un PDF existant
+          const { getDocument } = await import('pdfjs-dist');
+          const content = ctx?.vfs?.read(input.path);
+          if (!content) return { error: `Fichier ${input.path} introuvable` };
+          // Le contenu est en base64, on le convertit en Uint8Array
+          const binary = atob(content);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+          const pdf = await getDocument({ data: bytes }).promise;
+          let fullText = '';
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map((item: any) => item.str).join(' ');
+            fullText += `\n--- Page ${i} ---\n${pageText}`;
+          }
+          return { success: true, text: fullText, pages: pdf.numPages };
+        }
+      },
+    }));
+  }
+
+  if (toolId.includes('create_chart')) {
+    tools.push(createTool({
+      name: 'create_chart',
+      description: 'Génère un graphique (barres, lignes, scatter, camembert) à partir de données JSON.',
+      inputSchema: z.object({
+        data: z.array(z.record(z.any())).describe('Tableau d\'objets (ex: [{x: "A", y: 10}, {x: "B", y: 20}])'),
+        chartType: z.enum(['bar', 'line', 'pie', 'scatter']).default('bar'),
+        xField: z.string().describe('Nom du champ pour l\'axe X'),
+        yField: z.string().describe('Nom du champ pour l\'axe Y'),
+        title: z.string().optional().describe('Titre du graphique'),
+      }),
+      execute: async ({ data, chartType, xField, yField, title }) => {
+        if (!data || data.length === 0) return { error: 'Aucune donnée fournie' };
+
+        // Importer vega-lite et vega pour la compilation
+        const vl = await import('vega-lite');
+        const vega = await import('vega');
+
+        // Construction de la spécification Vega-Lite
+        let spec: any = {
+          $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+          description: title || 'Graphique',
+          data: { values: data },
+          ...(title ? { title: title } : {}),
+        };
+
+        if (chartType === 'pie') {
+          spec.mark = { type: 'arc', tooltip: true };
+          spec.encoding = {
+            theta: { field: yField, type: 'quantitative' },
+            color: { field: xField, type: 'nominal' },
+          };
+        } else {
+          spec.mark = { type: chartType, tooltip: true };
+          spec.encoding = {
+            x: { field: xField, type: 'nominal' },
+            y: { field: yField, type: 'quantitative' },
+          };
+        }
+
+        // Compilation en SVG
+        const compiledSpec = vl.compile(spec).spec;
+        const view = new vega.View(vega.parse(compiledSpec), {
+          renderer: 'svg',
+          logger: { level: vega.Warn } as any
+        });
+        const svg = await view.toSVG();
+
+        // Intégration dans le chat via une image data URI
+        const dataUrl = `data:image/svg+xml;base64,${btoa(svg)}`;
+
+        // On stocke dans le VFS pour le gestionnaire de fichiers
+        const vfsPath = `charts/chart_${Date.now()}.svg`;
+        if (ctx?.vfs) {
+          ctx.vfs.write(vfsPath, svg, 'image/svg+xml');
+          ctx.onFileCreated?.(vfsPath, dataUrl);
+        }
+
+        return {
+          success: true,
+          image: dataUrl,
+          vfsPath,
+          message: 'Graphique généré et affiché ci-dessous. Téléchargez-le depuis le gestionnaire de fichiers.',
+        };
+      },
+    }));
   }
 
   return tools

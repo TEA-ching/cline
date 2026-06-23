@@ -409,7 +409,7 @@ export function createBrowserTools(
 
   const fetchWebContent = createTool({
     name: 'fetch_web_content',
-    description: 'Fetch and extract the main content of a web page as markdown.',
+    description: 'Fetch and extract the main content of a web page as markdown. When citing this content, use [citation:N] format where N is the source number. The citation system will automatically create clickable links to the sources panel.',
     inputSchema: z.object({
       url: z.string().url(),
     }),
@@ -429,7 +429,7 @@ export function createBrowserTools(
    */
   const searchWeb = createTool({
     name: 'search_web',
-    description: 'Search the web and return results with titles, URLs, and markdown content.',
+    description: 'Search the web and return results with titles, URLs, and markdown content. When citing search results in your response, use [citation:N] format where N is the source number (1, 2, 3, etc.). The citation system will automatically create clickable links to the sources panel. For example: "According to recent studies [citation:1], the technology has improved significantly. More details can be found on the official website [citation:2]."',
     inputSchema: z.object({
       query: z.string(),
       limit: z.number().int().min(1).max(20).optional().default(5),

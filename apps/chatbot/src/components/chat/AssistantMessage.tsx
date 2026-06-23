@@ -22,18 +22,22 @@
  * SOFTWARE.
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
+import { Tooltip } from '@heroui/react'
 import { marked, type Tokens } from 'marked'
 import hljs from 'highlight.js'
 import DOMPurify from 'dompurify'
 import mermaid from 'mermaid'
 import { FileType, Check, SquareMinus, GlobeCheck } from 'lucide-react'
 import 'highlight.js/styles/github.css'
+import type { Source } from './SourcesPanel'
 
 interface Props {
   content: string
   isStreaming?: boolean
   reasoning?: string[]
   showReasoning?: boolean
+  sources?: Source[]
 }
 
 // ── One-time library initialisation (runs when the module is first imported) ──
@@ -80,7 +84,7 @@ initMarkdownLibs()
 const PURIFY_CONFIG = {
   USE_PROFILES: { html: true },
   ALLOWED_TAGS: [
-    'div', 'span', 'p', 'br', 'strong', 'em', 'code', 'pre', 'a', 'img',
+    'div', 'span', 'sup', 'p', 'br', 'strong', 'em', 'code', 'pre', 'a', 'img',
     'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'hr',
     'table', 'thead', 'tbody', 'tr', 'th', 'td',
     // SVG elements produced by mermaid's rendered output
@@ -106,11 +110,28 @@ const PURIFY_CONFIG = {
   ],
 }
 
+// Normalize Cohere's native citation format <citation:docIdx:[chunkIdx]> → [citation:chunkIdx+1]
+// Must run on raw markdown BEFORE marked.parse() because DOMPurify strips unknown tags.
+function normalizeCitations(text: string): string {
+  return text.replace(/<citation:(\d+):\[(\d+)\]>/g, (_match, _docIdx, chunkIdx) =>
+    `[citation:${parseInt(chunkIdx, 10) + 1}]`
+  )
+}
+
+// Convert [citation:N] markers to placeholder spans that will host React portal Tooltips.
+// Using empty spans avoids the anchor-URL bug and lets React own the interactive part.
+function injectCitationLinks(html: string): string {
+  return html.replace(/\[citation:(\d+)\]/g, (_match, num) =>
+    `<sup class="citation"><span class="citation-placeholder" data-source-id="${num}"></span></sup>`
+  )
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export const AssistantMessage: React.FC<Props> = ({ content, isStreaming, reasoning, showReasoning }) => {
+export const AssistantMessage: React.FC<Props> = ({ content, isStreaming, reasoning, showReasoning, sources }) => {
   const contentRef = useRef<HTMLDivElement>(null)
   const [safeHtml, setSafeHtml] = useState('')
+  const [citationPortals, setCitationPortals] = useState<React.ReactPortal[]>([])
   const [copiedText, setCopiedText] = useState(false)
   const [copiedRaw, setCopiedRaw] = useState(false)
   const [copiedHtml, setCopiedHtml] = useState(false)
@@ -119,8 +140,12 @@ export const AssistantMessage: React.FC<Props> = ({ content, isStreaming, reason
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      const html = await marked.parse(content)
-      const safe = DOMPurify.sanitize(html, PURIFY_CONFIG) as string
+      const html = await marked.parse(normalizeCitations(content))
+      let safe = DOMPurify.sanitize(html, PURIFY_CONFIG) as string
+
+      // Inject citation links if reasoning is enabled
+      safe = injectCitationLinks(safe)
+
       if (!cancelled) setSafeHtml(safe)
     })()
     return () => { cancelled = true }
@@ -132,6 +157,46 @@ export const AssistantMessage: React.FC<Props> = ({ content, isStreaming, reason
   useEffect(() => {
     if (contentRef.current) contentRef.current.innerHTML = safeHtml
   }, [safeHtml])
+
+  // After innerHTML is set, inject HeroUI Tooltip portals into .citation-placeholder spans.
+  // Portals render INTO the span so React owns the interactive element — no anchor-URL weirdness.
+  useEffect(() => {
+    if (!contentRef.current) return
+    const placeholders = Array.from(
+      contentRef.current.querySelectorAll<HTMLSpanElement>('.citation-placeholder')
+    )
+    if (placeholders.length === 0) { setCitationPortals([]); return }
+
+    const portals = placeholders.map(el => {
+      const sourceId = parseInt(el.dataset.sourceId ?? '0', 10)
+      const source = sources?.find(s => s.id === sourceId)
+      return createPortal(
+        <Tooltip delay={0}>
+          <Tooltip.Trigger>
+            <span className="text-primary-500 cursor-help font-medium select-none" tabIndex={0}>[{sourceId}]</span>
+          </Tooltip.Trigger>
+          <Tooltip.Content showArrow>
+            <Tooltip.Arrow />
+            <div className="max-w-xs p-1 space-y-1">
+              <a
+                href={source?.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-medium hover:underline text-primary-600 block"
+              >
+                {source?.title ?? `Source ${sourceId}`}
+              </a>
+              {source?.snippet && (
+                <p className="text-xs text-default-500 line-clamp-3">{source.snippet}</p>
+              )}
+            </div>
+          </Tooltip.Content>
+        </Tooltip>,
+        el,
+      )
+    })
+    setCitationPortals(portals)
+  }, [safeHtml, sources])
 
   // Render mermaid diagrams once streaming has finished and HTML is in the DOM
   useEffect(() => {
@@ -228,6 +293,8 @@ export const AssistantMessage: React.FC<Props> = ({ content, isStreaming, reason
         // innerHTML managed via useEffect — not dangerouslySetInnerHTML —
         // so React's reconciler never overwrites mermaid's rendered SVG.
       />
+      {/* Citation Tooltip portals — rendered INTO their .citation-placeholder spans */}
+      {citationPortals}
       {isStreaming && (
         <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-primary-500" />
       )}

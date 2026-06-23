@@ -26,6 +26,7 @@ import { Bot, User, Terminal, Copy, Check, Download, GitBranch } from 'lucide-re
 import { AssistantMessage } from './AssistantMessage'
 import { ToolCallCard } from './ToolCallCard'
 import type { ChatMessage } from '@/hooks/useAgent'
+import type { Source } from './SourcesPanel'
 
 const CopyButton: React.FC<{ text: string; light?: boolean }> = ({ text, light }) => {
   const [copied, setCopied] = useState(false)
@@ -60,9 +61,10 @@ interface Props {
   onFork?: (messageId: string) => void
   showReasoning?: boolean
   getReasoningSteps?: () => string[]
+  sources?: Source[]
 }
 
-export const MessageItem: React.FC<Props> = ({ message, onImageCaptured, onFork, showReasoning, getReasoningSteps }) => {
+export const MessageItem: React.FC<Props> = ({ message, onImageCaptured, onFork, showReasoning, getReasoningSteps, sources }) => {
   if (message.role === 'tool') {
     return (
       <ToolCallCard
@@ -113,7 +115,7 @@ export const MessageItem: React.FC<Props> = ({ message, onImageCaptured, onFork,
 
         {isUser
           ? <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-          : <AssistantMessage content={message.content} isStreaming={message.isStreaming} reasoning={getReasoningSteps?.()} showReasoning={showReasoning} />
+          : <AssistantMessage content={message.content} isStreaming={message.isStreaming} reasoning={getReasoningSteps?.()} showReasoning={showReasoning} sources={sources} />
         }
 
         {/* Generated images for assistant messages */}

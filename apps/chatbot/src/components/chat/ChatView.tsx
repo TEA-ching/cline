@@ -23,7 +23,7 @@
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { Button, Drawer } from '@heroui/react'
-import { Settings, PanelLeftOpen, PanelLeftClose, History, Wrench, Plus, UserRoundKey, Brain } from 'lucide-react'
+import { Settings, PanelLeftOpen, PanelLeftClose, History, Wrench, Plus, UserRoundKey, Brain, FileText } from 'lucide-react'
 
 import { MessageList } from './MessageList'
 import { InputBar } from './InputBar'
@@ -38,6 +38,7 @@ import { SettingsPanel } from '@/components/settings/SettingsPanel'
 import { SessionBrowser } from '@/components/sessions/SessionBrowser'
 import { ToolManager } from '@/components/optional-tools/ToolManager'
 import { ByokConfigEditor } from '@/components/byok/ByokConfigEditor'
+import { SourcesPanel, type Source } from './SourcesPanel'
 
 import { useAgent } from '@/hooks/useAgent'
 import type { ChatMessage } from '@/hooks/useAgent'
@@ -92,6 +93,8 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   const [showSkills, setShowTools] = useState(false)
   const [showByokConfig, setShowByokConfig] = useState(false)
   const [showReasoning, setShowReasoning] = useLocalStorageState('show_reasoning', false)
+  const [sources, setSources] = useState<Source[]>([])
+  const [showSources, setShowSources] = useState(false)
   const [sessionId, setSessionId] = useState(() => `sess_${Date.now()}`)
   const [systemPrompt, setSystemPrompt] = useLocalStorageState('chatbot_system_prompt', DEFAULT_SYSTEM_PROMPT)
   const [enabledTools, setEnabledTools] = useLocalStorageState<string[]>('chatbot_enabled_optional_tools', [])
@@ -248,6 +251,38 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     const id = setInterval(tick, 500)
     return () => clearInterval(id)
   }, [rateLimitRetryAt])
+
+  // -------------------------------------------------------------------------
+  // Extract sources from tool messages
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const extracted: Source[] = [];
+    messages.forEach(msg => {
+      if (msg.toolName === 'search_web' && msg.toolResult) {
+        const results: any[] = Array.isArray(msg.toolResult) ? msg.toolResult : (msg.toolResult as any)?.results ?? [];
+        results.forEach((r: any) => {
+          extracted.push({
+            id: extracted.length + 1,
+            title: r.title || 'Source',
+            url: r.url || '#',
+            snippet: r.description || r.markdown?.slice(0, 200) || '',
+          });
+        });
+      } else if (msg.toolName === 'fetch_web_content' && msg.toolResult) {
+        // Extract source from fetch_web_content tool calls
+        const result = msg.toolResult as any;
+        if (result.url) {
+          extracted.push({
+            id: extracted.length + 1,
+            title: result.title || result.metadata?.title || 'Web Content',
+            url: result.url,
+            snippet: result.markdown?.slice(0, 200) || result.content?.slice(0, 200) || 'Content fetched from web page',
+          });
+        }
+      }
+    });
+    setSources(extracted);
+  }, [messages]);
 
   // -------------------------------------------------------------------------
   // Session auto-save
@@ -426,6 +461,9 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
                 <UserRoundKey className="h-4 w-4" />
               </Button>
             )}
+            <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSources(v => !v)} aria-label="Afficher les sources" className={showSources ? 'text-primary-500' : ''}>
+              <FileText className="h-4 w-4" />
+            </Button>
             <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowReasoning(v => !v)} aria-label="Afficher le raisonnement" className={showReasoning ? 'text-primary-500' : ''}>
               <Brain className="h-4 w-4" />
             </Button>
@@ -448,6 +486,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
                 onFork={handleForkAtMessage}
                 showReasoning={showReasoning}
                 getReasoningSteps={getReasoningSteps}
+                sources={sources}
               />
               <ThinkingIndicator startedAt={turnStartedAt} streamedTokens={streamedTokens} />
             </div>
@@ -577,6 +616,13 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
             options={pendingQuestion.options}
             onAnswer={pendingQuestion.resolve}
           />
+        )}
+
+        {/* Sources panel */}
+        {showSources && (
+          <div className="w-80 shrink-0 border-l border-default-200 overflow-hidden">
+            <SourcesPanel sources={sources} onClose={() => setShowSources(false)} />
+          </div>
         )}
       </div>
     </DropZone>

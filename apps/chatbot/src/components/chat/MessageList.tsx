@@ -24,6 +24,7 @@
 import React, { useEffect, useRef } from 'react'
 import { MessageItem } from './MessageItem'
 import type { ChatMessage } from '@/hooks/useAgent'
+import type { Source } from './SourcesPanel'
 
 interface Props {
   messages: ChatMessage[]
@@ -31,9 +32,10 @@ interface Props {
   onFork?: (messageId: string) => void
   showReasoning?: boolean
   getReasoningSteps?: () => string[]
+  sources?: Source[]
 }
 
-export const MessageList: React.FC<Props> = ({ messages, onImageCaptured, onFork, showReasoning, getReasoningSteps }) => {
+export const MessageList: React.FC<Props> = ({ messages, onImageCaptured, onFork, showReasoning, getReasoningSteps, sources }) => {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -61,6 +63,7 @@ export const MessageList: React.FC<Props> = ({ messages, onImageCaptured, onFork
           onFork={onFork}
           showReasoning={showReasoning}
           getReasoningSteps={getReasoningSteps}
+          sources={sources}
         />
       ))}
       <div ref={bottomRef} />
