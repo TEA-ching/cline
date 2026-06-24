@@ -234,7 +234,7 @@ async function handleInit(msg: InitMessage): Promise<void> {
       import('@cline/agents'),
       import('@/vfs/virtual-fs'),
       import('@/tools/index'),
-      import('@/tools/worker-tools'),
+      import('@/tools/worker-tools/index'),
     ])
 
     vfs = new VirtualFS()
