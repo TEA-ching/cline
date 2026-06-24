@@ -196,14 +196,14 @@ export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
   {
     id: 'pdf_tool',
     name: 'PDF Tools',
-    description: 'Generate PDFs from text/Markdown or extract text from existing PDFs in the VFS.',
+    description: 'Generate PDFs from Markdown (headings, lists, tables, code blocks, images, Mermaid diagrams) or extract text from existing PDFs. Note: emoji and non-Latin characters are stripped (Latin/WinAnsi fonts only).',
     icon: BookOpen,
     tools: ['pdf_tool'],
   },
   {
     id: 'create_chart',
     name: 'Chart Creator',
-    description: 'Generate charts (bar, line, pie, scatter) from JSON data using Vega-Lite.',
+    description: 'Generate charts (bar, line, pie, scatter) from JSON data using simple data to svg',
     icon: BarChart2,
     tools: ['create_chart'],
   },

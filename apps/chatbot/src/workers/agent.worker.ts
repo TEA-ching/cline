@@ -184,6 +184,21 @@ function onAskQuestion(question: string, options: string[]): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
+// render_mermaid bridge
+// ---------------------------------------------------------------------------
+
+function renderMermaid(src: string): Promise<string> {
+  return new Promise<string>((resolve) => {
+    const { port1, port2 } = new MessageChannel()
+    port1.onmessage = (ev: MessageEvent<{ dataUrl: string }>) => {
+      port1.close()
+      resolve(ev.data.dataUrl ?? '')
+    }
+    self.postMessage({ type: 'render_mermaid', src, port: port2 }, [port2])
+  })
+}
+
+// ---------------------------------------------------------------------------
 // requestToolApproval bridge
 // ---------------------------------------------------------------------------
 
@@ -251,6 +266,7 @@ async function handleInit(msg: InitMessage): Promise<void> {
         corsProxyUrl: msg.corsProxyUrl,
         weatherApiKeys: msg.weatherApiKeys,
         weatherApiEndpoint: msg.weatherApiEndpoint,
+        renderMermaid,
       }),
     ]
 
