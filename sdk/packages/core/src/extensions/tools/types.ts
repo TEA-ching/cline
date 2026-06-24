@@ -79,7 +79,7 @@ export type SearchExecutor = (
  * @param context - Tool execution context
  * @returns Command output (stdout)
  */
-export type BashExecutor = (
+export type ShellExecutor = (
 	command: string | StructuredCommandInput,
 	cwd: string,
 	context: AgentToolContext,
@@ -231,7 +231,7 @@ export interface ToolExecutors {
 	/** Codebase search implementation */
 	search?: SearchExecutor;
 	/** Shell command execution implementation */
-	bash?: BashExecutor;
+	bash?: ShellExecutor;
 	/** Web content fetching implementation */
 	webFetch?: WebFetchExecutor;
 	/** Web search implementation */

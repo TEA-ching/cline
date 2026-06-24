@@ -12,27 +12,25 @@ export { ALL_DEFAULT_TOOL_NAMES, DefaultToolNames } from "./constants";
 export {
 	createApplyPatchTool,
 	createAskQuestionTool,
-	createBashTool,
 	createDefaultTools,
 	createEditorTool,
 	createReadFilesTool,
 	createSearchTool,
+	createShellTool,
 	createSkillsTool,
 	createSubmitAndExitTool,
 	createWebFetchTool,
-	createWebSearchTool,
-	createWindowsShellTool,
 } from "./definitions";
 // Built-in Executors
 export {
 	type ApplyPatchExecutorOptions,
-	type BashExecutorOptions,
 	createApplyPatchExecutor,
-	createBashExecutor,
 	createDefaultExecutors,
+	createDefaultShellExecutor,
 	createEditorExecutor,
 	createFileReadExecutor,
 	createSearchExecutor,
+	createShellExecutor,
 	createWebFetchExecutor,
 	createSmartWebFetchExecutor,
 	createWebSearchExecutor,
@@ -43,8 +41,13 @@ export {
 	type EditorExecutorOptions,
 	type FileReadExecutorOptions,
 	type SearchExecutorOptions,
+	type ShellExecutorOptions,
 	type WebFetchExecutorOptions,
 } from "./executors/index";
+export {
+	MAX_COMMAND_OUTPUT_CHARS,
+	truncateCommandOutput,
+} from "./executors/output-limits";
 export {
 	DEFAULT_MODEL_TOOL_ROUTING_RULES,
 	resolveToolRoutingConfig,
@@ -88,6 +91,8 @@ export {
 	SearchCodebaseInputSchema,
 	type SkillsInput,
 	SkillsInputSchema,
+	type StructuredCommandInput,
+	StructuredCommandInputSchema,
 	type SubmitInput,
 	SubmitInputSchema,
 	type WebFetchRequest,
@@ -100,13 +105,13 @@ export { TEAM_TOOL_NAMES } from "./team/team-tools";
 export type {
 	ApplyPatchExecutor,
 	AskQuestionExecutor,
-	BashExecutor,
 	CreateDefaultToolsOptions,
 	DefaultToolName,
 	DefaultToolsConfig,
 	EditorExecutor,
 	FileReadExecutor,
 	SearchExecutor,
+	ShellExecutor,
 	SkillsExecutor,
 	SkillsExecutorSkillMetadata,
 	SkillsExecutorWithMetadata,
