@@ -38,6 +38,7 @@ export interface BrowserToolContext {
   firecrawlEndpoint: string
   onFileCreated: (path: string, content: string) => void
   onAskQuestion: (question: string, options: string[]) => Promise<string>
+  enabledTools?: string[]
 }
 
 // ---------------------------------------------------------------------------
@@ -479,9 +480,21 @@ export function createBrowserTools(
       commands: z.array(z.string()).min(1),
     }),
     execute: async ({ commands }) => {
+      const isPythonEnabled = (ctx.enabledTools ?? []).includes('execute_python_code')
       return emulateShellCommands(commands, {
         vfs: ctx.vfs,
         onFileCreated: ctx.onFileCreated,
+        isPythonEnabled,
+        onAskQuestion: ctx.onAskQuestion,
+        runPython: async (code: string) => {
+          const { runPython: _runPython } = await import('./python-sandbox')
+          const result = await _runPython(code, [], false, ctx.vfs, ctx.onAskQuestion)
+          for (const path of result.filesWritten) {
+            const content = ctx.vfs.read(path)
+            if (content !== null) ctx.onFileCreated(path, content)
+          }
+          return result
+        },
       })
     },
   })

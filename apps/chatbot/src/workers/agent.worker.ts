@@ -238,6 +238,7 @@ async function handleInit(msg: InitMessage): Promise<void> {
         firecrawlEndpoint: msg.firecrawlEndpoint,
         onFileCreated: postFileCreated,
         onAskQuestion,
+        enabledTools: msg.enabledTools ?? [],
       }),
       ...createOptionalTools(msg.enabledTools ?? [], {
         vfs,

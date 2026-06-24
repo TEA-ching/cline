@@ -28,6 +28,9 @@ import { globToRegex } from './index'
 export interface ShellEmulatorContext {
   vfs: VirtualFS
   onFileCreated: (path: string, content: string) => void
+  isPythonEnabled?: boolean
+  onAskQuestion?: (question: string, options: string[]) => Promise<string>
+  runPython?: (code: string) => Promise<{ output: string; error?: string; filesWritten: string[] }>
 }
 
 type CommandSeparator = 'always' | 'onSuccess'
@@ -46,6 +49,74 @@ interface EmulatedCommandResult {
 function normalizeShellInput(input: string): string {
   // Remove trailing backslash-newline sequences
   return input.replace(/\\\r?\n/g, ' ')
+}
+
+type HeredocAction =
+  | { type: 'python' }
+  | { type: 'write'; file: string }
+  | { type: 'append'; file: string }
+  | { type: 'cat' }
+
+interface HeredocBlock {
+  content: string
+  action: HeredocAction
+}
+
+interface HeredocExtractResult {
+  processed: string
+  blocks: Map<string, HeredocBlock>
+}
+
+function extractHeredocBlocks(input: string): HeredocExtractResult {
+  const lines = input.split('\n')
+  const blocks = new Map<string, HeredocBlock>()
+  let blockIdx = 0
+  const outputLines: string[] = []
+  let i = 0
+
+  while (i < lines.length) {
+    const line = lines[i]
+    // Match heredoc patterns (optional - strips leading tabs from body):
+    //   cat << MARKER | python[3]   →  run via Python
+    //   cat << MARKER > file        →  write file
+    //   cat << MARKER >> file       →  append to file
+    //   cat << MARKER               →  print to stdout
+    const heredocMatch = line.match(
+      /^cat\s+<<[-]?\s*(\w+)\s*(?:\|\s*(python3?)|(>>?)\s*(.+?))?\s*$/
+    )
+    if (heredocMatch) {
+      const marker = heredocMatch[1]
+      const bodyLines: string[] = []
+      i++
+      while (i < lines.length && lines[i].trim() !== marker) {
+        bodyLines.push(lines[i])
+        i++
+      }
+      if (i < lines.length) i++ // skip closing marker
+
+      const content = bodyLines.join('\n')
+      const blockKey = `__HEREDOC_${blockIdx++}__`
+
+      let action: HeredocAction
+      if (heredocMatch[2]) {
+        action = { type: 'python' }
+      } else if (heredocMatch[3] === '>>') {
+        action = { type: 'append', file: heredocMatch[4].trim() }
+      } else if (heredocMatch[3] === '>') {
+        action = { type: 'write', file: heredocMatch[4].trim() }
+      } else {
+        action = { type: 'cat' }
+      }
+
+      blocks.set(blockKey, { content, action })
+      outputLines.push(`__heredoc__ ${blockKey}`)
+    } else {
+      outputLines.push(line)
+      i++
+    }
+  }
+
+  return { processed: outputLines.join('\n'), blocks }
 }
 
 function splitShellCommands(input: string): ParsedCommandSegment[] {
@@ -199,6 +270,9 @@ async function executeEmulatedCommand(
       return handleSortCommand(args, ctx)
     case 'uniq':
       return handleUniqCommand(args, ctx)
+    case 'python':
+    case 'python3':
+      return handlePythonCommand(args, ctx)
     default:
       return {
         stdout: '',
@@ -559,15 +633,133 @@ async function handleUniqCommand(
   return { stdout: uniqueLines.join('\n'), stderr: '', exitCode: 0 }
 }
 
+async function handlePythonExecution(
+  code: string,
+  ctx: ShellEmulatorContext,
+): Promise<EmulatedCommandResult> {
+  if (!ctx.runPython) {
+    return {
+      stdout: '',
+      stderr: 'Python execution is not available. Enable the "execute_python_code" tool in the chatbot settings.',
+      exitCode: 127,
+    }
+  }
+
+  if (!ctx.isPythonEnabled) {
+    if (!ctx.onAskQuestion) {
+      return {
+        stdout: '',
+        stderr: 'Python execution requires the execute_python_code tool to be enabled.',
+        exitCode: 127,
+      }
+    }
+    const answer = await ctx.onAskQuestion(
+      'A shell command is attempting to execute Python code via Pyodide. The execute_python_code tool is not currently enabled. Authorize this one-time execution?',
+      ['Yes, run via Pyodide', 'No, deny'],
+    )
+    if (!answer.startsWith('Yes')) {
+      return { stdout: '', stderr: 'Python execution denied by user.', exitCode: 1 }
+    }
+  }
+
+  const result = await ctx.runPython(code)
+  return {
+    stdout: result.output,
+    stderr: result.error ?? '',
+    exitCode: result.error ? 1 : 0,
+  }
+}
+
+async function handlePythonCommand(
+  args: string[],
+  ctx: ShellEmulatorContext,
+): Promise<EmulatedCommandResult> {
+  if (args.length === 0) {
+    return {
+      stdout: '',
+      stderr: 'Python interactive mode is not supported in the shell emulator. Use the execute_python_code tool directly.',
+      exitCode: 1,
+    }
+  }
+
+  let code: string
+
+  if (args[0] === '-c') {
+    if (args.length < 2) {
+      return { stdout: '', stderr: 'python: -c requires an argument', exitCode: 1 }
+    }
+    code = args.slice(1).join(' ')
+  } else {
+    const scriptPath = args[0]
+    const content = ctx.vfs.read(scriptPath)
+    if (content === null) {
+      return {
+        stdout: '',
+        stderr: `python: can't open file '${scriptPath}': No such file or directory`,
+        exitCode: 2,
+      }
+    }
+    code = content
+  }
+
+  return handlePythonExecution(code, ctx)
+}
+
 export async function emulateShellCommands(
   commands: string[],
   ctx: ShellEmulatorContext,
 ): Promise<string> {
   const normalized = normalizeShellInput(commands.join('\n'))
-  const segments = splitShellCommands(normalized)
+  const { processed, blocks } = extractHeredocBlocks(normalized)
+  const segments = splitShellCommands(processed)
   const results: string[] = []
 
   for (const segment of segments) {
+    // Handle heredoc blocks extracted during preprocessing
+    const heredocBlockMatch = segment.command.match(/^__heredoc__\s+(__HEREDOC_\d+__)$/)
+    if (heredocBlockMatch) {
+      const block = blocks.get(heredocBlockMatch[1])
+      if (block !== undefined) {
+        let result: EmulatedCommandResult
+        let label: string
+
+        switch (block.action.type) {
+          case 'python': {
+            result = await handlePythonExecution(block.content, ctx)
+            label = '$ cat << heredoc | python3'
+            break
+          }
+          case 'write': {
+            ctx.vfs.write(block.action.file, block.content)
+            ctx.onFileCreated(block.action.file, block.content)
+            result = { stdout: '', stderr: '', exitCode: 0 }
+            label = `$ cat << heredoc > ${block.action.file}`
+            break
+          }
+          case 'append': {
+            const existing = ctx.vfs.read(block.action.file) ?? ''
+            const separator = existing && !existing.endsWith('\n') ? '\n' : ''
+            const newContent = existing + separator + block.content
+            ctx.vfs.write(block.action.file, newContent)
+            ctx.onFileCreated(block.action.file, newContent)
+            result = { stdout: '', stderr: '', exitCode: 0 }
+            label = `$ cat << heredoc >> ${block.action.file}`
+            break
+          }
+          default: {
+            result = { stdout: block.content, stderr: '', exitCode: 0 }
+            label = '$ cat << heredoc'
+          }
+        }
+
+        results.push(label)
+        results.push(result.stdout)
+        if (result.stderr) results.push(result.stderr)
+        if (segment.separatorBefore === 'onSuccess' && result.exitCode !== 0) break
+        continue
+      }
+    }
+
     const argv = parseShellArgs(segment.command)
     if (argv.length === 0) continue
 
