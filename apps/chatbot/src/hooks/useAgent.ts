@@ -123,6 +123,7 @@ type WorkerOutgoingMessage =
   | { type: 'rate_limited'; retryAfterSeconds: number; attempt: number; maxRetries: number }
   | { type: 'approval_req'; toolName: string; input: unknown; port: MessagePort }
   | { type: 'ask_question'; question: string; options: string[]; port: MessagePort }
+  | { type: 'render_mermaid'; src: string; port: MessagePort }
   | { type: 'file_created'; path: string; content: string }
   | { type: 'image_generated'; url: string; vfsPath: string }
   | { type: 'worker_error'; error: string }
@@ -328,6 +329,38 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
               setPendingQuestion(null)
             },
           })
+          break
+        }
+
+        case 'render_mermaid': {
+          const { src, port } = msg
+          ;(async () => {
+            try {
+              const { default: mermaid } = await import('mermaid')
+              mermaid.initialize({ startOnLoad: false })
+              const { svg } = await mermaid.render(`mermaid-pdf-${Date.now()}`, src)
+              const canvas = document.createElement('canvas')
+              const img = new Image()
+              const svgBlob = new Blob([svg], { type: 'image/svg+xml' })
+              const svgUrl = URL.createObjectURL(svgBlob)
+              await new Promise<void>((resolve, reject) => {
+                img.onload = () => resolve()
+                img.onerror = () => reject(new Error('svg load failed'))
+                img.src = svgUrl
+              })
+              URL.revokeObjectURL(svgUrl)
+              canvas.width = img.naturalWidth || 800
+              canvas.height = img.naturalHeight || 600
+              const ctx2d = canvas.getContext('2d')!
+              ctx2d.fillStyle = '#ffffff'
+              ctx2d.fillRect(0, 0, canvas.width, canvas.height)
+              ctx2d.drawImage(img, 0, 0)
+              port.postMessage({ dataUrl: canvas.toDataURL('image/png') })
+            } catch (e) {
+              console.warn('[useAgent] Mermaid render failed:', e)
+              port.postMessage({ dataUrl: '' })
+            }
+          })()
           break
         }
 

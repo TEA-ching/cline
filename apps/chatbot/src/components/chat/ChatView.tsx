@@ -452,7 +452,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
 
   return (
     <>
-    <Toast.Provider placement="bottom end" />
+      <Toast.Provider placement="bottom end" />
       <DropZone onDrop={vfs.uploadFiles}>
         <div className="flex h-screen overflow-hidden bg-background">
 
@@ -513,11 +513,11 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
               <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowReasoning(v => !v)} aria-label="Afficher le raisonnement" className={showReasoning ? 'text-blue-300' : ''}>
                 <Brain className="h-4 w-4" />
               </Button>
-              <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSettings(v => !v)} aria-label="Settings">
-                <Settings className="h-4 w-4" />
-              </Button>
               <Button isIconOnly variant="ghost" size="sm" onPress={() => rotateKey()} aria-label="Rotate API key">
                 <RotateCcwKey className="h-4 w-4" />
+              </Button>
+              <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSettings(v => !v)} aria-label="Settings">
+                <Settings className="h-4 w-4" />
               </Button>
             </div>
 

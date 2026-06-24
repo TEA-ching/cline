@@ -18,6 +18,9 @@ export const LoginScreen: React.FC = () => {
   const [apiKey, setApiKey] = useState('')
   const [crawlerKey, setCrawlerKey] = useState('')
   const [selectedCrawler, setSelectedCrawler] = useState('')
+  const [weatherApiKey, setWeatherApiKey] = useState('')
+  const [weatherSharedSecret, setWeatherSharedSecret] = useState('')
+  const [weatherSignatureType, setWeatherSignatureType] = useState('')
 
   const { login, loading, switchToBYOK } = useVault()
 
@@ -86,6 +89,43 @@ export const LoginScreen: React.FC = () => {
     }
   }
 
+  const handleAddWeatherApiKey = () => {
+    if (!availableModels || !weatherApiKey) return
+
+    const newConfig = localConfig ? { ...localConfig } : { ...availableModels }
+
+    // Initialize weatherApi if it doesn't exist
+    if (!newConfig.weatherApi) {
+      newConfig.weatherApi = {
+        protocol: { protocol: 'meteoblue' },
+        endpoint: 'https://my.meteoblue.com/packages',
+        keys: []
+      }
+    }
+
+    // Check if key already exists
+    const keyExists = newConfig.weatherApi.keys.some(k => k.key === weatherApiKey)
+    if (!keyExists) {
+      const newKey: any = { key: weatherApiKey, owner: 'user' }
+
+      // Add shared secret if provided
+      if (weatherSharedSecret) {
+        newKey.sharedSecret = weatherSharedSecret
+      }
+
+      // Add signature type if provided
+      if (weatherSignatureType) {
+        newKey.signatureType = weatherSignatureType
+      }
+
+      newConfig.weatherApi.keys.push(newKey)
+      setLocalConfig(newConfig)
+      setWeatherApiKey('') // Clear the input
+      setWeatherSharedSecret('') // Clear shared secret
+      setWeatherSignatureType('') // Clear signature type
+    }
+  }
+
   const handleConnect = () => {
     if (!localConfig) return
 
@@ -99,7 +139,7 @@ export const LoginScreen: React.FC = () => {
     switchToBYOK(localConfig)
   }
 
-  const getConfigSummary = () => {
+    const getConfigSummary = () => {
     if (!localConfig) return null
 
     const providerSummary = Object.entries(localConfig.providers)
@@ -118,7 +158,15 @@ export const LoginScreen: React.FC = () => {
         keyCount: crawler.keys.length
       }))
 
-    return [...providerSummary, ...crawlerSummary]
+    const weatherSummary = localConfig.weatherApi && localConfig.weatherApi.keys.length > 0
+      ? [{
+        type: 'weather',
+        name: 'Weather API',
+        keyCount: localConfig.weatherApi.keys.length
+      }]
+      : []
+
+    return [...providerSummary, ...crawlerSummary, ...weatherSummary]
   }
 
   const configSummary = getConfigSummary()
@@ -262,6 +310,66 @@ export const LoginScreen: React.FC = () => {
                     >
                       <Plus className="mr-2 h-4 w-4" />
                       Add Crawler Key
+                    </Button>
+                  </div>
+
+                  {/* Weather API Key Section */}
+                  <div className="space-y-2">
+                    <Label>Add Weather API Key</Label>
+
+                    {/* Weather API Provider Dropdown */}
+                    <select
+                      disabled
+                      className="w-full p-2 border rounded bg-default-100 cursor-not-allowed"
+                    >
+                      <option value="meteoblue">Meteoblue</option>
+                    </select>
+
+                    <Input
+                      type="password"
+                      placeholder="Enter Weather API key"
+                      value={weatherApiKey}
+                      onChange={(e) => setWeatherApiKey(e.target.value)}
+                      variant="secondary"
+                      className="w-full"
+                    />
+
+                    {/* Advanced options - collapsible */}
+                    <div className="space-y-2">
+                      <details className="border border-default-200 rounded-lg p-2">
+                        <summary className="font-medium cursor-pointer">Advanced Options</summary>
+                        <div className="mt-2 space-y-2">
+                          <Input
+                            type="password"
+                            placeholder="Shared Secret (optional)"
+                            value={weatherSharedSecret}
+                            onChange={(e) => setWeatherSharedSecret(e.target.value)}
+                            variant="secondary"
+                            className="w-full"
+                          />
+
+                          <select
+                            value={weatherSignatureType}
+                            onChange={(e) => setWeatherSignatureType(e.target.value)}
+                            className="w-full p-2 border rounded"
+                          >
+                            <option value="">Select Signature Type (optional)</option>
+                            <option value="hmac-md5">HMAC-MD5</option>
+                            <option value="hmac-sha256">HMAC-SHA256</option>
+                            <option value="hmac-sha512">HMAC-SHA512</option>
+                          </select>
+                        </div>
+                      </details>
+                    </div>
+
+                    <Button
+                      onPress={handleAddWeatherApiKey}
+                      fullWidth
+                      isDisabled={!weatherApiKey}
+                      className="mt-1"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Weather API Key
                     </Button>
                   </div>
 

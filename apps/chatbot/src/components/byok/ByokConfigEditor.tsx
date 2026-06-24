@@ -15,6 +15,9 @@ export const ByokConfigEditor: React.FC<ByokConfigEditorProps> = ({ onClose }) =
   const [localConfig, setLocalConfig] = useState<AiConfig | null>(null)
   const [newProviderKey, setNewProviderKey] = useState('')
   const [newCrawlerKey, setNewCrawlerKey] = useState('')
+  const [newWeatherKey, setNewWeatherKey] = useState('')
+  const [weatherSharedSecret, setWeatherSharedSecret] = useState('')
+  const [weatherSignatureType, setWeatherSignatureType] = useState('')
   const [selectedProvider, setSelectedProvider] = useState('')
   const [selectedCrawler, setSelectedCrawler] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -75,10 +78,60 @@ export const ByokConfigEditor: React.FC<ByokConfigEditorProps> = ({ onClose }) =
         setLocalConfig(newConfig)
         setNewCrawlerKey('')
         setSuccess('Crawler key added successfully')
-        setError(null)
       } else {
         setError('This key already exists for this crawler')
       }
+    }
+  }
+
+  const handleAddWeatherKey = () => {
+    if (!localConfig || !newWeatherKey) return
+
+    const newConfig = { ...localConfig }
+
+    // Initialize weatherApi if it doesn't exist
+    if (!newConfig.weatherApi) {
+      newConfig.weatherApi = {
+        protocol: { protocol: 'meteoblue' },
+        endpoint: 'https://my.meteoblue.com/packages',
+        keys: []
+      }
+    }
+
+    // Check if key already exists
+    const keyExists = newConfig.weatherApi.keys.some(k => k.key === newWeatherKey)
+    if (!keyExists) {
+      const newKey: any = { key: newWeatherKey, owner: 'user' }
+
+      // Add shared secret if provided
+      if (weatherSharedSecret) {
+        newKey.sharedSecret = weatherSharedSecret
+      }
+
+      // Add signature type if provided
+      if (weatherSignatureType) {
+        newKey.signatureType = weatherSignatureType
+      }
+
+      newConfig.weatherApi.keys.push(newKey)
+      setLocalConfig(newConfig)
+      setNewWeatherKey('')
+      setWeatherSharedSecret('')
+      setWeatherSignatureType('')
+      setSuccess('Weather API key added successfully')
+    } else {
+      setError('This weather API key already exists')
+    }
+  }
+
+  const handleRemoveWeatherKey = (keyIndex: number) => {
+    if (!localConfig || !localConfig.weatherApi) return
+
+    const newConfig = { ...localConfig }
+    if (newConfig.weatherApi && newConfig.weatherApi.keys.length > keyIndex) {
+      newConfig.weatherApi.keys.splice(keyIndex, 1)
+      setLocalConfig(newConfig)
+      setSuccess('Weather API key removed successfully')
     }
   }
 
@@ -179,6 +232,7 @@ export const ByokConfigEditor: React.FC<ByokConfigEditorProps> = ({ onClose }) =
             value={newProviderKey}
             onChange={(e) => setNewProviderKey(e.target.value)}
             variant="secondary"
+            className="w-full"
           />
 
           <Button
@@ -247,6 +301,7 @@ export const ByokConfigEditor: React.FC<ByokConfigEditorProps> = ({ onClose }) =
             value={newCrawlerKey}
             onChange={(e) => setNewCrawlerKey(e.target.value)}
             variant="secondary"
+            className="w-full"
           />
 
           <Button
@@ -287,6 +342,95 @@ export const ByokConfigEditor: React.FC<ByokConfigEditorProps> = ({ onClose }) =
             )}
           </div>
         ))}
+      </div>
+
+      {/* Weather API Keys Section */}
+      <div className="space-y-4">
+        <h4 className="font-medium">Weather API Keys</h4>
+
+        {/* Add Weather Key Form */}
+        <div className="space-y-2 border border-default-200 rounded-lg p-3">
+          <Label>Add New Weather API Key</Label>
+
+          <Input
+            type="password"
+            placeholder="Enter Weather API key"
+            value={newWeatherKey}
+            onChange={(e) => setNewWeatherKey(e.target.value)}
+            variant="secondary"
+            className="w-full"
+          />
+
+          {/* Advanced options - collapsible */}
+          <div className="space-y-2">
+            <details className="border border-default-200 rounded-lg p-2">
+              <summary className="font-medium cursor-pointer">Advanced Options</summary>
+              <div className="mt-2 space-y-2">
+                <Input
+                  type="password"
+                  placeholder="Shared Secret (optional)"
+                  value={weatherSharedSecret}
+                  onChange={(e) => setWeatherSharedSecret(e.target.value)}
+                  variant="secondary"
+                  className="w-full"
+                />
+
+                <select
+                  value={weatherSignatureType}
+                  onChange={(e) => setWeatherSignatureType(e.target.value)}
+                  className="w-full p-2 border rounded"
+                >
+                  <option value="">Select Signature Type (optional)</option>
+                  <option value="hmac-md5">HMAC-MD5</option>
+                  <option value="hmac-sha256">HMAC-SHA256</option>
+                  <option value="hmac-sha512">HMAC-SHA512</option>
+                </select>
+              </div>
+            </details>
+          </div>
+
+          <Button
+            onPress={handleAddWeatherKey}
+            fullWidth
+            isDisabled={!newWeatherKey}
+            className="mt-1"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add Weather API Key
+          </Button>
+        </div>
+
+        {/* Weather Keys List */}
+        {localConfig.weatherApi && (
+          <div className="border border-default-200 rounded-lg p-3">
+            <h5 className="font-medium mb-2">Weather API</h5>
+
+            {localConfig.weatherApi.keys.length > 0 ? (
+              <ul className="space-y-1 text-sm">
+                {localConfig.weatherApi.keys.map((key, idx) => (
+                  <li key={idx} className="flex justify-between items-center p-1 border-b border-default-100">
+                    <div className="flex flex-col">
+                      <span className="font-mono">{getKeyDisplay(key.key)}</span>
+                      {key.sharedSecret && <span className="text-xs text-default-500">Shared secret: ***{key.sharedSecret.slice(-4)}</span>}
+                      {key.signatureType && <span className="text-xs text-default-500">Signature: {key.signatureType}</span>}
+                    </div>
+                    <Button
+                      isIconOnly
+                      variant="ghost"
+                      size="sm"
+                      onPress={() => handleRemoveWeatherKey(idx)}
+                      className="text-danger-500"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-default-500">No weather API keys configured</p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Action Buttons */}

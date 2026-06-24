@@ -75,11 +75,11 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const logout = () => {
     VaultApi.clearToken()
     setIsAuthenticated(false)
-    setConfig(null)
     setError(null)
     setMode('vault')
     localStorage.setItem('last_used_mode', 'vault')
-    localStorage.removeItem('byok_config')
+    // Preserve BYOK config on logout - only clear vault token
+    // localStorage.removeItem('byok_config') - REMOVED
   }
 
   const switchToBYOK = (localConfig: AiConfig) => {
