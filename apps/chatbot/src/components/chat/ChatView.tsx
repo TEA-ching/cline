@@ -44,6 +44,7 @@ import { useAgent } from '@/hooks/useAgent'
 import type { ChatMessage } from '@/hooks/useAgent'
 import { useVirtualFS } from '@/hooks/useVirtualFS'
 import { useVault } from '@/hooks/useVault'
+import { VaultApi } from '@/lib/vault-api'
 import { useModelSelection } from '@/hooks/useModelSelection'
 import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { useKeypoolRotation } from '@/hooks/useKeypoolRotation'
@@ -149,6 +150,8 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
         if (!meta?.filter) return true
         return selectedModel ? meta.filter(selectedModel, selectedProviderId) : false
       }),
+      vaultToken: vaultMode === 'vault' ? (VaultApi.getToken() ?? undefined) : undefined,
+      corsProxyUrl: vaultMode === 'vault' ? `${new URL(import.meta.env.KEYPOOL_VAULT_URL).origin}/v1/keypool/corsproxy` : undefined,
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -158,6 +161,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     currentKey?.key,
     systemPrompt,
     firecrawlEndpoint,
+    vaultMode,
     // biome-ignore lint/correctness/useExhaustiveDependencies: stable serialisation
     JSON.stringify(firecrawlKeys),
     // biome-ignore lint/correctness/useExhaustiveDependencies: stable serialisation

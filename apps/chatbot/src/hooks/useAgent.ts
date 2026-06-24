@@ -40,6 +40,8 @@ export interface AgentConfig {
   firecrawlKeys: string[]
   firecrawlEndpoint: string
   enabledTools?: string[]
+  vaultToken?: string
+  corsProxyUrl?: string
 }
 
 export interface ChatMessage {
@@ -178,6 +180,8 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
       firecrawlEndpoint: config.firecrawlEndpoint,
       systemPrompt: config.systemPrompt ?? '',
       enabledTools: config.enabledTools ?? [],
+      vaultToken: config.vaultToken,
+      corsProxyUrl: config.corsProxyUrl,
     })
 
     // -------------------------------------------------------------------------
@@ -408,6 +412,8 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     config?.firecrawlEndpoint,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     JSON.stringify(config?.enabledTools),
+    config?.vaultToken,
+    config?.corsProxyUrl,
   ])
 
   // ---------------------------------------------------------------------------

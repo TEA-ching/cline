@@ -54,6 +54,8 @@ export function createOptionalTools(
     providerId?: string
     onImageGenerated?: (url: string, vfsPath: string) => void
     onAskQuestion?: (question: string, options: string[]) => Promise<string>
+    vaultToken?: string
+    corsProxyUrl?: string
   }
 ): AgentTool<any, any>[] {
   const tools: AgentTool<any, any>[] = []
@@ -694,7 +696,36 @@ export function createOptionalTools(
         const { url } = JSON.parse(output.info.result) as { url: string }
 
         const vfsPath = `generated_images/img_${Date.now()}.jpg`
-        // Pass URL and VFS path — display via <img> (no CORS needed), URL stored in VFS as text
+
+        // Vault mode: download the actual image binary via the CORS proxy so the
+        // file stored in VFS is a real JPEG (not just a signed URL that expires).
+        if (ctx.vaultToken && ctx.corsProxyUrl) {
+          try {
+            const proxyResponse = await fetch(
+              `${ctx.corsProxyUrl}?url=${encodeURIComponent(url)}`,
+              { headers: { Authorization: `Bearer ${ctx.vaultToken}` } },
+            )
+            if (proxyResponse.ok) {
+              const arrayBuffer = await proxyResponse.arrayBuffer()
+              const bytes = new Uint8Array(arrayBuffer)
+              let binary = ''
+              for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+              const base64 = btoa(binary)
+              const dataUrl = `data:image/jpeg;base64,${base64}`
+              ctx.onImageGenerated?.(dataUrl, vfsPath)
+              return {
+                success: true,
+                vfsPath,
+                message: 'Image displayed in chat. Do NOT write a markdown image or file path — just confirm to the user.',
+              }
+            }
+          } catch {
+            // proxy failed — fall through to signed-URL mode
+          }
+        }
+
+        // BYOK mode (or proxy unavailable): use the signed URL directly.
+        // The browser can render it via <img> without CORS restrictions.
         ctx.onImageGenerated?.(url, vfsPath)
         return {
           success: true,

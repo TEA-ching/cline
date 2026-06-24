@@ -37,6 +37,8 @@ interface InitMessage {
   firecrawlEndpoint: string
   systemPrompt: string
   enabledTools: string[]
+  vaultToken?: string
+  corsProxyUrl?: string
 }
 
 interface RunMessage {
@@ -211,7 +213,7 @@ function requestToolApproval(
 
 async function handleInit(msg: InitMessage): Promise<void> {
   try {
-    const [{ Agent }, { VirtualFS }, { createBrowserTools }, { createOptionalTools: createSkillTools }] = await Promise.all([
+    const [{ Agent }, { VirtualFS }, { createBrowserTools }, { createOptionalTools: createOptionalTools }] = await Promise.all([
       import('@cline/agents'),
       import('@/vfs/virtual-fs'),
       import('@/tools/index'),
@@ -235,13 +237,15 @@ async function handleInit(msg: InitMessage): Promise<void> {
         onFileCreated: postFileCreated,
         onAskQuestion,
       }),
-      ...createSkillTools(msg.enabledTools ?? [], {
+      ...createOptionalTools(msg.enabledTools ?? [], {
         vfs,
         onFileCreated: postFileCreated,
         apiKey: msg.apiKey,
         providerId: msg.providerId,
         onImageGenerated: postImageGenerated,
         onAskQuestion,
+        vaultToken: msg.vaultToken,
+        corsProxyUrl: msg.corsProxyUrl,
       }),
     ]
 
