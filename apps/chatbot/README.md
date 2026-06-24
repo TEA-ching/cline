@@ -42,6 +42,10 @@ Think of it as **Perplexity on steroids**, with full control over your own API k
 
 *The main chat view with file sidebar, context bar, and tool calls.*
 
+<img width="1738" height="331" alt="image" src="https://github.com/user-attachments/assets/6bd2cde0-8c26-4aa3-b517-f5afb925b33f" />
+
+*The research plan banner.*
+
 <img width="1623" height="1363" alt="image" src="https://github.com/user-attachments/assets/7ea48319-b465-4085-be25-4110b176b706" />
 
 *Sources panel with clickable citations and previews.*
