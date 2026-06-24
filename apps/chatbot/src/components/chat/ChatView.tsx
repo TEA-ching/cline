@@ -33,6 +33,7 @@ import { SystemPromptBanner } from './SystemPromptBanner'
 import { ToolApprovalDialog } from '@/components/approval/ToolApprovalDialog'
 import { AskQuestionDialog } from '@/components/approval/AskQuestionDialog'
 import { FileManager } from '@/components/files/FileManager'
+import { FileViewerModal } from '@/components/files/FileViewerModal'
 import { DropZone } from '@/components/files/DropZone'
 import { SettingsPanel } from '@/components/settings/SettingsPanel'
 import { SessionBrowser } from '@/components/sessions/SessionBrowser'
@@ -234,6 +235,29 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   }, [lastKeyError, vaultMode])
 
   const vfs = useVirtualFS(syncVfsFile)
+
+  // -------------------------------------------------------------------------
+  // File viewer modal
+  // -------------------------------------------------------------------------
+  const [viewingFile, setViewingFile] = useState<{
+    path: string; mimeType: string; content?: string; blobUrl?: string
+  } | null>(null)
+
+  const handleViewWorkspaceFile = useCallback((path: string) => {
+    const content = vfs.readFile(path)
+    const file = vfs.files.find(f => f.path === path)
+    setViewingFile({ path, mimeType: file?.mimeType ?? 'text/plain', content: content ?? undefined })
+  }, [vfs])
+
+  const handleViewGeneratedFile = useCallback((file: import('@/hooks/useAgent').GeneratedFile) => {
+    const ext = file.path.split('.').pop()?.toLowerCase() ?? ''
+    const mimeMap: Record<string, string> = {
+      pdf: 'application/pdf',
+      png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+    }
+    const mimeType = mimeMap[ext] ?? 'text/plain'
+    setViewingFile({ path: file.path, mimeType, blobUrl: file.blobUrl })
+  }, [])
 
   // -------------------------------------------------------------------------
   // Context window estimation (chars / 4 ≈ tokens)
@@ -439,6 +463,8 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
                 files={vfs.files}
                 generatedFiles={generatedFiles}
                 onRemove={path => { vfs.removeFile(path); removeVfsFile(path) }}
+                onViewFile={handleViewWorkspaceFile}
+                onViewGeneratedFile={handleViewGeneratedFile}
               />
             </div>
           )}
@@ -643,6 +669,17 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
 
           {/* Sources Drawer */}
           <SourcesPanel sources={sources} onClose={() => setShowSources(false)} isOpen={showSources} />
+
+          {/* File viewer */}
+          {viewingFile && (
+            <FileViewerModal
+              path={viewingFile.path}
+              mimeType={viewingFile.mimeType}
+              content={viewingFile.content}
+              blobUrl={viewingFile.blobUrl}
+              onClose={() => setViewingFile(null)}
+            />
+          )}
         </div>
       </DropZone>
     </>

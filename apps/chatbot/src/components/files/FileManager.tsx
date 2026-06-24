@@ -31,9 +31,11 @@ interface Props {
   files: VFSFile[]
   generatedFiles: GeneratedFile[]
   onRemove: (path: string) => void
+  onViewFile?: (path: string) => void
+  onViewGeneratedFile?: (file: GeneratedFile) => void
 }
 
-export const FileManager: React.FC<Props> = ({ files, generatedFiles, onRemove }) => (
+export const FileManager: React.FC<Props> = ({ files, generatedFiles, onRemove, onViewFile, onViewGeneratedFile }) => (
   <div className="flex h-full flex-col overflow-hidden">
     {/* Uploaded files */}
     <div className="flex-1 overflow-y-auto">
@@ -47,12 +49,20 @@ export const FileManager: React.FC<Props> = ({ files, generatedFiles, onRemove }
           const kb = (f.size / 1024).toFixed(1)
           return (
             <div key={f.path} className="group flex items-center gap-2 px-3 py-1 hover:bg-default-100 rounded-md mx-1">
-              <FileText className="h-3.5 w-3.5 flex-shrink-0 text-default-400" />
-              <div className="flex-1 min-w-0">
-                <p className="truncate text-xs font-mono text-default-700" title={f.path}>{name}</p>
-                <p className="text-[10px] text-default-400">{kb} KB</p>
-              </div>
               <button
+                type="button"
+                onClick={() => onViewFile?.(f.path)}
+                className="flex flex-1 items-center gap-2 min-w-0 text-left"
+                title={onViewFile ? `Visualiser ${f.path}` : f.path}
+              >
+                <FileText className="h-3.5 w-3.5 shrink-0 text-default-400" />
+                <div className="flex-1 min-w-0">
+                  <p className="truncate text-xs font-mono text-default-700">{name}</p>
+                  <p className="text-[10px] text-default-400">{kb} KB</p>
+                </div>
+              </button>
+              <button
+                type="button"
                 onClick={() => onRemove(f.path)}
                 className="opacity-0 group-hover:opacity-100 text-danger-400 hover:text-danger-600"
                 title="Remove file"
@@ -71,7 +81,13 @@ export const FileManager: React.FC<Props> = ({ files, generatedFiles, onRemove }
           Generated ({generatedFiles.length})
         </p>
         <div className="overflow-y-auto max-h-40 px-1">
-          {generatedFiles.map(f => <DownloadItem key={f.path + f.timestamp} file={f} />)}
+          {generatedFiles.map(f => (
+            <DownloadItem
+              key={f.path + f.timestamp}
+              file={f}
+              onView={onViewGeneratedFile ? () => onViewGeneratedFile(f) : undefined}
+            />
+          ))}
         </div>
       </div>
     )}
