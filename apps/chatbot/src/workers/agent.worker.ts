@@ -337,7 +337,16 @@ async function handleRun(msg: RunMessage): Promise<void> {
     }
 
     console.log('[agent.worker] calling agent.run(), attempt:', attempt, 'input type:', typeof runInput)
-    const result = await agent.run(runInput)
+    let result: Awaited<ReturnType<AgentType['run']>>
+    try {
+      result = await agent.run(runInput)
+    } catch (err) {
+      // SDK threw an uncaught exception (e.g. unterminated JSON from a truncated LLM stream)
+      const errMsg = err instanceof Error ? err.message : String(err)
+      console.error('[agent.worker] agent.run() threw:', errMsg)
+      postTurnError(`Agent runtime error: ${errMsg}`)
+      return
+    }
 
     if (result.status !== 'failed') {
       console.log('[agent.worker] agent.run() completed, messages:', result.messages.length)
