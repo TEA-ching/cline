@@ -150,6 +150,27 @@ interface VaultKey {
 }
 
 /**
+ * Represents a Weather API key in the vault.
+ */
+export interface WeatherApiKey extends VaultKey {
+  /** Optional shared secret for api signature */
+  sharedSecret?: string;
+  /** Optional hash type for the signature */
+  signatureType?: 'hmac-md5' | 'hmac-sha256' | 'hmac-sha512';
+}
+
+export type WeatherApPiProtocol = 'meteoblue';
+
+/**
+ * Represents a Weather API provider configuration in the vault.
+ */
+export interface VaultWeatherProvider {
+	  protocol: WeatherApPiProtocol;
+	  endpoint?: string;
+	  keys: WeatherApiKey[];
+}
+
+/**
  * Represents an AI model configuration in the vault.
  *
  * Vault model metadata is used to override the model advertised by the parent
