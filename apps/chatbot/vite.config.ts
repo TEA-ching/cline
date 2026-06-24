@@ -60,6 +60,11 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3001,
       open: true,
+      headers: {
+        // Required for SharedArrayBuffer (used by pyodide-http for synchronous fetch in Workers).
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+      },
     },
 
     build: {

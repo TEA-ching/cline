@@ -112,13 +112,15 @@ import sys, types as _types, base64 as _b64
 
 _BINARY_PREFIX = '${BINARY_DATA_PREFIX}'
 
-def _vfs_smart_read(path):
+# Capture _BINARY_PREFIX and _b64 via default args so they survive
+# the 'del' cleanup below and remain usable when vfs.read() is called.
+def _vfs_smart_read(path, _pfx=_BINARY_PREFIX, _b64=_b64):
     raw = _vfs_read(path)
     if raw is None:
         return None
     s = str(raw)
-    if s.startswith(_BINARY_PREFIX):
-        return _b64.b64decode(s[len(_BINARY_PREFIX):])
+    if s.startswith(_pfx):
+        return _b64.b64decode(s[len(_pfx):])
     return s
 
 _vfs_mod = _types.ModuleType('vfs')
@@ -129,6 +131,42 @@ _vfs_mod.delete = lambda path: _vfs_delete(path)
 _vfs_mod.exists = lambda path: _vfs_exists(path)
 sys.modules['vfs'] = _vfs_mod
 del _vfs_mod, _types, _b64, _vfs_smart_read, _BINARY_PREFIX
+`)
+}
+
+// Save the original network callables once (idempotent — safe to call multiple times).
+function ensureNetworkOriginalsStored(pyodide: PyodideInterface): void {
+  pyodide.runPython(`
+try:
+    import urllib.request as _ur
+    if not hasattr(_ur, '_orig_urlopen'):
+        _ur._orig_urlopen = _ur.urlopen
+except Exception:
+    pass
+try:
+    import socket as _sock
+    if not hasattr(_sock.socket, '_orig_connect'):
+        _sock.socket._orig_connect = _sock.socket.connect
+except Exception:
+    pass
+`)
+}
+
+// Restore the saved originals so each execution starts from a clean network state.
+function restoreNetworkToOriginal(pyodide: PyodideInterface): void {
+  pyodide.runPython(`
+try:
+    import urllib.request as _ur
+    if hasattr(_ur, '_orig_urlopen'):
+        _ur.urlopen = _ur._orig_urlopen
+except Exception:
+    pass
+try:
+    import socket as _sock
+    if hasattr(_sock.socket, '_orig_connect'):
+        _sock.socket.connect = _sock.socket._orig_connect
+except Exception:
+    pass
 `)
 }
 
@@ -171,6 +209,7 @@ export async function runPython(
   let pyodide: PyodideInterface
   try {
     pyodide = await loadPyodideOnce()
+    ensureNetworkOriginalsStored(pyodide)
   } catch (err) {
     return { output: '', error: `Failed to initialize Python runtime: ${err instanceof Error ? err.message : String(err)}`, filesWritten: [] }
   }
@@ -199,7 +238,13 @@ export async function runPython(
     }
   }
 
-  if (!allowNetwork) installNetworkBlocker(pyodide)
+  restoreNetworkToOriginal(pyodide)
+  if (allowNetwork) {
+    await loadPackagesFromCDN(pyodide, ['pyodide-http'])
+    pyodide.runPython('import pyodide_http; pyodide_http.patch_all()')
+  } else {
+    installNetworkBlocker(pyodide)
+  }
 
   // Redirect stdout/stderr and execute
   pyodide.runPython(`
