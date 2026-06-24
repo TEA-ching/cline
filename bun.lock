@@ -400,7 +400,7 @@
     },
     "apps/vscode": {
       "name": "claude-dev",
-      "version": "3.89.0",
+      "version": "4.0.0",
       "dependencies": {
         "@ai-sdk/cohere": "^3.0.38",
         "@anthropic-ai/sdk": "^0.37.0",
