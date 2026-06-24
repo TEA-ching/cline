@@ -120,24 +120,31 @@ export function useKeypoolRotation(
 
   const rotateKey = useCallback(() => {
     if (sortedPool.length <= 1) return
-    setRotationOffset(prev => (prev + 1) % sortedPool.length)
+    const nextOffset = (rotationOffset + 1) % sortedPool.length
+    setRotationOffset(nextOffset)
+    const nextKey = sortedPool[nextOffset] ?? null
+    const hint = nextKey ? maskKey(nextKey.key) : '—'
+    const owner = nextKey?.owner ?? 'unknown'
+    toast(`Key rotated : ${owner} …${hint.slice(-8)}`, { timeout: 2000 })
     // Refresh stats so the sort order reflects latest usage after rotation.
     // This also serves as a connectivity check for the remote worker.
     getUsageStats('day').then((stats) => {
       setStats(stats)
     }).catch(() => { })
-  }, [sortedPool.length])
+  }, [sortedPool, rotationOffset])
 
   const markKeyFailedAndRotate = useCallback(() => {
     if (!currentKey) return
     setFailedKeys(prev => new Set([...prev, currentKey.key]))
     setRotationOffset(0)  // reset offset; the failed key is excluded from the next pool
+    const hint = maskKey(currentKey.key)
+    const owner = currentKey?.owner ?? 'unknown'
+    toast(`Key failed & rotated : ${owner} …${hint.slice(-8)}`, { timeout: 2000 })
   }, [currentKey])
 
   const currentKeyHint = currentKey ? maskKey(currentKey.key) : '—'
   const currentKeyOwner = currentKey?.owner ?? 'unknown'
 
-  toast(`Key rotated : ${currentKeyOwner} …${currentKeyHint.slice(-8)}`, { timeout: 2000 })
   return {
     currentKey,
     currentKeyHint,
