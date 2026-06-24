@@ -153,6 +153,12 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
       }),
       vaultToken: vaultMode === 'vault' ? (VaultApi.getToken() ?? undefined) : undefined,
       corsProxyUrl: vaultMode === 'vault' ? `${new URL(import.meta.env.KEYPOOL_VAULT_URL).origin}/v1/keypool/corsproxy` : undefined,
+      weatherApiKeys: vaultConfig.weatherApi?.keys?.map(k => ({
+        key: k.key,
+        sharedSecret: k.sharedSecret,
+        signatureType: k.signatureType,
+      })),
+      weatherApiEndpoint: vaultConfig.weatherApi?.endpoint,
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -167,6 +173,9 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     JSON.stringify(firecrawlKeys),
     // biome-ignore lint/correctness/useExhaustiveDependencies: stable serialisation
     JSON.stringify(enabledTools),
+    // biome-ignore lint/correctness/useExhaustiveDependencies: stable serialisation
+    JSON.stringify(vaultConfig.weatherApi?.keys),
+    vaultConfig.weatherApi?.endpoint,
   ])
 
   const {

@@ -39,6 +39,8 @@ interface InitMessage {
   enabledTools: string[]
   vaultToken?: string
   corsProxyUrl?: string
+  weatherApiKeys?: Array<{ key: string; sharedSecret?: string; signatureType?: string }>
+  weatherApiEndpoint?: string
 }
 
 interface RunMessage {
@@ -246,6 +248,8 @@ async function handleInit(msg: InitMessage): Promise<void> {
         onAskQuestion,
         vaultToken: msg.vaultToken,
         corsProxyUrl: msg.corsProxyUrl,
+        weatherApiKeys: msg.weatherApiKeys,
+        weatherApiEndpoint: msg.weatherApiEndpoint,
       }),
     ]
 

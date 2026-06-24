@@ -42,6 +42,8 @@ export interface AgentConfig {
   enabledTools?: string[]
   vaultToken?: string
   corsProxyUrl?: string
+  weatherApiKeys?: Array<{ key: string; sharedSecret?: string; signatureType?: string }>
+  weatherApiEndpoint?: string
 }
 
 export interface ChatMessage {
@@ -182,6 +184,8 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
       enabledTools: config.enabledTools ?? [],
       vaultToken: config.vaultToken,
       corsProxyUrl: config.corsProxyUrl,
+      weatherApiKeys: config.weatherApiKeys,
+      weatherApiEndpoint: config.weatherApiEndpoint,
     })
 
     // -------------------------------------------------------------------------

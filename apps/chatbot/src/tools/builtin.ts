@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { Calculator, CalendarClock, Lock, Dice6, Palette, Zap, BookOpen, Search, Image, BarChart2, Terminal } from 'lucide-react'
+import { Calculator, CalendarClock, Lock, Dice6, Palette, Zap, BookOpen, Search, Image, BarChart2, Terminal, CloudSun } from 'lucide-react'
 import type { ElementType } from 'react'
 import type { AiModel } from '@/types/ai-config'
 
@@ -206,6 +206,16 @@ export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
     description: 'Generate charts (bar, line, pie, scatter) from JSON data using Vega-Lite.',
     icon: BarChart2,
     tools: ['create_chart'],
+  },
+  {
+    id: 'weather',
+    name: 'Weather Forecast',
+    description:
+      'Search locations by name and retrieve weather forecasts using the Meteoblue API. ' +
+      'Requires a meteoblue API key in the vault (weatherApi section). ' +
+      'Supports combining packages (basic, current, clouds, wind, etc.) in a single request.',
+    icon: CloudSun,
+    tools: ['search_location', 'get_weather_forecast'],
   },
   {
     id: 'execute_python_code',
