@@ -38,10 +38,12 @@ Think of it as **Perplexity on steroids**, with full control over your own API k
 
 ## 🖥️ Demo
 
-![Chat Interface](./docs/screenshot-chat.png)  
+<img width="1618" height="1365" alt="image" src="https://github.com/user-attachments/assets/ad431497-e814-4c08-bd47-ba9e6261cf67" />
+
 *The main chat view with file sidebar, context bar, and tool calls.*
 
-![Sources Panel](./docs/screenshot-sources.png)  
+<img width="1623" height="1363" alt="image" src="https://github.com/user-attachments/assets/7ea48319-b465-4085-be25-4110b176b706" />
+
 *Sources panel with clickable citations and previews.*
 
 ---
