@@ -27,11 +27,11 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       viteStaticCopy({
         targets: [
-          { src: 'node_modules/pyodide/pyodide.mjs',       dest: 'pyodide' },
-          { src: 'node_modules/pyodide/pyodide.asm.mjs',    dest: 'pyodide' },
-          { src: 'node_modules/pyodide/pyodide.asm.wasm',  dest: 'pyodide' },
-          { src: 'node_modules/pyodide/python_stdlib.zip', dest: 'pyodide' },
-          { src: 'node_modules/pyodide/pyodide-lock.json', dest: 'pyodide' },
+          { src: 'node_modules/pyodide/pyodide.mjs',       dest: 'pyodide', rename: { stripBase: true } },
+          { src: 'node_modules/pyodide/pyodide.asm.mjs',    dest: 'pyodide', rename: { stripBase: true } },
+          { src: 'node_modules/pyodide/pyodide.asm.wasm',  dest: 'pyodide', rename: { stripBase: true } },
+          { src: 'node_modules/pyodide/python_stdlib.zip', dest: 'pyodide', rename: { stripBase: true } },
+          { src: 'node_modules/pyodide/pyodide-lock.json', dest: 'pyodide', rename: { stripBase: true } },
         ],
       }),
     ],
