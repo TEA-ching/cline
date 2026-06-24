@@ -23,7 +23,7 @@
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { Button, Drawer } from '@heroui/react'
-import { Settings, PanelLeftOpen, PanelLeftClose, History, Wrench, Plus, UserRoundKey, Brain, FileText } from 'lucide-react'
+import { Settings, PanelLeftOpen, PanelLeftClose, History, Wrench, Plus, UserRoundKey, Brain, FileText, RotateCcwKey } from 'lucide-react'
 
 import { MessageList } from './MessageList'
 import { InputBar } from './InputBar'
@@ -39,6 +39,7 @@ import { SessionBrowser } from '@/components/sessions/SessionBrowser'
 import { ToolManager } from '@/components/optional-tools/ToolManager'
 import { ByokConfigEditor } from '@/components/byok/ByokConfigEditor'
 import { SourcesPanel, type Source } from './SourcesPanel'
+import { Toast } from '@heroui/react';
 
 import { useAgent } from '@/hooks/useAgent'
 import type { ChatMessage } from '@/hooks/useAgent'
@@ -63,14 +64,14 @@ Use the vfs_* tools to read and write files. Use fetch_web_content and search_we
 When asked to create files, use vfs_editor and they will be available for download.`
 
 export const SLASH_COMMANDS = [
-  { cmd: '/help',     desc: 'Show available commands' },
-  { cmd: '/clear',    desc: 'Clear current conversation' },
-  { cmd: '/new',      desc: 'Start a new conversation' },
-  { cmd: '/undo',     desc: 'Remove last message pair' },
-  { cmd: '/compact',  desc: 'Ask AI to summarize conversation (saves context)' },
+  { cmd: '/help', desc: 'Show available commands' },
+  { cmd: '/clear', desc: 'Clear current conversation' },
+  { cmd: '/new', desc: 'Start a new conversation' },
+  { cmd: '/undo', desc: 'Remove last message pair' },
+  { cmd: '/compact', desc: 'Ask AI to summarize conversation (saves context)' },
   { cmd: '/sessions', desc: 'Browse & restore saved conversations' },
-  { cmd: '/tools',   desc: 'Manage optional tools' },
-  { cmd: '/prompt',   desc: '/prompt <text> — view or set system prompt' },
+  { cmd: '/tools', desc: 'Manage optional tools' },
+  { cmd: '/prompt', desc: '/prompt <text> — view or set system prompt' },
 ]
 
 const HELP_TEXT = SLASH_COMMANDS
@@ -153,7 +154,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
       vaultToken: vaultMode === 'vault' ? (VaultApi.getToken() ?? undefined) : undefined,
       corsProxyUrl: vaultMode === 'vault' ? `${new URL(import.meta.env.KEYPOOL_VAULT_URL).origin}/v1/keypool/corsproxy` : undefined,
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     selectedProviderId,
     selectedModelId,
@@ -204,7 +205,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
       promptTokens: lastTurnUsage.inputTokens,
       completionTokens: lastTurnUsage.outputTokens,
     }, vaultMode)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastTurnUsage, vaultMode])
 
   // -------------------------------------------------------------------------
@@ -220,7 +221,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
       errorCode: extractErrorCode(lastKeyError),
     }, vaultMode)
     markKeyFailedAndRotate()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastKeyError, vaultMode])
 
   const vfs = useVirtualFS(syncVfsFile)
@@ -302,8 +303,10 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
       modelId: selectedModelId,
       createdAt: Number(sessionId.replace('sess_', '')),
       updatedAt: Date.now(),
+      vfsSnapshot: vfs.toSnapshot(),
     })
-  }, [messages, sessionId, selectedProviderId, selectedModelId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, sessionId, selectedProviderId, selectedModelId, vfs.files])
 
   // -------------------------------------------------------------------------
   // Session load
@@ -312,8 +315,9 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     setSessionId(session.id)
     loadMessages(session.messages)
     handleModelChange(session.providerId, session.modelId)
+    vfs.loadSnapshot(session.vfsSnapshot)
     setShowSessions(false)
-  }, [loadMessages, handleModelChange])
+  }, [loadMessages, handleModelChange, vfs.loadSnapshot])
 
   const handleForkAtMessage = useCallback((messageId: string) => {
     const forkIndex = messages.findIndex(m => m.id === messageId)
@@ -348,6 +352,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
           return
         case '/new':
           reset()
+          vfs.clear()
           setSessionId(`sess_${Date.now()}`)
           return
         case '/undo':
@@ -413,73 +418,78 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   const contextWindow = selectedModel?.contextWindow ?? 0
 
   return (
-    <DropZone onDrop={vfs.uploadFiles}>
-      <div className="flex h-screen overflow-hidden bg-background">
+    <>
+    <Toast.Provider placement="bottom end" />
+      <DropZone onDrop={vfs.uploadFiles}>
+        <div className="flex h-screen overflow-hidden bg-background">
 
-        {/* File sidebar */}
-        {showFiles && (
-          <div className="w-56 shrink-0 border-r border-default-200 overflow-hidden">
-            <FileManager
-              files={vfs.files}
-              generatedFiles={generatedFiles}
-              onRemove={path => { vfs.removeFile(path); removeVfsFile(path) }}
-            />
-          </div>
-        )}
-
-        {/* Main chat area */}
-        <div className="flex flex-1 flex-col min-w-0">
-
-          {/* Header */}
-          <div className="flex items-center gap-1 border-b border-default-200 px-3 py-2 shrink-0">
-            <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowFiles(v => !v)}>
-              {showFiles
-                ? <PanelLeftClose className="h-4 w-4" />
-                : <PanelLeftOpen className="h-4 w-4" />}
-            </Button>
-            <div className="flex-1 min-w-0 px-1">
-              <p className="text-xs text-default-500 truncate font-mono">
-                {selectedModelId || 'No model selected'}
-                {enabledTools.length > 0 && (
-                  <span className="ml-1.5 text-primary-400">
-                    +{enabledTools.length} optional tool{enabledTools.length !== 1 ? 's' : ''}
-                  </span>
-                )}
-              </p>
+          {/* File sidebar */}
+          {showFiles && (
+            <div className="w-56 shrink-0 border-r border-default-200 overflow-hidden">
+              <FileManager
+                files={vfs.files}
+                generatedFiles={generatedFiles}
+                onRemove={path => { vfs.removeFile(path); removeVfsFile(path) }}
+              />
             </div>
-            <Button
-              isIconOnly variant="ghost" size="sm"
-              onPress={() => { reset(); setSessionId(`sess_${Date.now()}`) }}
-              aria-label="New conversation"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-            <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSessions(true)} aria-label="Saved conversations">
-              <History className="h-4 w-4" />
-            </Button>
-            <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowTools(true)} aria-label="Optional tools">
-              <Wrench className="h-4 w-4" />
-            </Button>
-            {vaultMode === 'byok' && (
-              <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowByokConfig(true)} aria-label="BYOK Configuration">
-                <UserRoundKey className="h-4 w-4" />
-              </Button>
-            )}
-            <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSources(v => !v)} aria-label="Afficher les sources" className={showSources ? 'text-primary-500' : ''}>
-              <FileText className="h-4 w-4" />
-            </Button>
-            <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowReasoning(v => !v)} aria-label="Afficher le raisonnement" className={showReasoning ? 'text-primary-500' : ''}>
-              <Brain className="h-4 w-4" />
-            </Button>
-            <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSettings(v => !v)} aria-label="Settings">
-              <Settings className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Context bar */}
-          {contextWindow > 0 && (
-            <ContextBar usedTokens={contextUsedTokens} totalTokens={contextWindow} />
           )}
+
+          {/* Main chat area */}
+          <div className="flex flex-1 flex-col min-w-0">
+
+            {/* Header */}
+            <div className="flex items-center gap-1 border-b border-default-200 px-3 py-2 shrink-0">
+              <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowFiles(v => !v)}>
+                {showFiles
+                  ? <PanelLeftClose className="h-4 w-4" />
+                  : <PanelLeftOpen className="h-4 w-4" />}
+              </Button>
+              <div className="flex-1 min-w-0 px-1">
+                <p className="text-xs text-default-500 truncate font-mono">
+                  {selectedModelId || 'No model selected'}
+                  {enabledTools.length > 0 && (
+                    <span className="ml-1.5 text-primary-400">
+                      +{enabledTools.length} optional tool{enabledTools.length !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                </p>
+              </div>
+              <Button
+                isIconOnly variant="ghost" size="sm"
+                onPress={() => { reset(); vfs.clear(); setSessionId(`sess_${Date.now()}`) }}
+                aria-label="New conversation"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+              <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSessions(true)} aria-label="Saved conversations">
+                <History className="h-4 w-4" />
+              </Button>
+              <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowTools(true)} aria-label="Optional tools">
+                <Wrench className="h-4 w-4" />
+              </Button>
+              {vaultMode === 'byok' && (
+                <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowByokConfig(true)} aria-label="BYOK Configuration">
+                  <UserRoundKey className="h-4 w-4" />
+                </Button>
+              )}
+              <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSources(v => !v)} aria-label="Afficher les sources" className={showSources ? 'text-primary-500' : ''}>
+                <FileText className="h-4 w-4" />
+              </Button>
+              <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowReasoning(v => !v)} aria-label="Afficher le raisonnement" className={showReasoning ? 'text-blue-300' : ''}>
+                <Brain className="h-4 w-4" />
+              </Button>
+              <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSettings(v => !v)} aria-label="Settings">
+                <Settings className="h-4 w-4" />
+              </Button>
+              <Button isIconOnly variant="ghost" size="sm" onPress={() => rotateKey()} aria-label="Rotate API key">
+                <RotateCcwKey className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Context bar */}
+            {contextWindow > 0 && (
+              <ContextBar usedTokens={contextUsedTokens} totalTokens={contextWindow} />
+            )}
 
             {/* Messages + thinking indicator */}
             <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
@@ -495,136 +505,137 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
               <ThinkingIndicator startedAt={turnStartedAt} streamedTokens={streamedTokens} />
             </div>
 
-          {/* Rate-limit retry banner */}
-          {rateLimitSecondsLeft !== null && (
-            <div className="mx-4 mb-2 px-3 py-2 rounded-md bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200 text-sm flex items-center gap-2">
-              <span>⏳</span>
-              <span>
-                Rate limited — retrying automatically in{' '}
-                <strong>{rateLimitSecondsLeft}s</strong>
-              </span>
-            </div>
+            {/* Rate-limit retry banner */}
+            {rateLimitSecondsLeft !== null && (
+              <div className="mx-4 mb-2 px-3 py-2 rounded-md bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200 text-sm flex items-center gap-2">
+                <span>⏳</span>
+                <span>
+                  Rate limited — retrying automatically in{' '}
+                  <strong>{rateLimitSecondsLeft}s</strong>
+                </span>
+              </div>
+            )}
+
+            {/* Input */}
+            <InputBar
+              onSend={handleSend}
+              onAbort={abort}
+              isRunning={isRunning}
+              supportsImages={!!selectedModel && modelSupportsImages(selectedModel)}
+              onUploadFiles={vfs.uploadFiles}
+              commands={SLASH_COMMANDS}
+            />
+          </div>
+
+          {/* Settings Drawer */}
+          <Drawer>
+            <Drawer.Backdrop isOpen={showSettings} onOpenChange={setShowSettings}>
+              <Drawer.Content placement="right">
+                <Drawer.Dialog>
+                  <Drawer.CloseTrigger />
+                  <Drawer.Header>
+                    <Drawer.Heading>Settings</Drawer.Heading>
+                  </Drawer.Header>
+                  <Drawer.Body>
+                    <SettingsPanel
+                      config={vaultConfig}
+                      selectedProviderId={selectedProviderId}
+                      selectedModelId={selectedModelId}
+                      onModelChange={handleModelChange}
+                      currentKeyHint={currentKeyHint}
+                      canRotate={poolSize > 1}
+                      onRotateKey={rotateKey}
+                      mode={vaultMode}
+                    />
+                  </Drawer.Body>
+                </Drawer.Dialog>
+              </Drawer.Content>
+            </Drawer.Backdrop>
+          </Drawer>
+
+          {/* Session Browser Drawer */}
+          <Drawer>
+            <Drawer.Backdrop isOpen={showSessions} onOpenChange={setShowSessions}>
+              <Drawer.Content placement="right">
+                <Drawer.Dialog>
+                  <Drawer.CloseTrigger />
+                  <Drawer.Header>
+                    <Drawer.Heading>Sessions</Drawer.Heading>
+                  </Drawer.Header>
+                  <Drawer.Body>
+                    <SessionBrowser
+                      currentProviderId={selectedProviderId}
+                      currentModelId={selectedModelId}
+                      onLoad={handleLoadSession}
+                    />
+                  </Drawer.Body>
+                </Drawer.Dialog>
+              </Drawer.Content>
+            </Drawer.Backdrop>
+          </Drawer>
+
+          {/* Tool Manager Drawer */}
+          <Drawer>
+            <Drawer.Backdrop isOpen={showSkills} onOpenChange={setShowTools}>
+              <Drawer.Content placement="right">
+                <Drawer.Dialog>
+                  <Drawer.CloseTrigger />
+                  <Drawer.Header>
+                    <Drawer.Heading>Optional Tools</Drawer.Heading>
+                  </Drawer.Header>
+                  <Drawer.Body>
+                    <ToolManager
+                      enabledTools={enabledTools}
+                      onToggle={handleToggleSkill}
+                      selectedModel={selectedModel}
+                      selectedProviderId={selectedProviderId}
+                    />
+                  </Drawer.Body>
+                </Drawer.Dialog>
+              </Drawer.Content>
+            </Drawer.Backdrop>
+          </Drawer>
+
+          {/* BYOK Configuration Drawer */}
+          <Drawer>
+            <Drawer.Backdrop isOpen={showByokConfig} onOpenChange={setShowByokConfig}>
+              <Drawer.Content placement="right">
+                <Drawer.Dialog>
+                  <Drawer.CloseTrigger />
+                  <Drawer.Header>
+                    <Drawer.Heading>BYOK Configuration</Drawer.Heading>
+                  </Drawer.Header>
+                  <Drawer.Body>
+                    <ByokConfigEditor onClose={() => setShowByokConfig(false)} />
+                  </Drawer.Body>
+                </Drawer.Dialog>
+              </Drawer.Content>
+            </Drawer.Backdrop>
+          </Drawer>
+
+          {/* Tool approval */}
+          {pendingApproval && (
+            <ToolApprovalDialog
+              toolName={pendingApproval.toolName}
+              input={pendingApproval.input}
+              onApprove={() => pendingApproval.resolve(true)}
+              onDeny={() => pendingApproval.resolve(false)}
+            />
           )}
 
-          {/* Input */}
-          <InputBar
-            onSend={handleSend}
-            onAbort={abort}
-            isRunning={isRunning}
-            supportsImages={!!selectedModel && modelSupportsImages(selectedModel)}
-            onUploadFiles={vfs.uploadFiles}
-            commands={SLASH_COMMANDS}
-          />
+          {/* Ask question */}
+          {pendingQuestion && (
+            <AskQuestionDialog
+              question={pendingQuestion.question}
+              options={pendingQuestion.options}
+              onAnswer={pendingQuestion.resolve}
+            />
+          )}
+
+          {/* Sources Drawer */}
+          <SourcesPanel sources={sources} onClose={() => setShowSources(false)} isOpen={showSources} />
         </div>
-
-        {/* Settings Drawer */}
-        <Drawer>
-          <Drawer.Backdrop isOpen={showSettings} onOpenChange={setShowSettings}>
-            <Drawer.Content placement="right">
-              <Drawer.Dialog>
-                <Drawer.CloseTrigger />
-                <Drawer.Header>
-                  <Drawer.Heading>Settings</Drawer.Heading>
-                </Drawer.Header>
-                <Drawer.Body>
-                  <SettingsPanel
-                    config={vaultConfig}
-                    selectedProviderId={selectedProviderId}
-                    selectedModelId={selectedModelId}
-                    onModelChange={handleModelChange}
-                    currentKeyHint={currentKeyHint}
-                    canRotate={poolSize > 1}
-                    onRotateKey={rotateKey}
-                    mode={vaultMode}
-                  />
-                </Drawer.Body>
-              </Drawer.Dialog>
-            </Drawer.Content>
-          </Drawer.Backdrop>
-        </Drawer>
-
-        {/* Session Browser Drawer */}
-        <Drawer>
-          <Drawer.Backdrop isOpen={showSessions} onOpenChange={setShowSessions}>
-            <Drawer.Content placement="right">
-              <Drawer.Dialog>
-                <Drawer.CloseTrigger />
-                <Drawer.Header>
-                  <Drawer.Heading>Sessions</Drawer.Heading>
-                </Drawer.Header>
-                <Drawer.Body>
-                  <SessionBrowser
-                    currentProviderId={selectedProviderId}
-                    currentModelId={selectedModelId}
-                    onLoad={handleLoadSession}
-                  />
-                </Drawer.Body>
-              </Drawer.Dialog>
-            </Drawer.Content>
-          </Drawer.Backdrop>
-        </Drawer>
-
-        {/* Tool Manager Drawer */}
-        <Drawer>
-          <Drawer.Backdrop isOpen={showSkills} onOpenChange={setShowTools}>
-            <Drawer.Content placement="right">
-              <Drawer.Dialog>
-                <Drawer.CloseTrigger />
-                <Drawer.Header>
-                  <Drawer.Heading>Optional Tools</Drawer.Heading>
-                </Drawer.Header>
-                <Drawer.Body>
-                  <ToolManager
-                    enabledTools={enabledTools}
-                    onToggle={handleToggleSkill}
-                    selectedModel={selectedModel}
-                    selectedProviderId={selectedProviderId}
-                  />
-                </Drawer.Body>
-              </Drawer.Dialog>
-            </Drawer.Content>
-          </Drawer.Backdrop>
-        </Drawer>
-
-        {/* BYOK Configuration Drawer */}
-        <Drawer>
-          <Drawer.Backdrop isOpen={showByokConfig} onOpenChange={setShowByokConfig}>
-            <Drawer.Content placement="right">
-              <Drawer.Dialog>
-                <Drawer.CloseTrigger />
-                <Drawer.Header>
-                  <Drawer.Heading>BYOK Configuration</Drawer.Heading>
-                </Drawer.Header>
-                <Drawer.Body>
-                  <ByokConfigEditor onClose={() => setShowByokConfig(false)} />
-                </Drawer.Body>
-              </Drawer.Dialog>
-            </Drawer.Content>
-          </Drawer.Backdrop>
-        </Drawer>
-
-        {/* Tool approval */}
-        {pendingApproval && (
-          <ToolApprovalDialog
-            toolName={pendingApproval.toolName}
-            input={pendingApproval.input}
-            onApprove={() => pendingApproval.resolve(true)}
-            onDeny={() => pendingApproval.resolve(false)}
-          />
-        )}
-
-        {/* Ask question */}
-        {pendingQuestion && (
-          <AskQuestionDialog
-            question={pendingQuestion.question}
-            options={pendingQuestion.options}
-            onAnswer={pendingQuestion.resolve}
-          />
-        )}
-
-        {/* Sources Drawer */}
-        <SourcesPanel sources={sources} onClose={() => setShowSources(false)} isOpen={showSources} />
-      </div>
-    </DropZone>
+      </DropZone>
+    </>
   )
 }

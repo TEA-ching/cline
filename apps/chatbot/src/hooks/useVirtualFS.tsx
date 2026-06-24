@@ -37,6 +37,8 @@ export interface UseVirtualFSReturn {
   readFile: (path: string) => string | null
   clear: () => void
   syncFromWorker: (path: string, content: string) => void
+  toSnapshot: () => Record<string, { content: string; mimeType: string }>
+  loadSnapshot: (snapshot: Record<string, { content: string; mimeType: string }> | undefined) => void
 }
 
 function guessMimeType(file: File): string {
@@ -145,6 +147,25 @@ export function useVirtualFS(
     setFiles([])
   }, [])
 
+  const toSnapshot = useCallback(
+    () => vfsRef.current.toSnapshot(),
+    [],
+  )
+
+  const loadSnapshot = useCallback(
+    (snapshot: Record<string, { content: string; mimeType: string }> | undefined) => {
+      vfsRef.current.clear()
+      if (snapshot) {
+        for (const [path, { content, mimeType }] of Object.entries(snapshot)) {
+          vfsRef.current.write(path, content, mimeType)
+          onFileSync?.(path, content)
+        }
+      }
+      refreshFiles()
+    },
+    [onFileSync, refreshFiles],
+  )
+
   const syncFromWorker = useCallback(
     (path: string, content: string) => {
       // Guess MIME from extension; default to text/plain
@@ -173,5 +194,7 @@ export function useVirtualFS(
     readFile,
     clear,
     syncFromWorker,
+    toSnapshot,
+    loadSnapshot,
   }
 }

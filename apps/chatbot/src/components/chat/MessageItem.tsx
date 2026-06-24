@@ -129,6 +129,8 @@ export const MessageItem: React.FC<Props> = ({ message, onImageCaptured, onFork,
                   className="rounded-lg max-h-64 max-w-full object-contain border border-default-200"
                   onLoad={(e) => {
                     if (!onImageCaptured) return
+                    // data: URLs are already binary — VFS entry was written by the tool. Skip canvas re-capture.
+                    if (src.startsWith('data:')) return
                     const img = e.currentTarget
                     try {
                       const canvas = document.createElement('canvas')

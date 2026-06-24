@@ -27,6 +27,8 @@ import { useVault } from '@/hooks/useVault'
 import { LoginScreen } from '@/components/auth/LoginScreen'
 import { ChatView } from '@/components/chat/ChatView'
 
+
+
 const App: React.FC = () => {
   const { isAuthenticated, config } = useVault()
 

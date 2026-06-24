@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AiProvider, AiKey } from '@/types/ai-config'
 import { getUsageStats, maskKey } from '@/lib/keypool-usage'
 import type { UsageStat } from '@/lib/keypool-usage'
+import { toast } from "@heroui/react"
 
 export interface KeypoolRotationState {
   /** The currently selected key object, or null if the provider has no keys. */
@@ -122,7 +123,9 @@ export function useKeypoolRotation(
     setRotationOffset(prev => (prev + 1) % sortedPool.length)
     // Refresh stats so the sort order reflects latest usage after rotation.
     // This also serves as a connectivity check for the remote worker.
-    getUsageStats('day').then(setStats).catch(() => {})
+    getUsageStats('day').then((stats) => {
+      setStats(stats)
+    }).catch(() => { })
   }, [sortedPool.length])
 
   const markKeyFailedAndRotate = useCallback(() => {
@@ -134,6 +137,7 @@ export function useKeypoolRotation(
   const currentKeyHint = currentKey ? maskKey(currentKey.key) : '—'
   const currentKeyOwner = currentKey?.owner ?? 'unknown'
 
+  toast(`Key rotated : ${currentKeyOwner} …${currentKeyHint.slice(-8)}`, { timeout: 2000 })
   return {
     currentKey,
     currentKeyHint,

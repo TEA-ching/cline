@@ -36,6 +36,7 @@ export interface Session {
   modelId: string
   createdAt: number
   updatedAt: number
+  vfsSnapshot?: Record<string, { content: string; mimeType: string }>
 }
 
 let db: IDBPDatabase | null = null
