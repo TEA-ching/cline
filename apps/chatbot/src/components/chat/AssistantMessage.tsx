@@ -276,7 +276,7 @@ export const AssistantMessage: React.FC<Props> = ({ content, isStreaming, reason
       {showReasoning && reasoning && reasoning.length > 0 && (
         <details className="mb-3 text-xs bg-default-50 rounded-md p-2 border border-default-200">
           <summary className="cursor-pointer font-mono text-default-500 hover:text-default-700">
-            🧠 Voir le raisonnement ({reasoning.length} étapes)
+            🧠 View reasoning ({reasoning.length} steps)
           </summary>
           <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
             {reasoning.map((step, idx) => (

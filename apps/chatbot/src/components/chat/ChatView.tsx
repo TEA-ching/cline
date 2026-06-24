@@ -30,6 +30,7 @@ import { InputBar } from './InputBar'
 import { ThinkingIndicator } from './ThinkingIndicator'
 import { ContextBar } from './ContextBar'
 import { SystemPromptBanner } from './SystemPromptBanner'
+import { ResearchPlanBanner } from './ResearchPlanBanner'
 import { ToolApprovalDialog } from '@/components/approval/ToolApprovalDialog'
 import { AskQuestionDialog } from '@/components/approval/AskQuestionDialog'
 import { FileManager } from '@/components/files/FileManager'
@@ -200,6 +201,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     removeVfsFile,
     addGeneratedFile,
     getReasoningSteps,
+    researchPlan,
   } = useAgent(agentConfig)
 
   // -------------------------------------------------------------------------
@@ -258,6 +260,28 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     const mimeType = mimeMap[ext] ?? 'text/plain'
     setViewingFile({ path: file.path, mimeType, blobUrl: file.blobUrl })
   }, [])
+
+  // -------------------------------------------------------------------------
+  // Research plan: filter plan tool calls out of the main message list
+  // -------------------------------------------------------------------------
+  const planToolIds = useMemo(
+    () => new Set(researchPlan?.toolCallIds ?? []),
+    [researchPlan],
+  )
+
+  const visibleMessages = useMemo(() => {
+    if (!researchPlan) return messages
+    return messages.filter(m => {
+      if (m.role !== 'tool') return true
+      if (m.toolName === 'plan_research' || m.toolName === 'complete_research_step') return false
+      return !planToolIds.has(m.id)
+    })
+  }, [messages, researchPlan, planToolIds])
+
+  const planToolMessages = useMemo(
+    () => messages.filter(m => planToolIds.has(m.id)),
+    [messages, planToolIds],
+  )
 
   // -------------------------------------------------------------------------
   // Context window estimation (chars / 4 ≈ tokens)
@@ -529,8 +553,9 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
             {/* Messages + thinking indicator */}
             <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
               <SystemPromptBanner systemPrompt={systemPrompt} defaultSystemPrompt={DEFAULT_SYSTEM_PROMPT} onUpdate={setSystemPrompt} />
+              {researchPlan && <ResearchPlanBanner plan={researchPlan} isRunning={isRunning} toolMessages={planToolMessages} />}
               <MessageList
-                messages={messages}
+                messages={visibleMessages}
                 onImageCaptured={handleImageCaptured}
                 onFork={handleForkAtMessage}
                 showReasoning={showReasoning}

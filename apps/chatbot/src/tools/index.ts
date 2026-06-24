@@ -31,6 +31,7 @@ import {
   pickFirecrawlKey,
 } from './firecrawl-client'
 import { emulateShellCommands } from './shell-emulator'
+import { createResearchPlanTool, createCompleteResearchStepTool } from './research-tool'
 
 export interface BrowserToolContext {
   vfs: VirtualFS
@@ -516,5 +517,7 @@ export function createBrowserTools(
     searchWeb,
     askQuestion,
     runCommands,
+    createResearchPlanTool(),
+    createCompleteResearchStepTool(),
   ]
 }

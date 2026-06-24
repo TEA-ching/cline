@@ -58,6 +58,18 @@ export interface ChatMessage {
   timestamp: number
 }
 
+export interface ResearchStep {
+  index: number
+  title: string
+  completed: boolean
+}
+
+export interface ResearchPlan {
+  question: string
+  steps: ResearchStep[]
+  toolCallIds: string[]
+}
+
 export interface GeneratedFile {
   path: string
   blobUrl: string
@@ -109,6 +121,8 @@ export interface UseAgentReturn {
   addGeneratedFile: (path: string, blobUrl: string) => void
   /** Get the current reasoning steps (tool calls) for the current turn */
   getReasoningSteps: () => string[]
+  /** Active research plan declared by plan_research; null when idle. */
+  researchPlan: ResearchPlan | null
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +169,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
   const [lastKeyError, setLastKeyError] = useState<string | null>(null)
   const [rateLimitRetryAt, setRateLimitRetryAt] = useState<number | null>(null)
 
+  const [researchPlan, setResearchPlan] = useState<ResearchPlan | null>(null)
   const streamingMsgIdRef = useRef<string | null>(null)
   const reasoningStepsRef = useRef<string[]>([])
 
@@ -225,10 +240,11 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
           } else if (event.type === 'tool-started') {
             const toolCall = event.toolCall
             // Capture reasoning step
-            reasoningStepsRef.current.push(`🔧 Appel de l'outil "${toolCall.toolName}" avec les paramètres : ${JSON.stringify(toolCall.input)}`)
+            reasoningStepsRef.current.push(`🔧 Calling tool "${toolCall.toolName}" with parameters: ${JSON.stringify(toolCall.input)}`)
 
+            const msgId = uid()
             const toolMsg: ChatMessage = {
-              id: uid(),
+              id: msgId,
               role: 'tool',
               content: `Calling tool: ${toolCall.toolName}`,
               toolName: toolCall.toolName,
@@ -236,6 +252,9 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
               timestamp: Date.now(),
             }
             setMessages((prev) => [...prev, toolMsg])
+            if (toolCall.toolName !== 'plan_research' && toolCall.toolName !== 'complete_research_step') {
+              setResearchPlan(prev => prev ? { ...prev, toolCallIds: [...prev.toolCallIds, msgId] } : prev)
+            }
           } else if (event.type === 'tool-finished') {
             const toolCall = event.toolCall
             const toolResultPart = event.message.content.find(
@@ -259,6 +278,20 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
               }
               return updated
             })
+            if (toolCall.toolName === 'plan_research' && output) {
+              // biome-ignore lint/suspicious/noExplicitAny: dynamic tool output
+              const o = output as any
+              setResearchPlan({ question: o.question, steps: o.steps, toolCallIds: [] })
+            }
+            if (toolCall.toolName === 'complete_research_step' && output) {
+              // biome-ignore lint/suspicious/noExplicitAny: dynamic tool output
+              const idx = (output as any).step_index as number
+              setResearchPlan(prev =>
+                prev
+                  ? { ...prev, steps: prev.steps.map(s => s.index === idx ? { ...s, completed: true } : s) }
+                  : prev
+              )
+            }
           }
           break
         }
@@ -592,5 +625,6 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     removeVfsFile,
     addGeneratedFile,
     getReasoningSteps,
+    researchPlan,
   }
 }
