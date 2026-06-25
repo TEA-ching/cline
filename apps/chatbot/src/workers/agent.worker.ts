@@ -42,6 +42,7 @@ interface InitMessage {
   corsProxyUrl?: string
   weatherApiKeys?: Array<{ key: string; sharedSecret?: string; signatureType?: string }>
   weatherApiEndpoint?: string
+  embeddingConfig?: { apiKey: string; baseUrl: string; modelId: string }
 }
 
 interface RunMessage {
@@ -124,12 +125,14 @@ function parseRetryAfterSeconds(message: string): number | null {
 
 import type { AgentRuntimeEvent, AgentMessage, ToolApprovalResult, Agent as AgentType, AgentUsage } from '@cline/agents'
 import type { VirtualFS as VirtualFSType } from '@/vfs/virtual-fs'
+import type { RagIndex as RagIndexType } from '@/lib/rag/rag-index'
 
 // ---------------------------------------------------------------------------
 // Worker state
 // ---------------------------------------------------------------------------
 
 let vfs: VirtualFSType | null = null
+let ragIndex: RagIndexType | null = null
 let agent: AgentType | null = null
 
 // Queue for vfs_add/vfs_remove messages that arrive before handleInit completes
@@ -137,6 +140,17 @@ type PendingVfsOp =
   | { type: 'add'; path: string; content: string }
   | { type: 'remove'; path: string }
 const pendingVfsOps: PendingVfsOp[] = []
+
+/** Index a file in the RAG index only if it looks like indexable text (not a binary data URL). */
+function indexIfText(path: string, content: string): void {
+  if (!ragIndex) return
+  // Skip binary content sent as data: URLs
+  if (content.startsWith('data:')) return
+  // Skip empty content
+  if (!content.trim()) return
+  // Fire-and-forget; failures are silently swallowed inside RagIndex
+  void ragIndex.indexDocument(path, content)
+}
 
 // ---------------------------------------------------------------------------
 // Bridge helpers: communicate back to main thread
@@ -241,19 +255,26 @@ function requestToolApproval(
 
 async function handleInit(msg: InitMessage): Promise<void> {
   try {
-    const [{ Agent }, { VirtualFS }, { createBrowserTools }, { createOptionalTools: createOptionalTools }] = await Promise.all([
+    const [{ Agent }, { VirtualFS }, { RagIndex }, { createBrowserTools }, { createOptionalTools: createOptionalTools }] = await Promise.all([
       import('@cline/agents'),
       import('@/vfs/virtual-fs'),
+      import('@/lib/rag/rag-index'),
       import('@/tools/index'),
       import('@/tools/worker-tools/index'),
     ])
 
     vfs = new VirtualFS()
+    ragIndex = new RagIndex(msg.embeddingConfig)
 
     // Flush any vfs_add/vfs_remove messages that arrived before init completed
     for (const op of pendingVfsOps) {
-      if (op.type === 'add') vfs.write(op.path, op.content)
-      else vfs.delete(op.path)
+      if (op.type === 'add') {
+        vfs.write(op.path, op.content)
+        indexIfText(op.path, op.content)
+      } else {
+        vfs.delete(op.path)
+        ragIndex.removeDocument(op.path)
+      }
     }
     pendingVfsOps.length = 0
 
@@ -270,6 +291,7 @@ async function handleInit(msg: InitMessage): Promise<void> {
       }),
       ...createOptionalTools(msg.enabledTools ?? [], {
         vfs,
+        ragIndex,
         onFileCreated: postFileCreated,
         apiKey: msg.apiKey,
         providerId: msg.providerId,
@@ -464,13 +486,21 @@ self.onmessage = (ev: MessageEvent<WorkerIncomingMessage>) => {
       break
 
     case 'vfs_add':
-      if (vfs) vfs.write(msg.path, msg.content)
-      else pendingVfsOps.push({ type: 'add', path: msg.path, content: msg.content })
+      if (vfs) {
+        vfs.write(msg.path, msg.content)
+        indexIfText(msg.path, msg.content)
+      } else {
+        pendingVfsOps.push({ type: 'add', path: msg.path, content: msg.content })
+      }
       break
 
     case 'vfs_remove':
-      if (vfs) vfs.delete(msg.path)
-      else pendingVfsOps.push({ type: 'remove', path: msg.path })
+      if (vfs) {
+        vfs.delete(msg.path)
+        ragIndex?.removeDocument(msg.path)
+      } else {
+        pendingVfsOps.push({ type: 'remove', path: msg.path })
+      }
       break
 
     case 'abort':

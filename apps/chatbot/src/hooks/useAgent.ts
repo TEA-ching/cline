@@ -48,6 +48,8 @@ export interface AgentConfig {
   corsProxyUrl?: string
   weatherApiKeys?: Array<{ key: string; sharedSecret?: string; signatureType?: string }>
   weatherApiEndpoint?: string
+  /** Optional embedding model config for semantic RAG (Level 2). */
+  embeddingConfig?: { apiKey: string; baseUrl: string; modelId: string }
 }
 
 export interface ChatMessage {
@@ -245,6 +247,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
       corsProxyUrl: config.corsProxyUrl,
       weatherApiKeys: config.weatherApiKeys,
       weatherApiEndpoint: config.weatherApiEndpoint,
+      embeddingConfig: config.embeddingConfig,
     })
 
     // -------------------------------------------------------------------------

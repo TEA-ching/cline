@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { Calculator, CalendarClock, Lock, Dice6, Palette, Zap, BookOpen, Search, Image, BarChart2, Terminal, CloudSun } from 'lucide-react'
+import { Calculator, CalendarClock, Lock, Dice6, Palette, Zap, BookOpen, Search, Image, BarChart2, Terminal, CloudSun, FileSearch } from 'lucide-react'
 import type { ElementType } from 'react'
 import type { AiModel } from '@/types/ai-config'
 
@@ -35,6 +35,16 @@ export interface OptionalToolMeta {
 }
 
 export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
+  {
+    id: 'search_documents',
+    name: 'Document Search (RAG)',
+    description:
+      'Search through uploaded documents for relevant passages. ' +
+      'Uses BM25 lexical scoring, or semantic search when an embedding model is configured in the vault. ' +
+      'Upload text/markdown/PDF files to enable this tool.',
+    icon: FileSearch,
+    tools: ['search_documents'],
+  },
   {
     id: 'calculator',
     name: 'Calculator',

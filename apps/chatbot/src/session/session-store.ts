@@ -27,8 +27,9 @@ import type { AgentMessage } from '@cline/agents'
 import type { VFSSnapshotEntry } from '@/vfs/virtual-fs'
 
 const DB_NAME = 'cline-chatbot'
-const DB_VERSION = 1
+const DB_VERSION = 2
 const STORE = 'sessions'
+const SPACES_STORE = 'spaces'
 
 export interface Session {
   id: string
@@ -48,15 +49,33 @@ export interface Session {
   vfsSnapshot?: Record<string, VFSSnapshotEntry>
 }
 
+/** A persistent knowledge space that groups files + sessions under shared instructions. */
+export interface Space {
+  id: string
+  name: string
+  /** Additional instructions prepended to the system prompt for all sessions in this space. */
+  instructions: string
+  /** Files persisted with this space — same snapshot format as Session.vfsSnapshot. */
+  filesSnapshot: Record<string, VFSSnapshotEntry>
+  /** IDs of sessions that belong to this space. */
+  sessionIds: string[]
+  createdAt: number
+  updatedAt: number
+}
+
 let db: IDBPDatabase | null = null
 
 async function getDB(): Promise<IDBPDatabase> {
   if (!db) {
     db = await openDB(DB_NAME, DB_VERSION, {
-      upgrade(database) {
+      upgrade(database, oldVersion) {
         if (!database.objectStoreNames.contains(STORE)) {
           const store = database.createObjectStore(STORE, { keyPath: 'id' })
           store.createIndex('updatedAt', 'updatedAt')
+        }
+        if (oldVersion < 2 && !database.objectStoreNames.contains(SPACES_STORE)) {
+          const spacesStore = database.createObjectStore(SPACES_STORE, { keyPath: 'id' })
+          spacesStore.createIndex('updatedAt', 'updatedAt')
         }
       },
     })
@@ -89,5 +108,28 @@ export const SessionStore = {
   async clear(): Promise<void> {
     const database = await getDB()
     await database.clear(STORE)
+  },
+}
+
+export const SpaceStore = {
+  async save(space: Space): Promise<void> {
+    const database = await getDB()
+    await database.put(SPACES_STORE, space)
+  },
+
+  async get(id: string): Promise<Space | undefined> {
+    const database = await getDB()
+    return database.get(SPACES_STORE, id)
+  },
+
+  async list(): Promise<Space[]> {
+    const database = await getDB()
+    const all = await database.getAllFromIndex(SPACES_STORE, 'updatedAt')
+    return all.reverse() // newest first
+  },
+
+  async delete(id: string): Promise<void> {
+    const database = await getDB()
+    await database.delete(SPACES_STORE, id)
   },
 }

@@ -25,9 +25,11 @@ import { createTool } from '@cline/agents'
 import { z } from 'zod'
 import type { AgentTool } from '@cline/agents'
 import type { VirtualFS } from '@/vfs/virtual-fs'
+import type { RagIndex } from '@/lib/rag/rag-index'
 import type * as TypeScript from 'typescript'
 
 // Import all individual tool creators
+import { createSearchDocumentsTool } from './search-documents-tool'
 import { createCalculatorTool } from './calculator-tool'
 import { createDatetimeTool } from './datetime-tool'
 import { createEncodingTool } from './encoding-tool'
@@ -45,6 +47,7 @@ import { createPythonTool } from './python-tool'
 
 interface WorkerToolsContext {
   vfs?: VirtualFS
+  ragIndex?: RagIndex
   onFileCreated?: (path: string, content: string) => void
   apiKey?: string
   providerId?: string
@@ -63,6 +66,12 @@ export function createOptionalTools(
   ctx?: WorkerToolsContext
 ): AgentTool<any, any>[] {
   const tools: AgentTool<any, any>[] = []
+
+  if (toolId.includes('search_documents')) {
+    tools.push(createSearchDocumentsTool({
+      ragIndex: ctx?.ragIndex,
+    }))
+  }
 
   if (toolId.includes('calculator')) {
     tools.push(createCalculatorTool())
@@ -156,6 +165,7 @@ export function createOptionalTools(
 
 // Re-export all individual tool creators for direct usage
 export {
+  createSearchDocumentsTool,
   createCalculatorTool,
   createDatetimeTool,
   createEncodingTool,

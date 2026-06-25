@@ -23,7 +23,7 @@
  */
 import React, { useState, useEffect, useMemo, useCallback, useRef, type MouseEvent as ReactMouseEvent } from 'react'
 import { Button, Drawer } from '@heroui/react'
-import { Settings, PanelLeftOpen, PanelLeftClose, History, Wrench, Plus, UserRoundKey, Brain, FileText, RotateCcwKey } from 'lucide-react'
+import { Settings, PanelLeftOpen, PanelLeftClose, History, Wrench, Plus, UserRoundKey, Brain, FileText, RotateCcwKey, Folder, X } from 'lucide-react'
 
 import { MessageList } from './MessageList'
 import { InputBar } from './InputBar'
@@ -61,6 +61,8 @@ import type { FocusMode } from '@/tools/focus-modes'
 import { recordKeyUsage, recordKeyError, extractErrorCode } from '@/lib/keypool-usage'
 import { SessionStore } from '@/session/session-store'
 import type { Session } from '@/session/session-store'
+import { useSpaces } from '@/hooks/useSpaces'
+import { SpacesBrowser } from '@/components/spaces/SpacesBrowser'
 import type { AiConfig } from '@/types/ai-config'
 
 // ---------------------------------------------------------------------------
@@ -120,6 +122,20 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   const [systemPrompt, setSystemPrompt] = useLocalStorageState('chatbot_system_prompt', DEFAULT_SYSTEM_PROMPT)
   const [enabledTools, setEnabledTools] = useLocalStorageState<string[]>('chatbot_enabled_optional_tools', [])
   const [focusMode, setFocusMode] = useLocalStorageState<FocusMode>('chatbot_focus_mode', 'web')
+  const [showSpaces, setShowSpaces] = useState(false)
+
+  const {
+    spaces,
+    activeSpaceId,
+    activeSpace,
+    setActiveSpaceId,
+    createSpace,
+    updateSpace,
+    deleteSpace,
+    addFileToSpace,
+    removeFileFromSpace,
+    addSessionToSpace,
+  } = useSpaces()
 
   // Detect mobile screen size
   const isMobile = useMediaQuery('(max-width: 767px)')
@@ -193,7 +209,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
       modelId: selectedModelId,
       apiKey: currentKey?.key ?? selectedProvider.keys[0]?.key ?? '',
       baseUrl: selectedProvider.endpoint,
-      systemPrompt: systemPrompt + focusDomainNote,
+      systemPrompt: systemPrompt + focusDomainNote + (activeSpace?.instructions ? `\n\n${activeSpace.instructions}` : ''),
       firecrawlKeys: firecrawlKeys.length > 0 ? firecrawlKeys : getFirecrawlKeys(vaultConfig),
       firecrawlEndpoint,
       focusMode,
@@ -210,6 +226,17 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
         signatureType: k.signatureType,
       })),
       weatherApiEndpoint: vaultConfig.weatherApi?.endpoint,
+      embeddingConfig: (() => {
+        // Pick the first embedding model available across all providers
+        for (const provider of Object.values(vaultConfig.providers)) {
+          const embModel = provider.models.find(m => m.usage === 'embedding')
+          if (embModel) {
+            const key = provider.keys[0]?.key ?? ''
+            return { apiKey: key, baseUrl: provider.endpoint, modelId: embModel.id }
+          }
+        }
+        return undefined
+      })(),
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -228,6 +255,9 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     // biome-ignore lint/correctness/useExhaustiveDependencies: stable serialisation
     JSON.stringify(vaultConfig.weatherApi?.keys),
     vaultConfig.weatherApi?.endpoint,
+    // biome-ignore lint/correctness/useExhaustiveDependencies: stable serialisation
+    JSON.stringify(Object.values(vaultConfig.providers).map(p => [p.endpoint, p.keys[0]?.key, p.models.find(m => m.usage === 'embedding')?.id])),
+    activeSpace?.instructions,
   ])
 
   const {
@@ -312,6 +342,28 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   }, [rateLimitRetryAt, poolSize])
 
   const vfs = useVirtualFS(syncVfsFile)
+
+  // -------------------------------------------------------------------------
+  // Space file preload — load/unload VFS when active space changes
+  // -------------------------------------------------------------------------
+  const prevActiveSpaceIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (activeSpace && activeSpace.id !== prevActiveSpaceIdRef.current) {
+      vfs.loadSnapshot(activeSpace.filesSnapshot)
+      prevActiveSpaceIdRef.current = activeSpace.id
+    } else if (!activeSpace && prevActiveSpaceIdRef.current !== null) {
+      vfs.clear()
+      prevActiveSpaceIdRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSpace?.id])
+
+  // Link active session to active space when it first gets messages
+  useEffect(() => {
+    if (!activeSpace || messages.length === 0) return
+    void addSessionToSpace(activeSpace.id, sessionId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSpace?.id, sessionId])
 
   // -------------------------------------------------------------------------
   // File viewer modal
@@ -650,7 +702,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
                   ? <PanelLeftClose className="h-4 w-4" />
                   : <PanelLeftOpen className="h-4 w-4" />}
               </Button>
-              <div className="flex-1 min-w-0 px-1">
+              <div className="flex-1 min-w-0 px-1 flex items-center gap-2">
                 <p className="text-xs text-default-500 truncate font-mono">
                   {selectedModelId || 'No model selected'}
                   {enabledTools.length > 0 && (
@@ -659,13 +711,34 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
                     </span>
                   )}
                 </p>
+                {activeSpace && (
+                  <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/30 shrink-0">
+                    <Folder className="h-3 w-3 text-primary-600 dark:text-primary-400" />
+                    <span className="text-xs text-primary-700 dark:text-primary-300">{activeSpace.name}</span>
+                    <button
+                      onClick={() => setActiveSpaceId(null)}
+                      className="text-primary-500 hover:text-primary-700 dark:hover:text-primary-200 leading-none"
+                      aria-label="Deactivate space"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
               </div>
               <Button
                 isIconOnly variant="ghost" size="sm"
-                onPress={() => { reset(); vfs.clear(); setSessionId(`sess_${Date.now()}`) }}
+                onPress={() => {
+                  reset()
+                  vfs.clear()
+                  if (activeSpace) vfs.loadSnapshot(activeSpace.filesSnapshot)
+                  setSessionId(`sess_${Date.now()}`)
+                }}
                 aria-label="New conversation"
               >
                 <Plus className="h-4 w-4" />
+              </Button>
+              <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSpaces(true)} aria-label="Spaces">
+                <Folder className="h-4 w-4" />
               </Button>
               <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSessions(true)} aria-label="Saved conversations">
                 <History className="h-4 w-4" />
@@ -821,6 +894,32 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
                   </Drawer.Header>
                   <Drawer.Body>
                     <ByokConfigEditor onClose={() => setShowByokConfig(false)} />
+                  </Drawer.Body>
+                </Drawer.Dialog>
+              </Drawer.Content>
+            </Drawer.Backdrop>
+          </Drawer>
+
+          {/* Spaces Drawer */}
+          <Drawer>
+            <Drawer.Backdrop isOpen={showSpaces} onOpenChange={setShowSpaces}>
+              <Drawer.Content placement="right">
+                <Drawer.Dialog>
+                  <Drawer.CloseTrigger />
+                  <Drawer.Header>
+                    <Drawer.Heading>Spaces</Drawer.Heading>
+                  </Drawer.Header>
+                  <Drawer.Body>
+                    <SpacesBrowser
+                      spaces={spaces}
+                      activeSpaceId={activeSpaceId}
+                      onActivate={setActiveSpaceId}
+                      onCreate={createSpace}
+                      onUpdate={updateSpace}
+                      onDelete={deleteSpace}
+                      onAddFile={addFileToSpace}
+                      onRemoveFile={removeFileFromSpace}
+                    />
                   </Drawer.Body>
                 </Drawer.Dialog>
               </Drawer.Content>
