@@ -122,6 +122,10 @@ export interface UseAgentReturn {
   removeLastExchange: () => void
   /** Clear all messages without resetting the worker. */
   clearMessages: () => void
+  /** Re-send the last user message, discarding the previous response. */
+  regenerate: () => void
+  /** Edit a user message (by id) and re-run from that point. */
+  editAndResend: (messageId: string, newContent: string) => void
   /** Load a saved message list without touching the worker.
    * Pass agentMessages (SDK format) to fully restore tool call history. */
   loadMessages: (messages: ChatMessage[], agentMessages?: readonly AgentMessage[]) => void
@@ -710,6 +714,59 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     pendingRotationRef.current = true
   }, [])
 
+  // Helper: build AgentMessage[] from a slice of ChatMessages (no SDK history)
+  function buildAgentMessages(msgs: ChatMessage[]): AgentMessage[] {
+    return msgs
+      .filter(m => m.role === 'user' || m.role === 'assistant')
+      .map(m => {
+        const content: AgentMessage['content'] = [{ type: 'text', text: m.content }]
+        if (m.role === 'user' && m.images?.length) {
+          const imageParts = m.images.map(url => ({
+            type: 'image' as const,
+            image: url,
+            mediaType: (url.startsWith('data:image/png') ? 'image/png' : 'image/jpeg') as 'image/png' | 'image/jpeg',
+          }))
+          return { id: m.id, role: m.role as AgentMessage['role'], content: [...content, ...imageParts], createdAt: m.timestamp }
+        }
+        return { id: m.id, role: m.role as AgentMessage['role'], content, createdAt: m.timestamp }
+      })
+  }
+
+  function startRun(userMsg: ChatMessage, contextBefore: ChatMessage[]) {
+    if (!workerRef.current) return
+    setMessages([...contextBefore, userMsg])
+    setIsRunning(true)
+    setTurnStartedAt(Date.now())
+    setStreamedTokens(0)
+    setLastKeyError(null)
+    setRateLimitRetryAt(null)
+    setFollowUpQuestions([])
+    streamingMsgIdRef.current = null
+    reasoningStepsRef.current = []
+    workerRef.current.postMessage({ type: 'restore_messages', messages: buildAgentMessages(contextBefore) })
+    workerRef.current.postMessage({ type: 'run', message: userMsg.content, images: userMsg.images })
+  }
+
+  const regenerate = useCallback(() => {
+    const msgs = messagesRef.current
+    let lastUserIdx = -1
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === 'user') { lastUserIdx = i; break }
+    }
+    if (lastUserIdx === -1) return
+    startRun(msgs[lastUserIdx], msgs.slice(0, lastUserIdx))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const editAndResend = useCallback((messageId: string, newContent: string) => {
+    const msgs = messagesRef.current
+    const idx = msgs.findIndex(m => m.id === messageId)
+    if (idx === -1) return
+    const editedMsg: ChatMessage = { ...msgs[idx], content: newContent }
+    startRun(editedMsg, msgs.slice(0, idx))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   return {
     messages,
     isRunning,
@@ -736,5 +793,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     followUpQuestions,
     queueRetryAfterRotation,
     getLastAgentMessages,
+    regenerate,
+    editAndResend,
   }
 }

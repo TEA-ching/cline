@@ -30,12 +30,15 @@ interface Props {
   messages: ChatMessage[]
   onImageCaptured?: (path: string, dataUrl: string) => void
   onFork?: (messageId: string) => void
+  onRegenerate?: () => void
+  onEdit?: (messageId: string, newContent: string) => void
   showReasoning?: boolean
   getReasoningSteps?: () => string[]
   sources?: Source[]
+  isRunning?: boolean
 }
 
-export const MessageList: React.FC<Props> = ({ messages, onImageCaptured, onFork, showReasoning, getReasoningSteps, sources }) => {
+export const MessageList: React.FC<Props> = ({ messages, onImageCaptured, onFork, onRegenerate, onEdit, showReasoning, getReasoningSteps, sources, isRunning }) => {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -68,10 +71,13 @@ export const MessageList: React.FC<Props> = ({ messages, onImageCaptured, onFork
           message={msg}
           onImageCaptured={onImageCaptured}
           onFork={onFork}
+          onRegenerate={msg.id === lastAssistantMsgId ? onRegenerate : undefined}
+          onEdit={onEdit}
           showReasoning={showReasoning}
           getReasoningSteps={getReasoningSteps}
           sources={sources}
           isLast={msg.id === lastAssistantMsgId}
+          isRunning={isRunning}
         />
       ))}
       <div ref={bottomRef} />

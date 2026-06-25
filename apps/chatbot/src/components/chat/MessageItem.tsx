@@ -21,8 +21,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import React, { useState } from 'react'
-import { Bot, User, Terminal, Copy, Check, Download, GitBranch } from 'lucide-react'
+import React, { useState, useRef, useEffect } from 'react'
+import { Bot, User, Terminal, Copy, Check, Download, GitBranch, RotateCcw, Pencil } from 'lucide-react'
 import { AssistantMessage } from './AssistantMessage'
 import { ToolCallCard } from './ToolCallCard'
 import type { ChatMessage } from '@/hooks/useAgent'
@@ -59,13 +59,26 @@ interface Props {
   message: ChatMessage
   onImageCaptured?: (path: string, dataUrl: string) => void
   onFork?: (messageId: string) => void
+  onRegenerate?: () => void
+  onEdit?: (messageId: string, newContent: string) => void
   showReasoning?: boolean
   getReasoningSteps?: () => string[]
   sources?: Source[]
   isLast?: boolean
+  isRunning?: boolean
 }
 
-export const MessageItem: React.FC<Props> = ({ message, onImageCaptured, onFork, showReasoning, getReasoningSteps, sources, isLast }) => {
+export const MessageItem: React.FC<Props> = ({ message, onImageCaptured, onFork, onRegenerate, onEdit, showReasoning, getReasoningSteps, sources, isLast, isRunning }) => {
+  const [editMode, setEditMode] = useState(false)
+  const [editValue, setEditValue] = useState(message.content)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (editMode) {
+      setEditValue(message.content)
+      textareaRef.current?.focus()
+    }
+  }, [editMode, message.content])
   if (message.role === 'tool') {
     return (
       <ToolCallCard
@@ -93,6 +106,16 @@ export const MessageItem: React.FC<Props> = ({ message, onImageCaptured, onFork,
   }
 
   const isUser = message.role === 'user'
+  const canEdit = isUser && !!onEdit && !isRunning
+  const canRegenerate = isLast && !isUser && !!onRegenerate && !isRunning && !message.isStreaming
+
+  const handleEditSave = () => {
+    const trimmed = editValue.trim()
+    if (trimmed && trimmed !== message.content) {
+      onEdit?.(message.id, trimmed)
+    }
+    setEditMode(false)
+  }
 
   return (
     <div className={`flex gap-3 group items-start ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -114,10 +137,41 @@ export const MessageItem: React.FC<Props> = ({ message, onImageCaptured, onFork,
           </div>
         )}
 
-        {isUser
-          ? <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-          : <AssistantMessage content={message.content} isStreaming={message.isStreaming} reasoning={getReasoningSteps?.()} showReasoning={showReasoning} sources={sources} isLast={isLast} />
-        }
+        {isUser ? (
+          editMode ? (
+            <div className="flex flex-col gap-2 min-w-50">
+              <textarea
+                ref={textareaRef}
+                value={editValue}
+                onChange={e => setEditValue(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleEditSave()
+                  if (e.key === 'Escape') setEditMode(false)
+                }}
+                rows={Math.max(2, editValue.split('\n').length)}
+                className="w-full bg-white/10 rounded-lg px-2 py-1.5 text-sm text-white placeholder-white/50 resize-none focus:outline-none focus:ring-1 focus:ring-white/40"
+              />
+              <div className="flex gap-1.5 justify-end">
+                <button
+                  onClick={() => setEditMode(false)}
+                  className="px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/20 text-white/80 transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleEditSave}
+                  className="px-2 py-1 text-xs rounded bg-white/90 hover:bg-white text-primary-700 font-medium transition-colors"
+                >
+                  Envoyer
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+          )
+        ) : (
+          <AssistantMessage content={message.content} isStreaming={message.isStreaming} reasoning={getReasoningSteps?.()} showReasoning={showReasoning} sources={sources} isLast={isLast} />
+        )}
 
         {/* Generated images for assistant messages */}
         {!isUser && message.images && message.images.length > 0 && (
@@ -166,6 +220,24 @@ export const MessageItem: React.FC<Props> = ({ message, onImageCaptured, onFork,
 
       <div className="flex flex-col gap-1">
         <CopyButton text={message.content} light={isUser} />
+        {canEdit && !editMode && (
+          <button
+            onClick={() => setEditMode(true)}
+            title="Éditer le message"
+            className="self-start shrink-0 rounded opacity-20 group-hover:opacity-100 transition-opacity text-white/60 hover:text-white/90 hover:bg-white/10"
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+        )}
+        {canRegenerate && (
+          <button
+            onClick={onRegenerate}
+            title="Régénérer la réponse"
+            className="self-start shrink-0 rounded opacity-20 group-hover:opacity-100 transition-opacity text-default-400 hover:text-default-600 hover:bg-default-100"
+          >
+            <RotateCcw className="h-3 w-3" />
+          </button>
+        )}
         {onFork && !message.isStreaming && (
           <button
             onClick={() => onFork(message.id)}

@@ -285,6 +285,8 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     followUpQuestions,
     queueRetryAfterRotation,
     getLastAgentMessages,
+    regenerate,
+    editAndResend,
   } = useAgent(agentConfig)
 
   // -------------------------------------------------------------------------
@@ -778,9 +780,12 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
                 messages={visibleMessages}
                 onImageCaptured={handleImageCaptured}
                 onFork={handleForkAtMessage}
+                onRegenerate={regenerate}
+                onEdit={editAndResend}
                 showReasoning={showReasoning}
                 getReasoningSteps={getReasoningSteps}
                 sources={sources}
+                isRunning={isRunning}
               />
               <ThinkingIndicator startedAt={turnStartedAt} streamedTokens={streamedTokens} />
             </div>
