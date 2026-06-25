@@ -1,4 +1,4 @@
-# @sctg/chatbot
+# @sctg/cline-chatbot
 
 **AI-powered chat assistant with agentic tools, web search, data analysis, and extensible tool system**
 
@@ -10,9 +10,9 @@
 
 ---
 
-## 🚀 What is @sctg/chatbot?
+## 🚀 What is @sctg/cline-chatbot?
 
-**@sctg/chatbot** is a next‑generation AI chat application that goes far beyond simple conversation. It combines a **secure vault** for API key management, a **virtual file system**, and a **growing ecosystem of tools** (web search, JavaScript/Python sandbox, chart generation, PDF creation, weather, financial data, and more) — all running in your browser with **zero data sent to our servers**.
+**@sctg/cline-chatbot** is a next‑generation AI chat application that goes far beyond simple conversation. It combines a **secure vault** for API key management, a **virtual file system**, and a **growing ecosystem of tools** (web search, JavaScript/Python sandbox, chart generation, PDF creation, weather, financial data, and more) — all running in your browser with **zero data sent to our servers**.
 
 Think of it as **Perplexity on steroids**, with full control over your own API keys and the ability to run code, analyse data, and generate documents directly in the chat.
 
