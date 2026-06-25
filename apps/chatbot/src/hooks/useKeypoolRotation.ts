@@ -136,12 +136,25 @@ export function useKeypoolRotation(
 
   const markKeyFailedAndRotate = useCallback(() => {
     if (!currentKey) return
-    setFailedKeys(prev => new Set([...prev, currentKey.key]))
-    setRotationOffset(0)  // reset offset; the failed key is excluded from the next pool
-    const hint = maskKey(currentKey.key)
+    const failingKey = currentKey.key
+    // Find where the failing key sits in the current sorted pool
+    const currentIdx = sortedPool.findIndex(k => k.key === failingKey)
+    // Compute the new pool deterministically (matches the upcoming re-render)
+    const newPool = sortedPool.filter(k => k.key !== failingKey)
+    // Key that was "next" in the current sorted order (wrapping)
+    const nextInCurrentPool = sortedPool[(currentIdx + 1) % sortedPool.length]
+    // Set the offset so rotation resumes from the next eligible key, not index 0
+    const newOffset =
+      newPool.length > 0 && nextInCurrentPool
+        ? Math.max(0, newPool.findIndex(k => k.key === nextInCurrentPool.key))
+        : 0
+
+    setFailedKeys(prev => new Set([...prev, failingKey]))
+    setRotationOffset(newOffset)
+    const hint = maskKey(failingKey)
     const owner = currentKey?.owner ?? 'unknown'
     toast(`Key failed & rotated : ${owner} …${hint.slice(-8)}`, { timeout: 2000 })
-  }, [currentKey])
+  }, [currentKey, sortedPool])
 
   const currentKeyHint = currentKey ? maskKey(currentKey.key) : '—'
   const currentKeyOwner = currentKey?.owner ?? 'unknown'

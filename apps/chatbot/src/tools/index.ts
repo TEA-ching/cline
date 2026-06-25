@@ -769,7 +769,8 @@ export function createBrowserTools(
       const entry = ctx.vfs.entry(src)
       if (entry === null) return `Error: source file not found: ${src}`
       ctx.vfs.write(dest, entry.content, entry.mimeType)
-      ctx.onFileCreated(dest, entry.content)
+      // read() always returns a string (data URL for binary entries)
+      ctx.onFileCreated(dest, ctx.vfs.read(dest) ?? '')
       if (op === 'move') {
         ctx.vfs.delete(src)
       }

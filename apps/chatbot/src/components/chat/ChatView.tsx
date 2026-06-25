@@ -54,6 +54,7 @@ import { useLocalStorageState } from '@/hooks/useLocalStorageState'
 import { useKeypoolRotation } from '@/hooks/useKeypoolRotation'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { listChatModels, modelSupportsImages, getFirecrawlKeys } from '@/lib/model-utils'
+import { estimateTokens } from '@/lib/token-count'
 import { BUILTIN_OPTONAL_TOOLS } from '@/tools/builtin'
 import { FOCUS_MODES } from '@/tools/focus-modes'
 import type { FocusMode } from '@/tools/focus-modes'
@@ -359,17 +360,18 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   )
 
   // -------------------------------------------------------------------------
-  // Context window estimation (chars / 4 ≈ tokens)
+  // Context window estimation — calibrated per model family
   // -------------------------------------------------------------------------
   const contextUsedTokens = useMemo(() => {
-    const chars = messages.reduce((sum, m) => {
-      let n = m.content.length
-      if (m.toolInput) n += JSON.stringify(m.toolInput).length
-      if (m.toolResult) n += JSON.stringify(m.toolResult).length
-      return sum + n
+    const mid = selectedModelId ?? ''
+    const msgTokens = messages.reduce((sum, m) => {
+      let t = estimateTokens(m.content, mid)
+      if (m.toolInput) t += estimateTokens(JSON.stringify(m.toolInput), mid)
+      if (m.toolResult) t += estimateTokens(JSON.stringify(m.toolResult), mid)
+      return sum + t
     }, 0)
-    return Math.round((chars + systemPrompt.length) / 4)
-  }, [messages, systemPrompt])
+    return msgTokens + estimateTokens(systemPrompt, mid)
+  }, [messages, systemPrompt, selectedModelId])
 
   // -------------------------------------------------------------------------
   // Rate-limit countdown (ticks every second while waiting for auto-retry)
@@ -451,20 +453,35 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   // -------------------------------------------------------------------------
   useEffect(() => {
     if (messages.length === 0) return
-    const title = messages.find(m => m.role === 'user')?.content?.slice(0, 60) ?? 'Conversation'
-    void SessionStore.save({
+    const firstUser = messages.find(m => m.role === 'user')
+    // Auto-title from the first user turn, capped at 60 chars
+    const title = firstUser?.content?.trim().slice(0, 60) ?? 'Conversation'
+    // Only persist non-blob URLs (blob: URLs die on page reload)
+    const generatedFileUrls = generatedFiles
+      .filter(f => !f.blobUrl.startsWith('blob:'))
+      .map(f => ({ path: f.path, url: f.blobUrl, timestamp: f.timestamp }))
+
+    SessionStore.save({
       id: sessionId,
       title,
       messages,
       agentMessages: getLastAgentMessages() ?? undefined,
+      generatedFileUrls: generatedFileUrls.length > 0 ? generatedFileUrls : undefined,
       providerId: selectedProviderId,
       modelId: selectedModelId,
       createdAt: Number(sessionId.replace('sess_', '')),
       updatedAt: Date.now(),
       vfsSnapshot: vfs.toSnapshot(),
+    }).catch((e: unknown) => {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (/quota|storage/i.test(msg)) {
+        console.error('[session] Storage quota exceeded — consider clearing old sessions.', msg)
+      } else {
+        console.error('[session] Auto-save failed:', msg)
+      }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, sessionId, selectedProviderId, selectedModelId, vfs.files])
+  }, [messages, sessionId, selectedProviderId, selectedModelId, vfs.files, generatedFiles])
 
   // -------------------------------------------------------------------------
   // Session load
@@ -484,6 +501,11 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     setSessionId(`sess_${Date.now()}`)
     loadMessages(forkedMessages)
   }, [messages, loadMessages])
+
+  // -------------------------------------------------------------------------
+  // Render helpers
+  // -------------------------------------------------------------------------
+  const contextWindow = selectedModel?.contextWindow ?? 0
 
   // -------------------------------------------------------------------------
   // Slash command dispatch
@@ -543,14 +565,34 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
       }
     }
 
+    // Block normal messages when the context window is effectively full (≥97%)
+    if (contextWindow > 0 && contextUsedTokens >= contextWindow * 0.97) {
+      const sysMsg: ChatMessage = {
+        id: uid(),
+        role: 'system',
+        content: '⛔ Context window is full. Use /compact to summarise the conversation before sending a new message.',
+        timestamp: Date.now(),
+      }
+      loadMessages([...messages, sysMsg])
+      return
+    }
+
     agentSend(trimmed, images)
   }, [
     agentSend, clearMessages, reset, removeLastExchange,
     loadMessages, messages, systemPrompt, setSystemPrompt,
+    contextWindow, contextUsedTokens,
   ])
 
   const handleFollowUp = useCallback((question: string) => {
     agentSend(question)
+  }, [agentSend])
+
+  const handleCompact = useCallback(() => {
+    agentSend(
+      'Produce a concise summary of our conversation so far, capturing all important ' +
+      'decisions, context, and information. This will serve as a compressed record.',
+    )
   }, [agentSend])
 
   // -------------------------------------------------------------------------
@@ -573,11 +615,6 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     const blob = new Blob([u8arr], { type: mimeMatch[1] })
     addGeneratedFile(path, URL.createObjectURL(blob))
   }, [syncVfsFile, addGeneratedFile])
-
-  // -------------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------------
-  const contextWindow = selectedModel?.contextWindow ?? 0
 
   return (
     <>
@@ -657,7 +694,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
 
             {/* Context bar */}
             {contextWindow > 0 && (
-              <ContextBar usedTokens={contextUsedTokens} totalTokens={contextWindow} />
+              <ContextBar usedTokens={contextUsedTokens} totalTokens={contextWindow} onCompact={handleCompact} />
             )}
 
             {/* Messages + thinking indicator */}

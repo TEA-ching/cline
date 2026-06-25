@@ -24,6 +24,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentRuntimeEvent, AgentMessage, AgentUsage } from '@cline/agents'
 import AgentWorkerClass from '../workers/agent.worker.ts?worker'
+import { estimateTokens } from '@/lib/token-count'
 
 export type { AgentMessage }
 
@@ -110,6 +111,8 @@ export interface UseAgentReturn {
    * will fire. Resets to null once the retry starts or the turn ends.
    */
   rateLimitRetryAt: number | null
+  /** True once the worker has sent worker_ready; false while it initialises. */
+  isWorkerReady: boolean
   sendMessage: (text: string, images?: string[]) => void
   abort: () => void
   reset: () => void
@@ -183,6 +186,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
   const [lastTurnUsage, setLastTurnUsage] = useState<AgentUsage | null>(null)
   const [lastKeyError, setLastKeyError] = useState<string | null>(null)
   const [rateLimitRetryAt, setRateLimitRetryAt] = useState<number | null>(null)
+  const [isWorkerReady, setIsWorkerReady] = useState(false)
 
   const [researchPlan, setResearchPlan] = useState<ResearchPlan | null>(null)
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([])
@@ -199,6 +203,10 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
   const pendingSnapshotRef = useRef<readonly AgentMessage[] | null>(null)
   // Set by queueRetryAfterRotation(); consumed by the next worker_ready.
   const pendingRotationRef = useRef(false)
+  // Ref mirror of isWorkerReady for synchronous checks inside sendMessage.
+  const isWorkerReadyRef = useRef(false)
+  // Message queued while the worker was re-initialising (e.g. after key rotation).
+  const pendingUserMessageRef = useRef<{ text: string; images?: string[] } | null>(null)
 
   // Keep messagesRef in sync so worker event handlers can read current messages
   useEffect(() => {
@@ -215,6 +223,8 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
       workerRef.current = null
     }
     streamingMsgIdRef.current = null
+    isWorkerReadyRef.current = false
+    setIsWorkerReady(false)
 
     if (!config) return
 
@@ -250,7 +260,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
           const event = msg.event
           if (event.type === 'assistant-text-delta') {
             const text = (event as any).text as string
-            setStreamedTokens(prev => prev + Math.max(1, Math.round(text.length / 4)))
+            setStreamedTokens(prev => prev + estimateTokens(text, config.modelId))
             setMessages((prev) => {
               const streamingId = streamingMsgIdRef.current
               if (streamingId) {
@@ -489,6 +499,8 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
         }
 
         case 'worker_ready': {
+          isWorkerReadyRef.current = true
+          setIsWorkerReady(true)
           console.log('[agent.worker] ready — imports loaded successfully')
           if (pendingRotationRef.current && pendingSnapshotRef.current) {
             pendingRotationRef.current = false
@@ -509,6 +521,11 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
             setStreamedTokens(0)
             setLastKeyError(null)
             setRateLimitRetryAt(null)
+          } else if (pendingUserMessageRef.current) {
+            // Drain a user message that arrived while the worker was initialising
+            const { text, images } = pendingUserMessageRef.current
+            pendingUserMessageRef.current = null
+            worker.postMessage({ type: 'run', message: text, images })
           }
           break
         }
@@ -576,7 +593,12 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
       setRateLimitRetryAt(null)
       setFollowUpQuestions([])
       streamingMsgIdRef.current = null
-      reasoningStepsRef.current = [] // Clear reasoning steps for new turn
+      reasoningStepsRef.current = []
+      if (!isWorkerReadyRef.current) {
+        // Worker is still loading — queue the message; worker_ready will drain it.
+        pendingUserMessageRef.current = { text, images }
+        return
+      }
       workerRef.current.postMessage({ type: 'run', message: text, images })
     },
     [],
@@ -696,6 +718,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     lastTurnUsage,
     lastKeyError,
     rateLimitRetryAt,
+    isWorkerReady,
     sendMessage,
     abort,
     reset,

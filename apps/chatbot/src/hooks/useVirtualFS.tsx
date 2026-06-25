@@ -23,6 +23,7 @@
  */
 import { useCallback, useRef, useState } from 'react'
 import { VirtualFS } from '@/vfs/virtual-fs'
+import type { VFSSnapshotEntry } from '@/vfs/virtual-fs'
 
 export interface VFSFile {
   path: string
@@ -37,8 +38,8 @@ export interface UseVirtualFSReturn {
   readFile: (path: string) => string | null
   clear: () => void
   syncFromWorker: (path: string, content: string) => void
-  toSnapshot: () => Record<string, { content: string; mimeType: string }>
-  loadSnapshot: (snapshot: Record<string, { content: string; mimeType: string }> | undefined) => void
+  toSnapshot: () => Record<string, VFSSnapshotEntry>
+  loadSnapshot: (snapshot: Record<string, VFSSnapshotEntry> | undefined) => void
 }
 
 function guessMimeType(file: File): string {
@@ -67,8 +68,11 @@ function guessMimeType(file: File): string {
   return mimeMap[ext] ?? 'application/octet-stream'
 }
 
-function isImageMimeType(mimeType: string): boolean {
-  return mimeType.startsWith('image/')
+function isBinaryMimeType(mimeType: string): boolean {
+  if (mimeType.startsWith('image/')) return true
+  if (mimeType === 'application/pdf') return true
+  if (mimeType === 'application/octet-stream') return true
+  return false
 }
 
 async function readFileAsText(file: File): Promise<string> {
@@ -80,13 +84,22 @@ async function readFileAsText(file: File): Promise<string> {
   })
 }
 
-async function readFileAsDataURL(file: File): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
+async function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
+  return new Promise<ArrayBuffer>((resolve, reject) => {
     const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
+    reader.onload = () => resolve(reader.result as ArrayBuffer)
     reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
+    reader.readAsArrayBuffer(file)
   })
+}
+
+/** Re-encode a Uint8Array as a `data:<mime>;base64,...` string for the worker. */
+function uint8ToDataUrl(data: Uint8Array, mimeType: string): string {
+  let binary = ''
+  for (let i = 0; i < data.byteLength; i++) {
+    binary += String.fromCharCode(data[i])
+  }
+  return `data:${mimeType};base64,${btoa(binary)}`
 }
 
 export function useVirtualFS(
@@ -98,7 +111,7 @@ export function useVirtualFS(
   const refreshFiles = useCallback(() => {
     const vfs = vfsRef.current
     const paths = vfs.list()
-    const updated: VFSFile[] = paths.map((p) => {
+    const updated: VFSFile[] = paths.map(p => {
       const entry = vfs.entry(p)!
       return { path: p, mimeType: entry.mimeType, size: entry.size }
     })
@@ -112,17 +125,19 @@ export function useVirtualFS(
       await Promise.all(
         arr.map(async (file) => {
           const mimeType = guessMimeType(file)
-          let content: string
-
-          if (isImageMimeType(mimeType)) {
-            // Store images as base64 data URLs
-            content = await readFileAsDataURL(file)
+          if (isBinaryMimeType(mimeType)) {
+            // Store binary files as raw bytes — size is accurate and we avoid
+            // the ~33% overhead of keeping a base64 string in memory.
+            const buffer = await readFileAsArrayBuffer(file)
+            const bytes = new Uint8Array(buffer)
+            vfs.write(file.name, bytes, mimeType)
+            // Worker still receives a data URL string (backward-compatible)
+            onFileSync?.(file.name, uint8ToDataUrl(bytes, mimeType))
           } else {
-            content = await readFileAsText(file)
+            const content = await readFileAsText(file)
+            vfs.write(file.name, content, mimeType)
+            onFileSync?.(file.name, content)
           }
-
-          vfs.write(file.name, content, mimeType)
-          onFileSync?.(file.name, content)
         }),
       )
       refreshFiles()
@@ -153,12 +168,16 @@ export function useVirtualFS(
   )
 
   const loadSnapshot = useCallback(
-    (snapshot: Record<string, { content: string; mimeType: string }> | undefined) => {
+    (snapshot: Record<string, VFSSnapshotEntry> | undefined) => {
       vfsRef.current.clear()
       if (snapshot) {
-        for (const [path, { content, mimeType }] of Object.entries(snapshot)) {
-          vfsRef.current.write(path, content, mimeType)
-          onFileSync?.(path, content)
+        const vfs = VirtualFS.fromSnapshot(snapshot)
+        // Replace the internal ref's instance with the restored one
+        vfsRef.current = vfs
+        // Re-sync each file to the worker (worker VFS must stay in sync)
+        for (const path of vfs.list()) {
+          const content = vfs.read(path)
+          if (content !== null) onFileSync?.(path, content)
         }
       }
       refreshFiles()
@@ -168,7 +187,6 @@ export function useVirtualFS(
 
   const syncFromWorker = useCallback(
     (path: string, content: string) => {
-      // Guess MIME from extension; default to text/plain
       const ext = path.split('.').pop()?.toLowerCase() ?? ''
       const mimeMap: Record<string, string> = {
         ts: 'text/typescript',

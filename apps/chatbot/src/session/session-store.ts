@@ -24,6 +24,7 @@
 import { openDB, type IDBPDatabase } from 'idb'
 import type { ChatMessage } from '@/hooks/useAgent'
 import type { AgentMessage } from '@cline/agents'
+import type { VFSSnapshotEntry } from '@/vfs/virtual-fs'
 
 const DB_NAME = 'cline-chatbot'
 const DB_VERSION = 1
@@ -37,11 +38,14 @@ export interface Session {
    * saved before this field was introduced; in that case the agent will
    * reconstruct a best-effort context from ChatMessage[] only. */
   agentMessages?: readonly AgentMessage[]
+  /** Non-blob generated file URLs (e.g. Azure image links) that survive reload.
+   * Ephemeral blob: URLs are omitted — those files live in vfsSnapshot instead. */
+  generatedFileUrls?: Array<{ path: string; url: string; timestamp: number }>
   providerId: string
   modelId: string
   createdAt: number
   updatedAt: number
-  vfsSnapshot?: Record<string, { content: string; mimeType: string }>
+  vfsSnapshot?: Record<string, VFSSnapshotEntry>
 }
 
 let db: IDBPDatabase | null = null
