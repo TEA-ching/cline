@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { Calculator, CalendarClock, Lock, Dice6, Palette, Zap, BookOpen, Search, Image, BarChart2, Terminal, CloudSun, FileSearch } from 'lucide-react'
+import { Calculator, CalendarClock, Lock, Dice6, Palette, Zap, BookOpen, Search, Image, BarChart2, Terminal, CloudSun, FileSearch, GitBranch } from 'lucide-react'
 import type { ElementType } from 'react'
 import type { AiModel } from '@/types/ai-config'
 
@@ -236,5 +236,16 @@ export const BUILTIN_OPTONAL_TOOLS: OptionalToolMeta[] = [
       'VFS read/write access via "import vfs". First load requires ~7 MB download.',
     icon: Terminal,
     tools: ['execute_python_code'],
+  },
+  {
+    id: 'github',
+    name: 'GitHub Explorer',
+    description:
+      'Explore GitHub repositories without cloning. ' +
+      'Browse the file tree, read source files, search code, list commits, issues, and pull requests. ' +
+      'Works with public repos out of the box (60 req/h). ' +
+      'Tip: start with repo_info + full_tree, then read specific files.',
+    icon: GitBranch,
+    tools: ['github'],
   },
 ]

@@ -46,6 +46,7 @@ jobs:
         working-directory: apps/web
         env:
           BASE_URL: /${{ github.event.repository.name }}/
+          GITHUB_CLIENT_ID: ${{ secrets._GITHUB_CLIENT_ID }} 
         run: bun run build
 
       - name: Setup Pages

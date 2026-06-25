@@ -43,6 +43,7 @@ interface InitMessage {
   weatherApiKeys?: Array<{ key: string; sharedSecret?: string; signatureType?: string }>
   weatherApiEndpoint?: string
   embeddingConfig?: { apiKey: string; baseUrl: string; modelId: string }
+  githubToken?: string
 }
 
 interface RunMessage {
@@ -302,6 +303,7 @@ async function handleInit(msg: InitMessage): Promise<void> {
         weatherApiKeys: msg.weatherApiKeys,
         weatherApiEndpoint: msg.weatherApiEndpoint,
         renderMermaid,
+        githubToken: msg.githubToken,
       }),
     ]
 

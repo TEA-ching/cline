@@ -44,6 +44,7 @@ import { createPdfTool } from './pdf-tool'
 import { createChartTool } from './chart-tool'
 import { createSearchLocationTool, createWeatherForecastTool } from './weather-tools'
 import { createPythonTool } from './python-tool'
+import { createGitHubTool } from './github-tool'
 
 interface WorkerToolsContext {
   vfs?: VirtualFS
@@ -58,6 +59,7 @@ interface WorkerToolsContext {
   weatherApiKeys?: Array<{ key: string; sharedSecret?: string; signatureType?: string }>
   weatherApiEndpoint?: string
   renderMermaid?: (src: string) => Promise<string>
+  githubToken?: string
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: tool input/output types vary
@@ -160,6 +162,10 @@ export function createOptionalTools(
     }))
   }
 
+  if (toolId.includes('github')) {
+    tools.push(createGitHubTool({ githubToken: ctx?.githubToken }))
+  }
+
   return tools
 }
 
@@ -180,5 +186,6 @@ export {
   createChartTool,
   createSearchLocationTool,
   createWeatherForecastTool,
-  createPythonTool
+  createPythonTool,
+  createGitHubTool,
 }

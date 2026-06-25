@@ -23,7 +23,7 @@
  */
 import React, { useState, useEffect, useMemo, useCallback, useRef, type MouseEvent as ReactMouseEvent } from 'react'
 import { Button, Drawer } from '@heroui/react'
-import { Settings, PanelLeftOpen, PanelLeftClose, History, Wrench, Plus, UserRoundKey, Brain, FileText, RotateCcwKey, Folder, X } from 'lucide-react'
+import { Settings, PanelLeftOpen, PanelLeftClose, History, Wrench, Plus, UserRoundKey, Brain, FileText, RotateCcwKey, Folder, X, GitBranch } from 'lucide-react'
 
 import { MessageList } from './MessageList'
 import { InputBar } from './InputBar'
@@ -63,6 +63,8 @@ import { SessionStore } from '@/session/session-store'
 import type { Session } from '@/session/session-store'
 import { useSpaces } from '@/hooks/useSpaces'
 import { SpacesBrowser } from '@/components/spaces/SpacesBrowser'
+import { useGitHubAuth } from '@/hooks/useGitHubAuth'
+import { GitHubAuthModal } from '@/components/github/GitHubAuthModal'
 import type { AiConfig } from '@/types/ai-config'
 
 // ---------------------------------------------------------------------------
@@ -123,6 +125,18 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   const [enabledTools, setEnabledTools] = useLocalStorageState<string[]>('chatbot_enabled_optional_tools', [])
   const [focusMode, setFocusMode] = useLocalStorageState<FocusMode>('chatbot_focus_mode', 'web')
   const [showSpaces, setShowSpaces] = useState(false)
+  const [showGitHubAuth, setShowGitHubAuth] = useState(false)
+
+  const {
+    githubToken,
+    deviceFlow,
+    isPolling: ghIsPolling,
+    justAuthorized,
+    authError: ghAuthError,
+    startDeviceFlow,
+    cancelDeviceFlow,
+    logout: githubLogout,
+  } = useGitHubAuth()
 
   const {
     spaces,
@@ -237,6 +251,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
         }
         return undefined
       })(),
+      githubToken: githubToken ?? undefined,
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -258,6 +273,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     // biome-ignore lint/correctness/useExhaustiveDependencies: stable serialisation
     JSON.stringify(Object.values(vaultConfig.providers).map(p => [p.endpoint, p.keys[0]?.key, p.models.find(m => m.usage === 'embedding')?.id])),
     activeSpace?.instructions,
+    githubToken,
   ])
 
   const {
@@ -287,7 +303,25 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     getLastAgentMessages,
     regenerate,
     editAndResend,
+    githubRateLimited,
+    clearGithubRateLimit,
   } = useAgent(agentConfig)
+
+  // Auto-open GitHub auth modal when the tool hits the 60 req/h rate limit
+  useEffect(() => {
+    if (githubRateLimited) {
+      setShowGitHubAuth(true)
+      clearGithubRateLimit()
+    }
+  }, [githubRateLimited, clearGithubRateLimit])
+
+  // Auto-close the GitHub auth modal after successful authorization (1 s delay for UX)
+  useEffect(() => {
+    if (justAuthorized) {
+      const id = setTimeout(() => setShowGitHubAuth(false), 1500)
+      return () => clearTimeout(id)
+    }
+  }, [justAuthorized])
 
   // -------------------------------------------------------------------------
   // Keypool: record usage after each successful turn
@@ -742,6 +776,18 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
               <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSpaces(true)} aria-label="Spaces">
                 <Folder className="h-4 w-4" />
               </Button>
+              {enabledTools.includes('github') && (
+                <Button
+                  isIconOnly
+                  variant="ghost"
+                  size="sm"
+                  onPress={() => githubToken ? githubLogout() : setShowGitHubAuth(true)}
+                  aria-label={githubToken ? 'GitHub connecté (5000 req/h) — cliquer pour déconnecter' : 'GitHub non connecté (60 req/h) — cliquer pour se connecter'}
+                  className={githubToken ? 'text-success-500' : 'text-default-400'}
+                >
+                  <GitBranch className="h-4 w-4" />
+                </Button>
+              )}
               <Button isIconOnly variant="ghost" size="sm" onPress={() => setShowSessions(true)} aria-label="Saved conversations">
                 <History className="h-4 w-4" />
               </Button>
@@ -773,7 +819,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
             )}
 
             {/* Messages + thinking indicator */}
-            <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
               <SystemPromptBanner systemPrompt={systemPrompt} defaultSystemPrompt={DEFAULT_SYSTEM_PROMPT} onUpdate={setSystemPrompt} />
               {researchPlan && <ResearchPlanBanner plan={researchPlan} isRunning={isRunning} toolMessages={planToolMessages} />}
               <MessageList
@@ -952,6 +998,22 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
 
           {/* Sources Drawer */}
           <SourcesPanel sources={sources} onClose={() => setShowSources(false)} isOpen={showSources} />
+
+          {/* GitHub OAuth Device Flow modal */}
+          {(showGitHubAuth || deviceFlow !== null) && (
+            <GitHubAuthModal
+              clientId={import.meta.env.GITHUB_CLIENT_ID as string | undefined}
+              deviceFlow={deviceFlow}
+              isPolling={ghIsPolling}
+              justAuthorized={justAuthorized}
+              authError={ghAuthError}
+              onStart={startDeviceFlow}
+              onCancel={() => {
+                cancelDeviceFlow()
+                setShowGitHubAuth(false)
+              }}
+            />
+          )}
 
           {/* File viewer */}
           {viewingFile && (

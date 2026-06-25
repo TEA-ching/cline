@@ -50,6 +50,8 @@ export interface AgentConfig {
   weatherApiEndpoint?: string
   /** Optional embedding model config for semantic RAG (Level 2). */
   embeddingConfig?: { apiKey: string; baseUrl: string; modelId: string }
+  /** GitHub personal access token or OAuth token for the GitHub Explorer tool. */
+  githubToken?: string
 }
 
 export interface ChatMessage {
@@ -147,6 +149,14 @@ export interface UseAgentReturn {
    */
   /** No-arg version: snapshot comes from the most recent rate_limited message. */
   queueRetryAfterRotation: () => void
+  /**
+   * True when the GitHub Explorer tool has detected a rate-limit (60 req/h cap).
+   * ChatView uses this to auto-open the GitHub auth modal.
+   * Reset to false when a new githubToken is provided in agentConfig.
+   */
+  githubRateLimited: boolean
+  /** Reset the githubRateLimited flag (e.g. after the modal is dismissed). */
+  clearGithubRateLimit: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -196,6 +206,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
 
   const [researchPlan, setResearchPlan] = useState<ResearchPlan | null>(null)
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([])
+  const [githubRateLimited, setGithubRateLimited] = useState(false)
   const streamingMsgIdRef = useRef<string | null>(null)
   const reasoningStepsRef = useRef<string[]>([])
   // Stores the SDK-format message history from the last turn_complete.
@@ -252,6 +263,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
       weatherApiKeys: config.weatherApiKeys,
       weatherApiEndpoint: config.weatherApiEndpoint,
       embeddingConfig: config.embeddingConfig,
+      githubToken: config.githubToken,
     })
 
     // -------------------------------------------------------------------------
@@ -346,6 +358,11 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
               // biome-ignore lint/suspicious/noExplicitAny: dynamic tool output
               const questions = (output as any).questions
               if (Array.isArray(questions)) setFollowUpQuestions(questions as string[])
+            }
+            // GitHub rate-limit detection: tool returns { rateLimited: true }
+            if (toolCall.toolName === 'github' && output) {
+              // biome-ignore lint/suspicious/noExplicitAny: dynamic tool output
+              if ((output as any).rateLimited === true) setGithubRateLimited(true)
             }
           }
           break
@@ -767,6 +784,8 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const clearGithubRateLimit = useCallback(() => setGithubRateLimited(false), [])
+
   return {
     messages,
     isRunning,
@@ -795,5 +814,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     getLastAgentMessages,
     regenerate,
     editAndResend,
+    githubRateLimited,
+    clearGithubRateLimit,
   }
 }
