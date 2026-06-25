@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 Ronan Le Meillat - SCTG Development
 import type { AiConfig } from '@/types/ai-config'
 import { decryptAiConfig } from './crypto'
+import { parseAiConfig } from './ai-config-schema'
 
 const VAULT_URL = import.meta.env.KEYPOOL_VAULT_URL as string
 const SESSION_KEY = 'ai_vault_token'
@@ -48,7 +49,7 @@ export const VaultApi = {
 
     const encryptedConfig = await res.text()
     const decryptedConfig = await decryptAiConfig(encryptedConfig, token)
-    return JSON.parse(decryptedConfig) as AiConfig
+    return parseAiConfig(JSON.parse(decryptedConfig))
   },
 }
 
@@ -65,5 +66,6 @@ export async function fetchPublicModels(): Promise<AiConfig> {
     throw new Error(body.message ?? body.error ?? `HTTP ${res.status}`)
   }
 
-  return res.json() as Promise<AiConfig>
+  const data = await res.json()
+  return parseAiConfig(data)
 }

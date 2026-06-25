@@ -28,6 +28,7 @@ import { Settings, PanelLeftOpen, PanelLeftClose, History, Wrench, Plus, UserRou
 import { MessageList } from './MessageList'
 import { InputBar } from './InputBar'
 import { ThinkingIndicator } from './ThinkingIndicator'
+import { FollowUpChips } from './FollowUpChips'
 import { ContextBar } from './ContextBar'
 import { SystemPromptBanner } from './SystemPromptBanner'
 import { ResearchPlanBanner } from './ResearchPlanBanner'
@@ -61,9 +62,19 @@ import type { AiConfig } from '@/types/ai-config'
 
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_SYSTEM_PROMPT = `You are a helpful AI assistant with access to a virtual file system and web tools.
-Use the vfs_* tools to read and write files. Use fetch_web_content and search_web to browse the internet.
-When asked to create files, use vfs_editor and they will be available for download.`
+export const DEFAULT_SYSTEM_PROMPT = `You are an expert AI research assistant with access to web search, browsing, and file management tools.
+
+**Web Research:**
+- Use search_web for quick lookups (up to 5 results)
+- Use deep_research for complex questions requiring multiple sources and deep analysis (e.g. comparisons, best practices, market overviews)
+- Use fetch_web_content to read a specific page
+- When citing sources, use [citation:N] format where N is the source number (e.g. "According to recent benchmarks [citation:1]...")
+
+**After Research:**
+After answering a research question, call suggest_followups with 2-4 relevant follow-up questions.
+
+**File Management:**
+Use vfs_* tools to read and write files. When asked to create files, use vfs_editor and they will be available for download.`
 
 export const SLASH_COMMANDS = [
   { cmd: '/help', desc: 'Show available commands' },
@@ -228,7 +239,9 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     addGeneratedFile,
     getReasoningSteps,
     researchPlan,
+    followUpQuestions,
     queueRetryAfterRotation,
+    getLastAgentMessages,
   } = useAgent(agentConfig)
 
   // -------------------------------------------------------------------------
@@ -319,11 +332,12 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   )
 
   const visibleMessages = useMemo(() => {
-    if (!researchPlan) return messages
     return messages.filter(m => {
       if (m.role !== 'tool') return true
+      if (m.toolName === 'suggest_followups') return false
       if (m.toolName === 'plan_research' || m.toolName === 'complete_research_step') return false
-      return !planToolIds.has(m.id)
+      if (researchPlan && planToolIds.has(m.id)) return false
+      return true
     })
   }, [messages, researchPlan, planToolIds])
 
@@ -364,36 +378,61 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   }, [rateLimitRetryAt])
 
   // -------------------------------------------------------------------------
-  // Extract sources from tool messages
+  // Extract sources from tool messages — deduplicated by normalized URL
   // -------------------------------------------------------------------------
   useEffect(() => {
-    const extracted: Source[] = [];
-    messages.forEach(msg => {
-      if (msg.toolName === 'search_web' && msg.toolResult) {
-        const results: any[] = Array.isArray(msg.toolResult) ? msg.toolResult : (msg.toolResult as any)?.results ?? [];
-        results.forEach((r: any) => {
-          extracted.push({
-            id: extracted.length + 1,
-            title: r.title || 'Source',
-            url: r.url || '#',
-            snippet: r.description || r.markdown?.slice(0, 200) || '',
-          });
-        });
-      } else if (msg.toolName === 'fetch_web_content' && msg.toolResult) {
-        // Extract source from fetch_web_content tool calls
-        const result = msg.toolResult as any;
-        if (result.url) {
-          extracted.push({
-            id: extracted.length + 1,
-            title: result.title || result.metadata?.title || 'Web Content',
-            url: result.url,
-            snippet: result.markdown?.slice(0, 200) || result.content?.slice(0, 200) || 'Content fetched from web page',
-          });
-        }
+    const normalizeUrl = (url: string): string => {
+      try {
+        const u = new URL(url)
+        const host = u.hostname.replace(/^www\./, '')
+        return `${host}${u.pathname}`.replace(/\/+$/, '').toLowerCase()
+      } catch {
+        return url.toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/+$/, '')
       }
-    });
-    setSources(extracted);
-  }, [messages]);
+    }
+    const safeHostname = (url: string): string => {
+      try { return new URL(url).hostname.replace(/^www\./, '') } catch { return '' }
+    }
+
+    const seen = new Map<string, Source>()
+    let nextId = 1
+
+    const addSource = (url: string, title: string, snippet: string) => {
+      if (!url) return
+      const key = normalizeUrl(url)
+      if (seen.has(key)) return
+      const domain = safeHostname(url)
+      seen.set(key, {
+        id: nextId++,
+        title: title || 'Source',
+        url,
+        snippet: snippet.slice(0, 300),
+        domain,
+        favicon: domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32` : undefined,
+      })
+    }
+
+    // biome-ignore lint/suspicious/noExplicitAny: dynamic tool results
+    messages.forEach((msg: any) => {
+      if (msg.toolName === 'search_web' && msg.toolResult) {
+        const results: any[] = Array.isArray(msg.toolResult) ? msg.toolResult : msg.toolResult?.results ?? []
+        results.forEach((r: any) => {
+          addSource(r.url || '', r.title || 'Source', r.description || r.markdown?.slice(0, 200) || '')
+        })
+      } else if (msg.toolName === 'fetch_web_content' && msg.toolResult) {
+        const r: any = msg.toolResult
+        addSource(r.url || '', r.title || r.metadata?.title || 'Web Content', r.markdown?.slice(0, 200) || '')
+      } else if (msg.toolName === 'deep_research' && msg.toolResult) {
+        const r: any = msg.toolResult
+        const srcs: any[] = Array.isArray(r.sources) ? r.sources : []
+        srcs.forEach((s: any) => {
+          addSource(s.url || '', s.title || 'Source', s.snippet || '')
+        })
+      }
+    })
+
+    setSources(Array.from(seen.values()))
+  }, [messages])
 
   // -------------------------------------------------------------------------
   // Session auto-save
@@ -405,6 +444,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
       id: sessionId,
       title,
       messages,
+      agentMessages: getLastAgentMessages() ?? undefined,
       providerId: selectedProviderId,
       modelId: selectedModelId,
       createdAt: Number(sessionId.replace('sess_', '')),
@@ -419,7 +459,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   // -------------------------------------------------------------------------
   const handleLoadSession = useCallback((session: Session) => {
     setSessionId(session.id)
-    loadMessages(session.messages)
+    loadMessages(session.messages, session.agentMessages)
     handleModelChange(session.providerId, session.modelId)
     vfs.loadSnapshot(session.vfsSnapshot)
     setShowSessions(false)
@@ -496,6 +536,10 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     agentSend, clearMessages, reset, removeLastExchange,
     loadMessages, messages, systemPrompt, setSystemPrompt,
   ])
+
+  const handleFollowUp = useCallback((question: string) => {
+    agentSend(question)
+  }, [agentSend])
 
   // -------------------------------------------------------------------------
   // Skill toggle
@@ -618,6 +662,11 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
               />
               <ThinkingIndicator startedAt={turnStartedAt} streamedTokens={streamedTokens} />
             </div>
+
+            {/* Follow-up question chips */}
+            {!isRunning && followUpQuestions.length > 0 && (
+              <FollowUpChips questions={followUpQuestions} onPick={handleFollowUp} />
+            )}
 
             {/* Rate-limit retry banner */}
             {rateLimitSecondsLeft !== null && (

@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import type { AiConfig } from '@/types/ai-config'
 import { VaultApi } from '@/lib/vault-api'
 import { getFirecrawlKeys } from '@/lib/model-utils'
+import { parseAiConfig } from '@/lib/ai-config-schema'
 
 type VaultMode = 'vault' | 'byok'
 
@@ -24,9 +25,15 @@ const VaultContext = createContext<VaultContextType | undefined>(undefined)
 
 export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [config, setConfig] = useState<AiConfig | null>(() => {
-    // Check if BYOK config exists in localStorage
     const stored = localStorage.getItem('byok_config')
-    return stored ? JSON.parse(stored) : null
+    if (!stored) return null
+    try {
+      return parseAiConfig(JSON.parse(stored))
+    } catch {
+      // Stored config is malformed — discard it to avoid a broken state.
+      localStorage.removeItem('byok_config')
+      return null
+    }
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

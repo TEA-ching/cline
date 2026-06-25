@@ -32,6 +32,7 @@ import {
 } from './firecrawl-client'
 import { emulateShellCommands } from './shell-emulator'
 import { createResearchPlanTool, createCompleteResearchStepTool } from './research-tool'
+import { createDeepResearchTool } from './deep-research-tool'
 
 export interface BrowserToolContext {
   vfs: VirtualFS
@@ -43,41 +44,348 @@ export interface BrowserToolContext {
 }
 
 // ---------------------------------------------------------------------------
-// Simple unified diff helper (line-by-line, no external library)
+// GNU diff engine — LCS-based with option support
 // ---------------------------------------------------------------------------
-function simpleUnifiedDiff(
-  aLines: string[],
-  bLines: string[],
-  aLabel: string,
-  bLabel: string,
-): string {
-  const output: string[] = [`--- ${aLabel}`, `+++ ${bLabel}`]
-  const maxLen = Math.max(aLines.length, bLines.length)
-  let i = 0
-  let j = 0
-  while (i < maxLen || j < maxLen) {
-    const aLine = i < aLines.length ? aLines[i] : undefined
-    const bLine = j < bLines.length ? bLines[j] : undefined
-    if (aLine === bLine) {
-      output.push(` ${aLine ?? ''}`)
-      i++
-      j++
-    } else if (aLine !== undefined && bLine !== undefined) {
-      output.push(`-${aLine}`)
-      output.push(`+${bLine}`)
-      i++
-      j++
-    } else if (aLine !== undefined) {
-      output.push(`-${aLine}`)
-      i++
-    } else if (bLine !== undefined) {
-      output.push(`+${bLine ?? ''}`)
-      j++
-    } else {
-      break
+type DiffOp = { op: 'eq'; line: string } | { op: 'del'; line: string } | { op: 'ins'; line: string }
+
+function naiveComputeDiff(aLines: string[], bLines: string[]): DiffOp[] {
+  const ops: DiffOp[] = []
+  const max = Math.max(aLines.length, bLines.length)
+  for (let i = 0; i < max; i++) {
+    if (i >= aLines.length) ops.push({ op: 'ins', line: bLines[i] })
+    else if (i >= bLines.length) ops.push({ op: 'del', line: aLines[i] })
+    else if (aLines[i] === bLines[i]) ops.push({ op: 'eq', line: aLines[i] })
+    else { ops.push({ op: 'del', line: aLines[i] }); ops.push({ op: 'ins', line: bLines[i] }) }
+  }
+  return ops
+}
+
+function lcsComputeDiff(aKeys: string[], bKeys: string[], aLines: string[], bLines: string[]): DiffOp[] {
+  const m = aKeys.length
+  const n = bKeys.length
+  if (m * n > 4_000_000) return naiveComputeDiff(aLines, bLines)
+  const dp: Uint32Array[] = Array.from({ length: m + 1 }, () => new Uint32Array(n + 1))
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = aKeys[i - 1] === bKeys[j - 1]
+        ? dp[i - 1][j - 1] + 1
+        : dp[i - 1][j] >= dp[i][j - 1] ? dp[i - 1][j] : dp[i][j - 1]
     }
   }
-  return output.join('\n')
+  const ops: DiffOp[] = []
+  let i = m, j = n
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && aKeys[i - 1] === bKeys[j - 1]) {
+      ops.push({ op: 'eq', line: aLines[i - 1] }); i--; j--
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      ops.push({ op: 'ins', line: bLines[j - 1] }); j--
+    } else {
+      ops.push({ op: 'del', line: aLines[i - 1] }); i--
+    }
+  }
+  ops.reverse()
+  return ops
+}
+
+interface GnuDiffOptions {
+  format: 'normal' | 'unified' | 'context' | 'side-by-side' | 'brief'
+  contextLines: number
+  ignoreCase: boolean
+  ignoreSpaceChange: boolean
+  ignoreAllSpace: boolean
+  ignoreBlankLines: boolean
+  width: number
+  reportIdentical: boolean
+}
+
+function parseGnuDiffFlags(flags: string): GnuDiffOptions {
+  const opts: GnuDiffOptions = {
+    format: 'unified', contextLines: 3,
+    ignoreCase: false, ignoreSpaceChange: false, ignoreAllSpace: false,
+    ignoreBlankLines: false, width: 130, reportIdentical: false,
+  }
+  const tokens = flags.trim().split(/\s+/).filter(Boolean)
+  let ti = 0
+  while (ti < tokens.length) {
+    const tok = tokens[ti]
+    if (tok.startsWith('--')) {
+      const eq = tok.indexOf('=')
+      const name = eq >= 0 ? tok.slice(2, eq) : tok.slice(2)
+      const val = eq >= 0 ? tok.slice(eq + 1) : undefined
+      if (name === 'unified') { opts.format = 'unified'; if (val) opts.contextLines = +val }
+      else if (name === 'context') { opts.format = 'context'; if (val) opts.contextLines = +val }
+      else if (name === 'side-by-side') opts.format = 'side-by-side'
+      else if (name === 'brief') opts.format = 'brief'
+      else if (name === 'normal') opts.format = 'normal'
+      else if (name === 'ignore-case') opts.ignoreCase = true
+      else if (name === 'ignore-space-change') opts.ignoreSpaceChange = true
+      else if (name === 'ignore-all-space') opts.ignoreAllSpace = true
+      else if (name === 'ignore-blank-lines') opts.ignoreBlankLines = true
+      else if (name === 'report-identical-files') opts.reportIdentical = true
+      else if (name === 'width' && val) opts.width = +val
+    } else if (tok.startsWith('-') && tok.length > 1) {
+      const chars = tok.slice(1)
+      for (let ci = 0; ci < chars.length; ci++) {
+        const c = chars[ci]
+        const rest = chars.slice(ci + 1)
+        const nextIsNum = /^\d+$/.test(tokens[ti + 1] ?? '')
+        if (c === 'u' || c === 'c') {
+          opts.format = c === 'u' ? 'unified' : 'context'
+          const m = rest.match(/^(\d+)/)
+          if (m) { opts.contextLines = +m[1]; ci += m[1].length }
+          else if (!rest.length && nextIsNum) opts.contextLines = +tokens[++ti]
+        } else if (c === 'U' || c === 'C') {
+          opts.format = c === 'U' ? 'unified' : 'context'
+          if (rest.length) { opts.contextLines = +rest; ci = chars.length }
+          else if (nextIsNum) opts.contextLines = +tokens[++ti]
+        } else if (c === 'W') {
+          if (rest.length) { opts.width = +rest; ci = chars.length }
+          else if (nextIsNum) opts.width = +tokens[++ti]
+        } else if (c === 'y') opts.format = 'side-by-side'
+        else if (c === 'q') opts.format = 'brief'
+        else if (c === 'i') opts.ignoreCase = true
+        else if (c === 'b') opts.ignoreSpaceChange = true
+        else if (c === 'w') opts.ignoreAllSpace = true
+        else if (c === 'B') opts.ignoreBlankLines = true
+        else if (c === 's') opts.reportIdentical = true
+      }
+    }
+    ti++
+  }
+  return opts
+}
+
+function lineKey(line: string, opts: GnuDiffOptions): string {
+  let k = line
+  if (opts.ignoreCase) k = k.toLowerCase()
+  if (opts.ignoreAllSpace) return k.replace(/\s/g, '')
+  if (opts.ignoreSpaceChange) return k.replace(/\s+/g, ' ').trim()
+  return k
+}
+
+function suppressBlankOnlyHunks(ops: DiffOp[]): DiffOp[] {
+  const result: DiffOp[] = []
+  let i = 0
+  while (i < ops.length) {
+    if (ops[i].op === 'eq') { result.push(ops[i++]); continue }
+    const start = i
+    while (i < ops.length && ops[i].op !== 'eq') i++
+    const hunk = ops.slice(start, i)
+    if (hunk.every(o => o.line.trim() === '')) {
+      for (const o of hunk) result.push({ op: 'eq', line: o.line })
+    } else {
+      result.push(...hunk)
+    }
+  }
+  return result
+}
+
+function buildLineMaps(ops: DiffOp[]): { aAt: number[]; bAt: number[] } {
+  const aAt: number[] = []
+  const bAt: number[] = []
+  let a = 1, b = 1
+  for (const op of ops) {
+    aAt.push(a); bAt.push(b)
+    if (op.op === 'eq') { a++; b++ } else if (op.op === 'del') { a++ } else { b++ }
+  }
+  return { aAt, bAt }
+}
+
+function buildHunks(ops: DiffOp[], contextLines: number): Array<{ start: number; end: number }> {
+  const hunks: Array<{ start: number; end: number }> = []
+  for (let i = 0; i < ops.length; i++) {
+    if (ops[i].op === 'eq') continue
+    const s = Math.max(0, i - contextLines)
+    const e = Math.min(ops.length - 1, i + contextLines)
+    if (hunks.length > 0 && s <= hunks[hunks.length - 1].end + 1) {
+      hunks[hunks.length - 1].end = Math.max(hunks[hunks.length - 1].end, e)
+    } else {
+      hunks.push({ start: s, end: e })
+    }
+  }
+  return hunks
+}
+
+function formatUnifiedDiff(ops: DiffOp[], aLabel: string, bLabel: string, contextLines: number): string {
+  if (!ops.some(o => o.op !== 'eq')) return ''
+  const { aAt, bAt } = buildLineMaps(ops)
+  const lines = [`--- ${aLabel}`, `+++ ${bLabel}`]
+  for (const { start, end } of buildHunks(ops, contextLines)) {
+    const slice = ops.slice(start, end + 1)
+    const aCount = slice.filter(o => o.op !== 'ins').length
+    const bCount = slice.filter(o => o.op !== 'del').length
+    lines.push(`@@ -${aAt[start]},${aCount} +${bAt[start]},${bCount} @@`)
+    for (const op of slice) lines.push(`${op.op === 'del' ? '-' : op.op === 'ins' ? '+' : ' '}${op.line}`)
+  }
+  return lines.join('\n')
+}
+
+function formatContextDiff(ops: DiffOp[], aLabel: string, bLabel: string, contextLines: number): string {
+  if (!ops.some(o => o.op !== 'eq')) return ''
+  const { aAt, bAt } = buildLineMaps(ops)
+  const lines = [`*** ${aLabel}`, `--- ${bLabel}`]
+  for (const { start, end } of buildHunks(ops, contextLines)) {
+    const slice = ops.slice(start, end + 1)
+    const aCount = slice.filter(o => o.op !== 'ins').length
+    const bCount = slice.filter(o => o.op !== 'del').length
+    lines.push('***************')
+    lines.push(`*** ${aAt[start]},${aAt[start] + aCount - 1} ****`)
+    for (const op of slice) if (op.op !== 'ins') lines.push(`${op.op === 'del' ? '- ' : '  '}${op.line}`)
+    lines.push(`--- ${bAt[start]},${bAt[start] + bCount - 1} ----`)
+    for (const op of slice) if (op.op !== 'del') lines.push(`${op.op === 'ins' ? '+ ' : '  '}${op.line}`)
+  }
+  return lines.join('\n')
+}
+
+function formatNormalDiff(ops: DiffOp[]): string {
+  if (!ops.some(o => o.op !== 'eq')) return ''
+  const { aAt, bAt } = buildLineMaps(ops)
+  const rng = (f: number, l: number) => f === l ? `${f}` : `${f},${l}`
+  const lines: string[] = []
+  let i = 0
+  while (i < ops.length) {
+    if (ops[i].op === 'eq') { i++; continue }
+    const hs = i
+    while (i < ops.length && ops[i].op !== 'eq') i++
+    let dFirst = -1, dLast = -1, iFirst = -1, iLast = -1
+    for (let k = hs; k < i; k++) {
+      if (ops[k].op === 'del') { if (dFirst < 0) dFirst = k; dLast = k }
+      else if (ops[k].op === 'ins') { if (iFirst < 0) iFirst = k; iLast = k }
+    }
+    if (dFirst >= 0 && iFirst >= 0) {
+      lines.push(`${rng(aAt[dFirst], aAt[dLast])}c${rng(bAt[iFirst], bAt[iLast])}`)
+      for (let k = hs; k < i; k++) if (ops[k].op === 'del') lines.push(`< ${ops[k].line}`)
+      lines.push('---')
+      for (let k = hs; k < i; k++) if (ops[k].op === 'ins') lines.push(`> ${ops[k].line}`)
+    } else if (dFirst >= 0) {
+      lines.push(`${rng(aAt[dFirst], aAt[dLast])}d${bAt[hs] - 1}`)
+      for (let k = hs; k < i; k++) if (ops[k].op === 'del') lines.push(`< ${ops[k].line}`)
+    } else {
+      lines.push(`${aAt[hs] - 1}a${rng(bAt[iFirst], bAt[iLast])}`)
+      for (let k = hs; k < i; k++) if (ops[k].op === 'ins') lines.push(`> ${ops[k].line}`)
+    }
+  }
+  return lines.join('\n')
+}
+
+function formatSideBySideDiff(ops: DiffOp[], width: number): string {
+  const colW = Math.max(10, Math.floor((width - 3) / 2))
+  const pad = (s: string) => s.length >= colW ? s.slice(0, colW) : s + ' '.repeat(colW - s.length)
+  const lines: string[] = []
+  let i = 0
+  while (i < ops.length) {
+    if (ops[i].op === 'eq') { lines.push(`${pad(ops[i].line)}  ${ops[i].line}`); i++; continue }
+    const hs = i
+    while (i < ops.length && ops[i].op !== 'eq') i++
+    const hunk = ops.slice(hs, i)
+    const dels = hunk.filter(o => o.op === 'del').map(o => o.line)
+    const ins = hunk.filter(o => o.op === 'ins').map(o => o.line)
+    for (let k = 0; k < Math.max(dels.length, ins.length); k++) {
+      if (k < dels.length && k < ins.length) lines.push(`${pad(dels[k])} | ${ins[k]}`)
+      else if (k < dels.length) lines.push(`${pad(dels[k])} <`)
+      else lines.push(`${' '.repeat(colW)} > ${ins[k]}`)
+    }
+  }
+  return lines.join('\n')
+}
+
+function runGnuDiff(contentA: string, contentB: string, aLabel: string, bLabel: string, flagsStr: string): string {
+  const opts = parseGnuDiffFlags(flagsStr)
+  const aLines = contentA.split('\n')
+  const bLines = contentB.split('\n')
+  if (opts.format === 'brief') {
+    if (contentA === contentB) return opts.reportIdentical ? `Files ${aLabel} and ${bLabel} are identical` : ''
+    return `Files ${aLabel} and ${bLabel} differ`
+  }
+  const aKeys = aLines.map(l => lineKey(l, opts))
+  const bKeys = bLines.map(l => lineKey(l, opts))
+  let ops = lcsComputeDiff(aKeys, bKeys, aLines, bLines)
+  if (opts.ignoreBlankLines) ops = suppressBlankOnlyHunks(ops)
+  if (!ops.some(o => o.op !== 'eq'))
+    return opts.reportIdentical ? `Files ${aLabel} and ${bLabel} are identical` : ''
+  switch (opts.format) {
+    case 'unified':      return formatUnifiedDiff(ops, aLabel, bLabel, opts.contextLines)
+    case 'context':      return formatContextDiff(ops, aLabel, bLabel, opts.contextLines)
+    case 'normal':       return formatNormalDiff(ops)
+    case 'side-by-side': return formatSideBySideDiff(ops, opts.width)
+    default:             return formatUnifiedDiff(ops, aLabel, bLabel, opts.contextLines)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Unified patch parser and applier
+// ---------------------------------------------------------------------------
+interface PatchHunkLine { type: ' ' | '+' | '-'; content: string }
+interface PatchHunk { oldStart: number; oldCount: number; newStart: number; newCount: number; lines: PatchHunkLine[] }
+interface FilePatch { oldPath: string; newPath: string; hunks: PatchHunk[] }
+
+function parseUnifiedPatch(patch: string): FilePatch[] {
+  const files: FilePatch[] = []
+  const raw = patch.split('\n')
+  let i = 0
+  while (i < raw.length) {
+    if (!raw[i].startsWith('--- ')) { i++; continue }
+    const oldPath = raw[i].slice(4).split('\t')[0].replace(/^[ab]\//, '').trim()
+    i++
+    if (i >= raw.length || !raw[i].startsWith('+++ ')) continue
+    const newPath = raw[i].slice(4).split('\t')[0].replace(/^[ab]\//, '').trim()
+    i++
+    const hunks: PatchHunk[] = []
+    while (i < raw.length && !raw[i].startsWith('--- ')) {
+      if (!raw[i].startsWith('@@ ')) { i++; continue }
+      const m = raw[i].match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/)
+      if (!m) { i++; continue }
+      const oldStart = +m[1], oldCount = m[2] !== undefined ? +m[2] : 1
+      const newStart = +m[3], newCount = m[4] !== undefined ? +m[4] : 1
+      i++
+      const lines: PatchHunkLine[] = []
+      while (i < raw.length && !raw[i].startsWith('@@ ') && !raw[i].startsWith('--- ')) {
+        const l = raw[i]
+        if (l.startsWith('-')) lines.push({ type: '-', content: l.slice(1) })
+        else if (l.startsWith('+')) lines.push({ type: '+', content: l.slice(1) })
+        else if (l.startsWith(' ')) lines.push({ type: ' ', content: l.slice(1) })
+        i++
+      }
+      hunks.push({ oldStart, oldCount, newStart, newCount, lines })
+    }
+    if (hunks.length > 0) files.push({ oldPath, newPath, hunks })
+  }
+  return files
+}
+
+function applyFilePatch(
+  content: string,
+  hunks: PatchHunk[],
+  reverse: boolean,
+): { success: boolean; content: string; errors: string[] } {
+  let lines = content.split('\n')
+  const errors: string[] = []
+  // Apply hunks last-to-first so earlier line numbers stay valid
+  const sorted = [...hunks].sort((a, b) =>
+    reverse ? b.newStart - a.newStart : b.oldStart - a.oldStart,
+  )
+  for (const hunk of sorted) {
+    const start = (reverse ? hunk.newStart : hunk.oldStart) - 1
+    const removeCount = reverse ? hunk.newCount : hunk.oldCount
+    const expected: string[] = []
+    const replacement: string[] = []
+    for (const l of hunk.lines) {
+      const t = reverse ? (l.type === '+' ? '-' : l.type === '-' ? '+' : ' ') : l.type
+      if (t === ' ' || t === '-') expected.push(l.content)
+      if (t === ' ' || t === '+') replacement.push(l.content)
+    }
+    let ok = true
+    for (let k = 0; k < expected.length; k++) {
+      if (lines[start + k] !== expected[k]) {
+        errors.push(`Hunk @${start + 1}: expected "${expected[k]}", found "${lines[start + k] ?? '(end of file)'}"`)
+        ok = false
+        break
+      }
+    }
+    if (!ok) continue
+    lines = [...lines.slice(0, start), ...replacement, ...lines.slice(start + removeCount)]
+  }
+  return { success: errors.length === 0, content: lines.join('\n'), errors }
 }
 
 // ---------------------------------------------------------------------------
@@ -324,19 +632,66 @@ export function createBrowserTools(
 
   const vfsDiff = createTool({
     name: 'vfs_diff',
-    description: 'Show a simple unified diff between two files in the virtual file system.',
+    description: 'Show a diff between two files in the virtual file system. Supports GNU diff options.',
     inputSchema: z.object({
       pathA: z.string(),
       pathB: z.string(),
+      flags: z.string().optional().default('-u').describe(
+        'GNU diff flags: "-u" unified (default), "-u 5" 5 context lines, "-c" context format, "-y" side-by-side, "-q" brief, "--normal" traditional format. Ignore options: "-i" case, "-b" space change, "-w" all space, "-B" blank lines. "-s" report identical. Combine: "-u -i -B".',
+      ),
     }),
-    execute: async ({ pathA, pathB }) => {
+    execute: async ({ pathA, pathB, flags }) => {
       const contentA = ctx.vfs.read(pathA)
       const contentB = ctx.vfs.read(pathB)
       if (contentA === null) return `Error: file not found: ${pathA}`
       if (contentB === null) return `Error: file not found: ${pathB}`
-      const aLines = contentA.split('\n')
-      const bLines = contentB.split('\n')
-      return simpleUnifiedDiff(aLines, bLines, pathA, pathB)
+      return runGnuDiff(contentA, contentB, pathA, pathB, flags ?? '-u')
+    },
+  })
+
+  const vfsPatch = createTool({
+    name: 'vfs_patch',
+    description:
+      'Apply a unified diff patch to files in the virtual file system. The patch is typically the output of vfs_diff. Supports file creation (old path /dev/null), reverse application, and dry-run mode.',
+    inputSchema: z.object({
+      patch: z.string().describe('Unified diff patch text (--- / +++ / @@ format)'),
+      path: z.string().optional().describe('Override target file path (uses the path from the patch header if omitted)'),
+      reverse: z.boolean().optional().default(false).describe('Apply patch in reverse to undo it'),
+      dryRun: z.boolean().optional().default(false).describe('Check if patch applies cleanly without modifying files'),
+    }),
+    execute: async ({ patch, path: overridePath, reverse, dryRun }) => {
+      const filePatch = parseUnifiedPatch(patch)
+      if (filePatch.length === 0) return 'Error: no valid unified diff found in patch'
+      const results: string[] = []
+      for (const fp of filePatch) {
+        const targetPath = overridePath ?? (reverse ? fp.oldPath : fp.newPath)
+        // File deletion: new path is /dev/null
+        if (fp.newPath === '/dev/null' && !reverse) {
+          if (!dryRun) ctx.vfs.delete(targetPath)
+          results.push(`${dryRun ? '[dry-run] would delete' : 'Deleted'}: ${targetPath}`)
+          continue
+        }
+        const content = ctx.vfs.read(targetPath)
+        // File creation: old path is /dev/null or file doesn't exist with oldCount=0
+        if (content === null) {
+          const isCreation = fp.oldPath === '/dev/null' || fp.hunks.every(h => h.oldCount === 0)
+          if (!isCreation) { results.push(`Error: file not found: ${targetPath}`); continue }
+          const newLines: string[] = []
+          for (const hunk of fp.hunks)
+            for (const l of hunk.lines) if (l.type === '+') newLines.push(l.content)
+          const newContent = newLines.join('\n')
+          if (!dryRun) { ctx.vfs.write(targetPath, newContent); ctx.onFileCreated(targetPath, newContent) }
+          results.push(`${dryRun ? '[dry-run] would create' : 'Created'}: ${targetPath}`)
+          continue
+        }
+        const { success, content: newContent, errors } = applyFilePatch(content, fp.hunks, reverse ?? false)
+        if (errors.length > 0)
+          results.push(`Patch errors for ${targetPath}:\n${errors.map(e => `  ${e}`).join('\n')}`)
+        if (!success) continue
+        if (!dryRun) { ctx.vfs.write(targetPath, newContent); ctx.onFileCreated(targetPath, newContent) }
+        results.push(`${dryRun ? '[dry-run] would patch' : 'Patched'}: ${targetPath}`)
+      }
+      return results.join('\n')
     },
   })
 
@@ -427,11 +782,27 @@ export function createBrowserTools(
     }),
     execute: async ({ url }) => {
       const key = pickFirecrawlKey(ctx.firecrawlKeys, firecrawlCallCount++)
-      const result = await scrapeWithFirecrawl(url, {
-        endpoint: ctx.firecrawlEndpoint,
-        apiKey: key,
-      })
-      return result
+      try {
+        return await scrapeWithFirecrawl(url, {
+          endpoint: ctx.firecrawlEndpoint,
+          apiKey: key,
+          timeoutMs: 12_000,
+        })
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (msg.includes('auth failed')) {
+          // Key already marked failed by scrapeWithFirecrawl; try once with the next key
+          const nextKey = pickFirecrawlKey(ctx.firecrawlKeys, firecrawlCallCount++)
+          if (nextKey !== key) {
+            return await scrapeWithFirecrawl(url, {
+              endpoint: ctx.firecrawlEndpoint,
+              apiKey: nextKey,
+              timeoutMs: 12_000,
+            })
+          }
+        }
+        throw err
+      }
     },
   })
 
@@ -450,12 +821,26 @@ export function createBrowserTools(
     }),
     execute: async ({ query, limit, allowedDomains, blockedDomains }) => {
       const key = pickFirecrawlKey(ctx.firecrawlKeys, firecrawlCallCount++)
-      const results = await searchWithFirecrawl(
-        query,
-        { endpoint: ctx.firecrawlEndpoint, apiKey: key },
-        { limit, allowedDomains, blockedDomains },
-      )
-      return results
+      try {
+        return await searchWithFirecrawl(
+          query,
+          { endpoint: ctx.firecrawlEndpoint, apiKey: key, timeoutMs: 25_000 },
+          { limit, allowedDomains, blockedDomains },
+        )
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (msg.includes('auth failed')) {
+          const nextKey = pickFirecrawlKey(ctx.firecrawlKeys, firecrawlCallCount++)
+          if (nextKey !== key) {
+            return await searchWithFirecrawl(
+              query,
+              { endpoint: ctx.firecrawlEndpoint, apiKey: nextKey, timeoutMs: 25_000 },
+              { limit, allowedDomains, blockedDomains },
+            )
+          }
+        }
+        throw err
+      }
     },
   })
 
@@ -500,6 +885,24 @@ export function createBrowserTools(
     },
   })
 
+  const deepResearch = createDeepResearchTool(
+    { firecrawlKeys: ctx.firecrawlKeys, firecrawlEndpoint: ctx.firecrawlEndpoint },
+    () => pickFirecrawlKey(ctx.firecrawlKeys, firecrawlCallCount++),
+  )
+
+  const suggestFollowups = createTool({
+    name: 'suggest_followups',
+    description: 'After completing a research response, suggest 2-4 relevant follow-up questions that would help the user explore the topic further. Call this ONCE at the end of each substantive research answer.',
+    inputSchema: z.object({
+      questions: z
+        .array(z.string())
+        .min(2)
+        .max(4)
+        .describe('2-4 follow-up questions relevant to the current answer'),
+    }),
+    execute: async ({ questions }) => ({ questions }),
+  })
+
   return [
     vfsRead,
     vfsEditor,
@@ -509,12 +912,15 @@ export function createBrowserTools(
     vfsHeadTail,
     vfsWc,
     vfsDiff,
+    vfsPatch,
     vfsSortUniq,
     vfsCat,
     vfsLs,
     vfsMvCp,
     fetchWebContent,
     searchWeb,
+    deepResearch,
+    suggestFollowups,
     askQuestion,
     runCommands,
     createResearchPlanTool(),

@@ -62,9 +62,10 @@ interface Props {
   showReasoning?: boolean
   getReasoningSteps?: () => string[]
   sources?: Source[]
+  isLast?: boolean
 }
 
-export const MessageItem: React.FC<Props> = ({ message, onImageCaptured, onFork, showReasoning, getReasoningSteps, sources }) => {
+export const MessageItem: React.FC<Props> = ({ message, onImageCaptured, onFork, showReasoning, getReasoningSteps, sources, isLast }) => {
   if (message.role === 'tool') {
     return (
       <ToolCallCard
@@ -115,7 +116,7 @@ export const MessageItem: React.FC<Props> = ({ message, onImageCaptured, onFork,
 
         {isUser
           ? <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-          : <AssistantMessage content={message.content} isStreaming={message.isStreaming} reasoning={getReasoningSteps?.()} showReasoning={showReasoning} sources={sources} />
+          : <AssistantMessage content={message.content} isStreaming={message.isStreaming} reasoning={getReasoningSteps?.()} showReasoning={showReasoning} sources={sources} isLast={isLast} />
         }
 
         {/* Generated images for assistant messages */}

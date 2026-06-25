@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useMemo } from 'react'
 import { MessageItem } from './MessageItem'
 import type { ChatMessage } from '@/hooks/useAgent'
 import type { Source } from './SourcesPanel'
@@ -40,6 +40,13 @@ export const MessageList: React.FC<Props> = ({ messages, onImageCaptured, onFork
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const lastAssistantMsgId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') return messages[i].id
+    }
+    return null
   }, [messages])
 
   if (messages.length === 0) {
@@ -64,6 +71,7 @@ export const MessageList: React.FC<Props> = ({ messages, onImageCaptured, onFork
           showReasoning={showReasoning}
           getReasoningSteps={getReasoningSteps}
           sources={sources}
+          isLast={msg.id === lastAssistantMsgId}
         />
       ))}
       <div ref={bottomRef} />

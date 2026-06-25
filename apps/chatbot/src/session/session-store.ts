@@ -23,6 +23,7 @@
  */
 import { openDB, type IDBPDatabase } from 'idb'
 import type { ChatMessage } from '@/hooks/useAgent'
+import type { AgentMessage } from '@cline/agents'
 
 const DB_NAME = 'cline-chatbot'
 const DB_VERSION = 1
@@ -32,6 +33,10 @@ export interface Session {
   id: string
   title: string
   messages: ChatMessage[]
+  /** SDK-format messages (includes tool calls/results). Absent in sessions
+   * saved before this field was introduced; in that case the agent will
+   * reconstruct a best-effort context from ChatMessage[] only. */
+  agentMessages?: AgentMessage[]
   providerId: string
   modelId: string
   createdAt: number

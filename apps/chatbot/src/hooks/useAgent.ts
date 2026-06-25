@@ -25,6 +25,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentRuntimeEvent, AgentMessage, AgentUsage } from '@cline/agents'
 import AgentWorkerClass from '../workers/agent.worker.ts?worker'
 
+export type { AgentMessage }
+
 type ResetKey = number
 
 // ---------------------------------------------------------------------------
@@ -114,8 +116,11 @@ export interface UseAgentReturn {
   removeLastExchange: () => void
   /** Clear all messages without resetting the worker. */
   clearMessages: () => void
-  /** Load a saved message list without touching the worker. */
-  loadMessages: (messages: ChatMessage[]) => void
+  /** Load a saved message list without touching the worker.
+   * Pass agentMessages (SDK format) to fully restore tool call history. */
+  loadMessages: (messages: ChatMessage[], agentMessages?: AgentMessage[]) => void
+  /** Returns the SDK-format messages from the last completed turn (for session persistence). */
+  getLastAgentMessages: () => readonly AgentMessage[] | null
   syncVfsFile: (path: string, content: string) => void
   removeVfsFile: (path: string) => void
   addGeneratedFile: (path: string, blobUrl: string) => void
@@ -123,6 +128,8 @@ export interface UseAgentReturn {
   getReasoningSteps: () => string[]
   /** Active research plan declared by plan_research; null when idle. */
   researchPlan: ResearchPlan | null
+  /** Follow-up questions suggested by the last suggest_followups tool call. */
+  followUpQuestions: string[]
   /**
    * Queue a message to be automatically re-sent after the next worker_ready
    * event (i.e. after key rotation spins up a new worker). The message is sent
@@ -177,8 +184,12 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
   const [rateLimitRetryAt, setRateLimitRetryAt] = useState<number | null>(null)
 
   const [researchPlan, setResearchPlan] = useState<ResearchPlan | null>(null)
+  const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([])
   const streamingMsgIdRef = useRef<string | null>(null)
   const reasoningStepsRef = useRef<string[]>([])
+  // Stores the SDK-format message history from the last turn_complete.
+  // Used to fully restore tool-call context when a session is reloaded.
+  const lastAgentMessagesRef = useRef<readonly AgentMessage[] | null>(null)
   // Tracks the latest messages for access inside async worker handlers
   const messagesRef = useRef<ChatMessage[]>([])
   // Snapshot of agent messages at the point of the last rate-limit failure.
@@ -312,6 +323,11 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
                   : prev
               )
             }
+            if (toolCall.toolName === 'suggest_followups' && output) {
+              // biome-ignore lint/suspicious/noExplicitAny: dynamic tool output
+              const questions = (output as any).questions
+              if (Array.isArray(questions)) setFollowUpQuestions(questions as string[])
+            }
           }
           break
         }
@@ -322,6 +338,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
           setRateLimitRetryAt(null)
           streamingMsgIdRef.current = null
           if (msg.usage) setLastTurnUsage(msg.usage)
+          lastAgentMessagesRef.current = msg.messages
           setMessages((prev) =>
             prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
           )
@@ -501,6 +518,9 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
       setIsRunning(false)
       setTurnStartedAt(null)
       streamingMsgIdRef.current = null
+      // Terminate the dead worker so it doesn't become an orphan consuming memory.
+      worker.terminate()
+      if (workerRef.current === worker) workerRef.current = null
     }
     worker.onmessageerror = (err) => {
       console.error('Agent worker message error:', err)
@@ -552,6 +572,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
       setStreamedTokens(0)
       setLastKeyError(null)
       setRateLimitRetryAt(null)
+      setFollowUpQuestions([])
       streamingMsgIdRef.current = null
       reasoningStepsRef.current = [] // Clear reasoning steps for new turn
       workerRef.current.postMessage({ type: 'run', message: text, images })
@@ -578,6 +599,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     setGeneratedFiles([])
     setPendingApproval(null)
     setPendingQuestion(null)
+    setFollowUpQuestions([])
     setResetKey((k) => k + 1)
   }, [])
 
@@ -595,31 +617,41 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     setMessages([])
     setTurnStartedAt(null)
     setStreamedTokens(0)
+    setFollowUpQuestions([])
     streamingMsgIdRef.current = null
   }, [])
 
-  const loadMessages = useCallback((msgs: ChatMessage[]) => {
+  const loadMessages = useCallback((msgs: ChatMessage[], agentMsgs?: AgentMessage[]) => {
     setMessages(msgs)
     setTurnStartedAt(null)
     setStreamedTokens(0)
     streamingMsgIdRef.current = null
     if (workerRef.current) {
-      const agentMessages = msgs
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .map((m) => {
-          const content: { type: 'text'; text: string }[] = [{ type: 'text', text: m.content }]
-          if (m.role === 'user' && m.images?.length) {
-            const imageParts = m.images.map((url) => ({
-              type: 'image' as const,
-              image: url,
-              mediaType: url.startsWith('data:image/png') ? 'image/png' : 'image/jpeg',
-            }))
-            return { id: m.id, role: m.role, content: [...content, ...imageParts], createdAt: m.timestamp }
-          }
-          return { id: m.id, role: m.role, content, createdAt: m.timestamp }
-        })
-      workerRef.current.postMessage({ type: 'restore_messages', messages: agentMessages })
+      // Prefer SDK-format messages (full tool-call history) when available.
+      // Fall back to reconstructing from ChatMessage[] for sessions saved before
+      // this field existed (only user/assistant text is recovered in that case).
+      const toRestore: AgentMessage[] = agentMsgs
+        ? [...agentMsgs]
+        : msgs
+            .filter((m) => m.role === 'user' || m.role === 'assistant')
+            .map((m) => {
+              const content: AgentMessage['content'] = [{ type: 'text', text: m.content }]
+              if (m.role === 'user' && m.images?.length) {
+                const imageParts = m.images.map((url) => ({
+                  type: 'image' as const,
+                  image: url,
+                  mediaType: (url.startsWith('data:image/png') ? 'image/png' : 'image/jpeg') as 'image/png' | 'image/jpeg',
+                }))
+                return { id: m.id, role: m.role as AgentMessage['role'], content: [...content, ...imageParts], createdAt: m.timestamp }
+              }
+              return { id: m.id, role: m.role as AgentMessage['role'], content, createdAt: m.timestamp }
+            })
+      workerRef.current.postMessage({ type: 'restore_messages', messages: toRestore })
     }
+  }, [])
+
+  const getLastAgentMessages = useCallback((): readonly AgentMessage[] | null => {
+    return lastAgentMessagesRef.current
   }, [])
 
   const syncVfsFile = useCallback((path: string, content: string) => {
@@ -673,6 +705,8 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     addGeneratedFile,
     getReasoningSteps,
     researchPlan,
+    followUpQuestions,
     queueRetryAfterRotation,
+    getLastAgentMessages,
   }
 }

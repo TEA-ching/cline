@@ -31,6 +31,7 @@ import mermaid from 'mermaid'
 import { FileType, Check, SquareMinus, GlobeCheck } from 'lucide-react'
 import 'highlight.js/styles/github.css'
 import type { Source } from './SourcesPanel'
+import { SourceCardStrip } from './SourceCardStrip'
 
 interface Props {
   content: string
@@ -38,6 +39,7 @@ interface Props {
   reasoning?: string[]
   showReasoning?: boolean
   sources?: Source[]
+  isLast?: boolean
 }
 
 // ── One-time library initialisation (runs when the module is first imported) ──
@@ -128,7 +130,7 @@ function injectCitationLinks(html: string): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export const AssistantMessage: React.FC<Props> = ({ content, isStreaming, reasoning, showReasoning, sources }) => {
+export const AssistantMessage: React.FC<Props> = ({ content, isStreaming, reasoning, showReasoning, sources, isLast }) => {
   const contentRef = useRef<HTMLDivElement>(null)
   const [safeHtml, setSafeHtml] = useState('')
   const [citationPortals, setCitationPortals] = useState<React.ReactPortal[]>([])
@@ -178,6 +180,21 @@ export const AssistantMessage: React.FC<Props> = ({ content, isStreaming, reason
           <Tooltip.Content showArrow>
             <Tooltip.Arrow />
             <div className="max-w-xs p-1 space-y-1">
+              <div className="flex items-center gap-1.5">
+                {source?.favicon && (
+                  <img
+                    src={source.favicon}
+                    alt=""
+                    width={14}
+                    height={14}
+                    className="h-3.5 w-3.5 shrink-0 rounded-sm"
+                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                  />
+                )}
+                {source?.domain && (
+                  <span className="text-[10px] text-default-400 truncate">{source.domain}</span>
+                )}
+              </div>
               <a
                 href={source?.url}
                 target="_blank"
@@ -297,6 +314,9 @@ export const AssistantMessage: React.FC<Props> = ({ content, isStreaming, reason
       {citationPortals}
       {isStreaming && (
         <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-primary-500" />
+      )}
+      {isLast && !isStreaming && sources && sources.length > 0 && (
+        <SourceCardStrip sources={sources} />
       )}
     </div>
   )

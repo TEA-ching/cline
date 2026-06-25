@@ -32,7 +32,8 @@ export type AiProtocol =
   | 'mistral'
   | 'openrouter'
   | 'morph'
-  | 'cohere';
+  | 'cohere'
+  | 'poolside';
 
 /**
  * Supported crawler protocols.

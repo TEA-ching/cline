@@ -26,20 +26,64 @@ import React from 'react'
 import { useVault } from '@/hooks/useVault'
 import { LoginScreen } from '@/components/auth/LoginScreen'
 import { ChatView } from '@/components/chat/ChatView'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 
 
 const App: React.FC = () => {
-  const { isAuthenticated, config } = useVault()
+  const { isAuthenticated, config, loading, error, refresh, logout } = useVault()
 
   if (!isAuthenticated) return <LoginScreen />
-  if (!config) return (
-    <div className="flex h-screen items-center justify-center text-default-500 text-sm">
-      Loading vault…
-    </div>
-  )
 
-  return <ChatView vaultConfig={config} />
+  if (!config) {
+    if (loading) {
+      return (
+        <div className="flex h-screen items-center justify-center text-default-500 text-sm">
+          Loading vault…
+        </div>
+      )
+    }
+    if (error) {
+      return (
+        <div className="flex h-screen items-center justify-center">
+          <div className="max-w-md text-center space-y-4 p-6">
+            <p className="text-lg font-semibold text-danger-600">Vault error</p>
+            <p className="text-sm text-default-600 bg-default-100 rounded-md px-4 py-3 font-mono text-left break-all">
+              {error}
+            </p>
+            <div className="flex gap-3 justify-center">
+              <button
+                type="button"
+                onClick={() => void refresh()}
+                className="px-4 py-2 rounded-md bg-primary-500 text-white text-sm hover:bg-primary-600 transition-colors"
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                onClick={logout}
+                className="px-4 py-2 rounded-md border border-default-300 text-sm hover:bg-default-100 transition-colors"
+              >
+                Back to login
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    // Authenticated but no config yet (initial mount before effect fires)
+    return (
+      <div className="flex h-screen items-center justify-center text-default-500 text-sm">
+        Loading vault…
+      </div>
+    )
+  }
+
+  return (
+    <ErrorBoundary>
+      <ChatView vaultConfig={config} />
+    </ErrorBoundary>
+  )
 }
 
 export default App

@@ -30,6 +30,8 @@ export interface Source {
   title: string;
   url: string;
   snippet: string;
+  domain?: string;
+  favicon?: string;
 }
 
 interface Props {
