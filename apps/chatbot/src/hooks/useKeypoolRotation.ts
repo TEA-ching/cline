@@ -126,6 +126,7 @@ export function useKeypoolRotation(
     const hint = nextKey ? maskKey(nextKey.key) : '—'
     const owner = nextKey?.owner ?? 'unknown'
     toast(`Key rotated : ${owner} …${hint.slice(-8)}`, { timeout: 2000 })
+    console.log(`Key rotated to ${owner} …${hint.slice(-8)}`)
     // Refresh stats so the sort order reflects latest usage after rotation.
     // This also serves as a connectivity check for the remote worker.
     getUsageStats('day').then((stats) => {

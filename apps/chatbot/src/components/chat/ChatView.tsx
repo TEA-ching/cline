@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Button, Drawer } from '@heroui/react'
 import { Settings, PanelLeftOpen, PanelLeftClose, History, Wrench, Plus, UserRoundKey, Brain, FileText, RotateCcwKey } from 'lucide-react'
 
@@ -202,6 +202,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     addGeneratedFile,
     getReasoningSteps,
     researchPlan,
+    queueRetryAfterRotation,
   } = useAgent(agentConfig)
 
   // -------------------------------------------------------------------------
@@ -235,6 +236,28 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     markKeyFailedAndRotate()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastKeyError, vaultMode])
+
+  // -------------------------------------------------------------------------
+  // Keypool: fast key rotation on rate-limit when another key is available.
+  // On the first rate_limited event of a turn, if the pool has multiple keys,
+  // queue the pending user message as a retry and rotate immediately — the new
+  // worker will auto-send it via the worker_ready handler in useAgent.
+  // -------------------------------------------------------------------------
+  // Guard against queuing more than one rotation per turn
+  const hasQueuedRotationRef = useRef(false)
+  useEffect(() => {
+    if (!rateLimitRetryAt) {
+      // Turn ended / new turn started — reset the guard
+      hasQueuedRotationRef.current = false
+      return
+    }
+    if (poolSize <= 1 || hasQueuedRotationRef.current) return
+
+    hasQueuedRotationRef.current = true
+    queueRetryAfterRotation()
+    markKeyFailedAndRotate()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rateLimitRetryAt, poolSize])
 
   const vfs = useVirtualFS(syncVfsFile)
 

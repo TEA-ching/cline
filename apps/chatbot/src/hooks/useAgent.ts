@@ -123,6 +123,13 @@ export interface UseAgentReturn {
   getReasoningSteps: () => string[]
   /** Active research plan declared by plan_research; null when idle. */
   researchPlan: ResearchPlan | null
+  /**
+   * Queue a message to be automatically re-sent after the next worker_ready
+   * event (i.e. after key rotation spins up a new worker). The message is sent
+   * without adding another user bubble to the chat.
+   */
+  /** No-arg version: snapshot comes from the most recent rate_limited message. */
+  queueRetryAfterRotation: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -134,7 +141,7 @@ type WorkerOutgoingMessage =
   | { type: 'turn_complete'; messages: AgentMessage[]; usage?: AgentUsage }
   | { type: 'turn_error'; error: string }
   | { type: 'key_error'; error: string }
-  | { type: 'rate_limited'; retryAfterSeconds: number; attempt: number; maxRetries: number }
+  | { type: 'rate_limited'; retryAfterSeconds: number; attempt: number; maxRetries: number; snapshot?: readonly AgentMessage[] }
   | { type: 'approval_req'; toolName: string; input: unknown; port: MessagePort }
   | { type: 'ask_question'; question: string; options: string[]; port: MessagePort }
   | { type: 'render_mermaid'; src: string; port: MessagePort }
@@ -172,6 +179,19 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
   const [researchPlan, setResearchPlan] = useState<ResearchPlan | null>(null)
   const streamingMsgIdRef = useRef<string | null>(null)
   const reasoningStepsRef = useRef<string[]>([])
+  // Tracks the latest messages for access inside async worker handlers
+  const messagesRef = useRef<ChatMessage[]>([])
+  // Snapshot of agent messages at the point of the last rate-limit failure.
+  // Sent by the worker inside the rate_limited message so the main thread can
+  // restore context if it rotates to a new key.
+  const pendingSnapshotRef = useRef<readonly AgentMessage[] | null>(null)
+  // Set by queueRetryAfterRotation(); consumed by the next worker_ready.
+  const pendingRotationRef = useRef(false)
+
+  // Keep messagesRef in sync so worker event handlers can read current messages
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
 
   // ---------------------------------------------------------------------------
   // Create / recreate worker when config changes
@@ -210,7 +230,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
 
     worker.onmessage = (ev: MessageEvent<WorkerOutgoingMessage>) => {
       const msg = ev.data
-      console.log('[useAgent] onmessage ←', msg.type)
+      // console.log('[useAgent] onmessage ←', msg.type)
 
       switch (msg.type) {
         case 'event': {
@@ -315,6 +335,9 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
 
         case 'rate_limited': {
           setRateLimitRetryAt(Date.now() + Math.ceil(msg.retryAfterSeconds) * 1000)
+          if (msg.snapshot) {
+            pendingSnapshotRef.current = msg.snapshot
+          }
           break
         }
 
@@ -448,6 +471,26 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
 
         case 'worker_ready': {
           console.log('[agent.worker] ready — imports loaded successfully')
+          if (pendingRotationRef.current && pendingSnapshotRef.current) {
+            pendingRotationRef.current = false
+            const snapshot = pendingSnapshotRef.current
+            pendingSnapshotRef.current = null
+            // Stop any in-progress streaming indicator from the old worker
+            setMessages(prev => prev.map(m => m.isStreaming ? { ...m, isStreaming: false } : m))
+            streamingMsgIdRef.current = null
+            reasoningStepsRef.current = []
+            // Restore the exact agent state at the point of failure (includes
+            // all tool calls already done) so only the last LLM POST is re-sent.
+            worker.postMessage({ type: 'restore_messages', messages: snapshot })
+            // agent.continue() resumes from the last tool result instead of
+            // restarting the whole agentic loop from the user message.
+            worker.postMessage({ type: 'continue_run' })
+            setIsRunning(true)
+            setTurnStartedAt(Date.now())
+            setStreamedTokens(0)
+            setLastKeyError(null)
+            setRateLimitRetryAt(null)
+          }
           break
         }
       }
@@ -604,6 +647,10 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     return [...reasoningStepsRef.current]
   }, [])
 
+  const queueRetryAfterRotation = useCallback(() => {
+    pendingRotationRef.current = true
+  }, [])
+
   return {
     messages,
     isRunning,
@@ -626,5 +673,6 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     addGeneratedFile,
     getReasoningSteps,
     researchPlan,
+    queueRetryAfterRotation,
   }
 }

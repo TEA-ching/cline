@@ -60,6 +60,10 @@ interface VfsRemoveMessage {
   path: string
 }
 
+interface ContinueRunMessage {
+  type: 'continue_run'
+}
+
 interface AbortMessage {
   type: 'abort'
 }
@@ -77,6 +81,7 @@ interface RestoreMessagesMessage {
 type WorkerIncomingMessage =
   | InitMessage
   | RunMessage
+  | ContinueRunMessage
   | VfsAddMessage
   | VfsRemoveMessage
   | AbortMessage
@@ -152,8 +157,13 @@ function postKeyError(error: string): void {
   self.postMessage({ type: 'key_error', error })
 }
 
-function postRateLimited(retryAfterSeconds: number, attempt: number, maxRetries: number): void {
-  self.postMessage({ type: 'rate_limited', retryAfterSeconds, attempt, maxRetries })
+function postRateLimited(
+  retryAfterSeconds: number,
+  attempt: number,
+  maxRetries: number,
+  snapshot: readonly AgentMessage[],
+): void {
+  self.postMessage({ type: 'rate_limited', retryAfterSeconds, attempt, maxRetries, snapshot })
 }
 
 function postFileCreated(path: string, content: string): void {
@@ -270,13 +280,13 @@ async function handleInit(msg: InitMessage): Promise<void> {
       }),
     ]
 
-    console.log('[agent.worker] Agent config:', {
-      providerId: msg.providerId,
-      modelId: msg.modelId,
-      apiKeyLength: msg.apiKey?.length ?? 0,
-      apiKeyPrefix: msg.apiKey?.slice(0, 8) + '...',
-      baseUrl: msg.baseUrl,
-    })
+    // console.log('[agent.worker] Agent config:', {
+    //   providerId: msg.providerId,
+    //   modelId: msg.modelId,
+    //   apiKeyLength: msg.apiKey?.length ?? 0,
+    //   apiKeyPrefix: msg.apiKey?.slice(0, 8) + '...',
+    //   baseUrl: msg.baseUrl,
+    // })
 
     agent = new Agent({
       providerId: msg.providerId,
@@ -297,7 +307,7 @@ async function handleInit(msg: InitMessage): Promise<void> {
         // Relay error to main thread immediately so user sees it
         postWorkerError(`run-failed: ${err?.message ?? String(err)}`)
       } else {
-        console.log('[agent.worker] event →', event.type)
+        // console.log('[agent.worker] event →', event.type)
       }
       postEvent(event)
     })
@@ -312,17 +322,91 @@ async function handleInit(msg: InitMessage): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Run handler
+// Run handlers
 // ---------------------------------------------------------------------------
 
+const MAX_RATE_LIMIT_RETRIES = 5
+const DEFAULT_RATE_LIMIT_WAIT_S = 30
+
+/**
+ * Shared retry loop used by both handleRun and handleContinueRun.
+ *
+ * - attempt 0  : calls firstCall() (agent.run or agent.continue)
+ * - attempt 1+ : restores to result.messages from the previous attempt
+ *                (preserves all tool calls already done) then calls
+ *                agent.continue() — only the last LLM POST is re-sent.
+ *
+ * key_error is sent only on the final failure so it doesn't race with the
+ * rate_limited-driven key rotation in the main thread.
+ */
+async function executeWithRetry(
+  firstCall: () => Promise<Awaited<ReturnType<AgentType['run']>>>,
+): Promise<void> {
+  if (!agent) {
+    postTurnError('Agent not initialized.')
+    return
+  }
+
+  let prevResult: Awaited<ReturnType<AgentType['run']>> | null = null
+
+  for (let attempt = 0; attempt <= MAX_RATE_LIMIT_RETRIES; attempt++) {
+    let result: Awaited<ReturnType<AgentType['run']>>
+    try {
+      if (attempt === 0) {
+        result = await firstCall()
+      } else {
+        // Restore to the exact state just before the failed LLM call, then
+        // continue — this resumes from the last tool result, not from the
+        // user's original message.
+        if (prevResult) agent.restore(prevResult.messages)
+        result = await agent.continue()
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      console.error('[agent.worker] agent call threw:', errMsg)
+      postTurnError(`Agent runtime error: ${errMsg}`)
+      return
+    }
+
+    if (result.status !== 'failed') {
+      // console.log('[agent.worker] completed, messages:', result.messages.length)
+      postTurnComplete(result.messages, result.usage)
+      return
+    }
+
+    prevResult = result
+
+    const errorMsg = result.error?.message ?? 'Run failed'
+    const retryAfter = parseRetryAfterSeconds(errorMsg)
+    const isRateLimit = isKeyRelatedError(errorMsg)
+    const cleanMsg = errorMsg.replace(/\n\[retry_after=\d+(?:\.\d+)?\]$/, '')
+
+    if (isRateLimit && attempt < MAX_RATE_LIMIT_RETRIES) {
+      const waitSeconds = retryAfter ?? DEFAULT_RATE_LIMIT_WAIT_S
+      //console.log('[agent.worker] rate limited, retrying in', waitSeconds, 's (attempt', attempt + 1, '/', MAX_RATE_LIMIT_RETRIES, ')')
+      // Include the current message snapshot so the main thread can restore
+      // context if it decides to rotate to a new key.
+      postRateLimited(waitSeconds, attempt + 1, MAX_RATE_LIMIT_RETRIES, result.messages)
+      await new Promise<void>((resolve) => setTimeout(resolve, Math.ceil(waitSeconds) * 1000))
+      continue
+    }
+
+    // Non-retryable error or all retries exhausted — send key_error only here
+    // so the main-thread lastKeyError effect doesn't race with rate_limited.
+    const fullMsg = result.error?.stack ? `${cleanMsg}\n${result.error.stack}` : cleanMsg
+    console.error('[agent.worker] error:', fullMsg)
+    if (isRateLimit) postKeyError(fullMsg)
+    postTurnError(fullMsg)
+    return
+  }
+}
+
 async function handleRun(msg: RunMessage): Promise<void> {
-  console.log('[agent.worker] handleRun start, agent:', !!agent)
+  // console.log('[agent.worker] handleRun start, agent:', !!agent)
   if (!agent) {
     postTurnError('Agent not initialized. Send an init message first.')
     return
   }
-
-  const MAX_RATE_LIMIT_RETRIES = 3
 
   let runInput: string | AgentMessage
   if (msg.images && msg.images.length > 0) {
@@ -343,55 +427,16 @@ async function handleRun(msg: RunMessage): Promise<void> {
     runInput = msg.message
   }
 
-  // Snapshot messages before the run so we can restore and retry cleanly
-  const preRunMessages = agent.snapshot().messages
+  await executeWithRetry(() => agent!.run(runInput))
+}
 
-  for (let attempt = 0; attempt <= MAX_RATE_LIMIT_RETRIES; attempt++) {
-    if (attempt > 0) {
-      // Restore to pre-run state: remove the partial failed turn from history
-      agent.restore(preRunMessages)
-    }
-
-    console.log('[agent.worker] calling agent.run(), attempt:', attempt, 'input type:', typeof runInput)
-    let result: Awaited<ReturnType<AgentType['run']>>
-    try {
-      result = await agent.run(runInput)
-    } catch (err) {
-      // SDK threw an uncaught exception (e.g. unterminated JSON from a truncated LLM stream)
-      const errMsg = err instanceof Error ? err.message : String(err)
-      console.error('[agent.worker] agent.run() threw:', errMsg)
-      postTurnError(`Agent runtime error: ${errMsg}`)
-      return
-    }
-
-    if (result.status !== 'failed') {
-      console.log('[agent.worker] agent.run() completed, messages:', result.messages.length)
-      postTurnComplete(result.messages, result.usage)
-      return
-    }
-
-    // Run failed — check if it's a rate-limit with a retry delay
-    const errorMsg = result.error?.message ?? 'Run failed'
-    const retryAfter = parseRetryAfterSeconds(errorMsg)
-
-    if (retryAfter !== null && attempt < MAX_RATE_LIMIT_RETRIES) {
-      console.log('[agent.worker] rate limited, retrying in', retryAfter, 's (attempt', attempt + 1, '/', MAX_RATE_LIMIT_RETRIES, ')')
-      postRateLimited(retryAfter, attempt + 1, MAX_RATE_LIMIT_RETRIES)
-      await new Promise<void>((resolve) => setTimeout(resolve, Math.ceil(retryAfter) * 1000))
-      continue
-    }
-
-    // Non-retryable error or exhausted retries
-    // Strip the encoded retry_after tag from the user-facing message
-    const cleanMsg = errorMsg.replace(/\n\[retry_after=\d+(?:\.\d+)?\]$/, '')
-    const fullMsg = result.error?.stack ? `${cleanMsg}\n${result.error.stack}` : cleanMsg
-    console.error('[agent.worker] handleRun error:', fullMsg)
-    if (isKeyRelatedError(fullMsg)) {
-      postKeyError(fullMsg)
-    }
-    postTurnError(fullMsg)
+async function handleContinueRun(): Promise<void> {
+  // console.log('[agent.worker] handleContinueRun start, agent:', !!agent)
+  if (!agent) {
+    postTurnError('Agent not initialized. Send an init message first.')
     return
   }
+  await executeWithRetry(() => agent!.continue())
 }
 
 // ---------------------------------------------------------------------------
@@ -400,7 +445,7 @@ async function handleRun(msg: RunMessage): Promise<void> {
 
 self.onmessage = (ev: MessageEvent<WorkerIncomingMessage>) => {
   const msg = ev.data
-  console.log('[agent.worker] onmessage type:', msg.type)
+  // console.log('[agent.worker] onmessage type:', msg.type)
 
   switch (msg.type) {
     case 'init':
@@ -409,6 +454,10 @@ self.onmessage = (ev: MessageEvent<WorkerIncomingMessage>) => {
 
     case 'run':
       void handleRun(msg)
+      break
+
+    case 'continue_run':
+      void handleContinueRun()
       break
 
     case 'vfs_add':

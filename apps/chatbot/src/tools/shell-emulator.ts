@@ -973,7 +973,7 @@ function handleEnvCommand(): EmulatedCommandResult {
   }
 }
 
-function handleSleepCommand(args: string[]): EmulatedCommandResult {
+async function handleSleepCommand(args: string[]): Promise<EmulatedCommandResult> {
   if (args.length === 0) {
     return { stdout: '', stderr: 'sleep: missing operand', exitCode: 1 }
   }
@@ -1020,14 +1020,8 @@ function handleSleepCommand(args: string[]): EmulatedCommandResult {
   // Convert to integer milliseconds
   const sleepTime = Math.floor(totalMilliseconds)
 
-  // Use a promise to sleep without blocking
-  // Note: In a real shell emulator, this would need to be handled differently
-  // since we can't actually block the event loop. For the emulator, we'll
-  // simulate the delay but return immediately to avoid blocking.
   if (sleepTime > 0) {
-    // In a real implementation, we would await a sleep here
-    // For the emulator, we'll just acknowledge the sleep would have occurred
-    return { stdout: '', stderr: '', exitCode: 0 }
+    await new Promise<void>(resolve => setTimeout(resolve, sleepTime))
   }
 
   return { stdout: '', stderr: '', exitCode: 0 }
