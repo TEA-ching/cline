@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import React from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { Trash2, FileText } from 'lucide-react'
 import { DownloadItem } from './DownloadItem'
 import type { VFSFile } from '@/hooks/useVirtualFS'
@@ -35,61 +35,96 @@ interface Props {
   onViewGeneratedFile?: (file: GeneratedFile) => void
 }
 
-export const FileManager: React.FC<Props> = ({ files, generatedFiles, onRemove, onViewFile, onViewGeneratedFile }) => (
-  <div className="flex h-full flex-col overflow-hidden">
-    {/* Uploaded files */}
-    <div className="flex-1 overflow-y-auto">
-      <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-default-400">
-        Workspace ({files.length})
-      </p>
-      {files.length === 0
-        ? <p className="px-3 text-xs text-default-300 italic">Drop files here or use 📎</p>
-        : files.map(f => {
-          const name = f.path.split('/').pop() ?? f.path
-          const kb = (f.size / 1024).toFixed(1)
-          return (
-            <div key={f.path} className="group flex items-center gap-2 px-3 py-1 hover:bg-default-100 rounded-md mx-1">
-              <button
-                type="button"
-                onClick={() => onViewFile?.(f.path)}
-                className="flex flex-1 items-center gap-2 min-w-0 text-left"
-                title={onViewFile ? `Visualiser ${f.path}` : f.path}
-              >
-                <FileText className="h-3.5 w-3.5 shrink-0 text-default-400" />
-                <div className="flex-1 min-w-0">
-                  <p className="truncate text-xs font-mono text-default-700">{name}</p>
-                  <p className="text-[10px] text-default-400">{kb} KB</p>
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => onRemove(f.path)}
-                className="opacity-0 group-hover:opacity-100 text-danger-400 hover:text-danger-600"
-                title="Remove file"
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
-            </div>
-          )
-        })}
-    </div>
+export const FileManager: React.FC<Props> = ({ files, generatedFiles, onRemove, onViewFile, onViewGeneratedFile }) => {
+  const [genHeight, setGenHeight] = useState(160) // max-h-40 = 160px
+  const genResizingRef = useRef(false)
+  const genResizeStartY = useRef(0)
+  const genResizeStartHeight = useRef(0)
 
-    {/* Generated files */}
-    {generatedFiles.length > 0 && (
-      <div className="border-t border-default-200">
+  const handleGenResizeStart = (e: React.MouseEvent) => {
+    genResizingRef.current = true
+    genResizeStartY.current = e.clientY
+    genResizeStartHeight.current = genHeight
+    e.preventDefault()
+  }
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!genResizingRef.current) return
+      // Dragging up expands the section (handle is at the top)
+      const delta = genResizeStartY.current - e.clientY
+      setGenHeight(Math.max(60, Math.min(600, genResizeStartHeight.current + delta)))
+    }
+    const onUp = () => { genResizingRef.current = false }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [])
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* Uploaded files */}
+      <div className="flex-1 overflow-y-auto">
         <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-default-400">
-          Generated ({generatedFiles.length})
+          Workspace ({files.length})
         </p>
-        <div className="overflow-y-auto max-h-40 px-1">
-          {generatedFiles.map(f => (
-            <DownloadItem
-              key={f.path + f.timestamp}
-              file={f}
-              onView={onViewGeneratedFile ? () => onViewGeneratedFile(f) : undefined}
-            />
-          ))}
-        </div>
+        {files.length === 0
+          ? <p className="px-3 text-xs text-default-300 italic">Drop files here or use 📎</p>
+          : files.map(f => {
+            const name = f.path.split('/').pop() ?? f.path
+            const kb = (f.size / 1024).toFixed(1)
+            return (
+              <div key={f.path} className="group flex items-center gap-2 px-3 py-1 hover:bg-default-100 rounded-md mx-1">
+                <button
+                  type="button"
+                  onClick={() => onViewFile?.(f.path)}
+                  className="flex flex-1 items-center gap-2 min-w-0 text-left"
+                  title={onViewFile ? `Visualiser ${f.path}` : f.path}
+                >
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-default-400" />
+                  <div className="flex-1 min-w-0">
+                    <p className="truncate text-xs font-mono text-default-700">{name}</p>
+                    <p className="text-[10px] text-default-400">{kb} KB</p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRemove(f.path)}
+                  className="opacity-0 group-hover:opacity-100 text-danger-400 hover:text-danger-600"
+                  title="Remove file"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            )
+          })}
       </div>
-    )}
-  </div>
-)
+
+      {/* Generated files */}
+      {generatedFiles.length > 0 && (
+        <div className="border-t border-default-200">
+          {/* Vertical resize handle */}
+          <div
+            className="h-1 cursor-row-resize hover:bg-primary-400/60 active:bg-primary-500/80 transition-colors"
+            onMouseDown={handleGenResizeStart}
+          />
+          <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-default-400">
+            Generated ({generatedFiles.length})
+          </p>
+          <div className="overflow-y-auto px-1" style={{ height: genHeight }}>
+            {generatedFiles.map(f => (
+              <DownloadItem
+                key={f.path + f.timestamp}
+                file={f}
+                onView={onViewGeneratedFile ? () => onViewGeneratedFile(f) : undefined}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef, type MouseEvent as ReactMouseEvent } from 'react'
 import { Button, Drawer } from '@heroui/react'
 import { Settings, PanelLeftOpen, PanelLeftClose, History, Wrench, Plus, UserRoundKey, Brain, FileText, RotateCcwKey } from 'lucide-react'
 
@@ -106,6 +106,32 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   // Detect mobile screen size
   const isMobile = useMediaQuery('(max-width: 767px)')
   const [showFiles, setShowFiles] = useState(!isMobile)
+  const [sidebarWidth, setSidebarWidth] = useState(224) // w-56 = 224px
+  const sidebarResizingRef = useRef(false)
+  const sidebarResizeStartX = useRef(0)
+  const sidebarResizeStartWidth = useRef(0)
+
+  const handleSidebarResizeStart = useCallback((e: ReactMouseEvent) => {
+    sidebarResizingRef.current = true
+    sidebarResizeStartX.current = e.clientX
+    sidebarResizeStartWidth.current = sidebarWidth
+    e.preventDefault()
+  }, [sidebarWidth])
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!sidebarResizingRef.current) return
+      const delta = e.clientX - sidebarResizeStartX.current
+      setSidebarWidth(Math.max(120, Math.min(480, sidebarResizeStartWidth.current + delta)))
+    }
+    const onUp = () => { sidebarResizingRef.current = false }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [])
 
   // Update sidebar visibility when screen size changes
   useEffect(() => {
@@ -505,13 +531,18 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
 
           {/* File sidebar */}
           {showFiles && (
-            <div className="w-56 shrink-0 border-r border-default-200 overflow-hidden">
+            <div style={{ width: sidebarWidth }} className="shrink-0 border-r border-default-200 overflow-hidden relative">
               <FileManager
                 files={vfs.files}
                 generatedFiles={generatedFiles}
                 onRemove={path => { vfs.removeFile(path); removeVfsFile(path) }}
                 onViewFile={handleViewWorkspaceFile}
                 onViewGeneratedFile={handleViewGeneratedFile}
+              />
+              {/* Horizontal resize handle */}
+              <div
+                className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary-400/60 active:bg-primary-500/80 transition-colors"
+                onMouseDown={handleSidebarResizeStart}
               />
             </div>
           )}
