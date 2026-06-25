@@ -33,6 +33,8 @@ import {
 import { emulateShellCommands } from './shell-emulator'
 import { createResearchPlanTool, createCompleteResearchStepTool } from './research-tool'
 import { createDeepResearchTool } from './deep-research-tool'
+import type { FocusMode } from './focus-modes'
+import { getFocusDomains } from './focus-modes'
 
 export interface BrowserToolContext {
   vfs: VirtualFS
@@ -41,6 +43,7 @@ export interface BrowserToolContext {
   onFileCreated: (path: string, content: string) => void
   onAskQuestion: (question: string, options: string[]) => Promise<string>
   enabledTools?: string[]
+  focusMode?: FocusMode
 }
 
 // ---------------------------------------------------------------------------
@@ -786,7 +789,7 @@ export function createBrowserTools(
         return await scrapeWithFirecrawl(url, {
           endpoint: ctx.firecrawlEndpoint,
           apiKey: key,
-          timeoutMs: 12_000,
+          timeoutMs: 35_000,
         })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -797,7 +800,7 @@ export function createBrowserTools(
             return await scrapeWithFirecrawl(url, {
               endpoint: ctx.firecrawlEndpoint,
               apiKey: nextKey,
-              timeoutMs: 12_000,
+              timeoutMs: 35_000,
             })
           }
         }
@@ -816,16 +819,19 @@ export function createBrowserTools(
     inputSchema: z.object({
       query: z.string(),
       limit: z.number().int().min(1).max(20).optional().default(5),
-      allowedDomains: z.array(z.string()).optional(),
-      blockedDomains: z.array(z.string()).optional(),
+      includeDomains: z.array(z.string()).optional(),
+      excludeDomains: z.array(z.string()).optional(),
     }),
-    execute: async ({ query, limit, allowedDomains, blockedDomains }) => {
+    execute: async ({ query, limit, includeDomains, excludeDomains }) => {
+      const focusDomains = getFocusDomains(ctx.focusMode)
+      const effectiveAllowed = focusDomains.includeDomains ?? includeDomains
+      const effectiveBlocked = focusDomains.excludeDomains ?? excludeDomains
       const key = pickFirecrawlKey(ctx.firecrawlKeys, firecrawlCallCount++)
       try {
         return await searchWithFirecrawl(
           query,
-          { endpoint: ctx.firecrawlEndpoint, apiKey: key, timeoutMs: 25_000 },
-          { limit, allowedDomains, blockedDomains },
+          { endpoint: ctx.firecrawlEndpoint, apiKey: key, timeoutMs: 90_000 },
+          { limit, includeDomains: effectiveAllowed, excludeDomains: effectiveBlocked },
         )
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -834,8 +840,8 @@ export function createBrowserTools(
           if (nextKey !== key) {
             return await searchWithFirecrawl(
               query,
-              { endpoint: ctx.firecrawlEndpoint, apiKey: nextKey, timeoutMs: 25_000 },
-              { limit, allowedDomains, blockedDomains },
+              { endpoint: ctx.firecrawlEndpoint, apiKey: nextKey, timeoutMs: 90_000 },
+              { limit, includeDomains: effectiveAllowed, excludeDomains: effectiveBlocked },
             )
           }
         }
@@ -886,7 +892,7 @@ export function createBrowserTools(
   })
 
   const deepResearch = createDeepResearchTool(
-    { firecrawlKeys: ctx.firecrawlKeys, firecrawlEndpoint: ctx.firecrawlEndpoint },
+    { firecrawlKeys: ctx.firecrawlKeys, firecrawlEndpoint: ctx.firecrawlEndpoint, focusMode: ctx.focusMode },
     () => pickFirecrawlKey(ctx.firecrawlKeys, firecrawlCallCount++),
   )
 

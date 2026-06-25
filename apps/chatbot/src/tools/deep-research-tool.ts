@@ -26,6 +26,8 @@ import { z } from 'zod'
 import type { AgentTool } from '@cline/agents'
 import { scrapeWithFirecrawl, searchWithFirecrawl } from './firecrawl-client'
 import { expandQuery } from './query-utils'
+import type { FocusMode } from './focus-modes'
+import { getFocusDomains } from './focus-modes'
 
 function normalizeUrl(url: string): string {
   try {
@@ -52,6 +54,65 @@ const STOPWORDS = new Set([
   'this', 'that', 'from', 'by', 'not', 'what', 'when', 'where', 'how', 'why', 'which',
 ])
 
+// ── A4: Domain reliability scoring ──────────────────────────────────────────
+
+const RELIABILITY_PATTERNS: Array<{ pattern: RegExp; score: number }> = [
+  { pattern: /\.edu$/, score: 4 },
+  { pattern: /\.gov$/, score: 4 },
+  { pattern: /arxiv\.org$/, score: 4 },
+  { pattern: /pubmed\.ncbi\.nlm\.nih\.gov$/, score: 4 },
+  { pattern: /nature\.com$/, score: 4 },
+  { pattern: /science\.org$/, score: 4 },
+  { pattern: /ieee\.org$/, score: 3 },
+  { pattern: /acm\.org$/, score: 3 },
+  { pattern: /springer\.com$/, score: 3 },
+  { pattern: /wiley\.com$/, score: 3 },
+  { pattern: /sciencedirect\.com$/, score: 3 },
+  { pattern: /reuters\.com$/, score: 3 },
+  { pattern: /bbc\.com$|bbc\.co\.uk$/, score: 3 },
+  { pattern: /wikipedia\.org$/, score: 2 },
+  { pattern: /github\.com$/, score: 2 },
+  { pattern: /stackoverflow\.com$/, score: 2 },
+  { pattern: /medium\.com$/, score: 1 },
+]
+
+function computeReliability(domain: string): number {
+  for (const { pattern, score } of RELIABILITY_PATTERNS) {
+    if (pattern.test(domain)) return score
+  }
+  return 1
+}
+
+// ── A4: Fact markers (numbers + key entities) for agreement scoring ──────────
+
+function extractFactMarkers(text: string): Set<string> {
+  const numbers = text.match(/\b\d+(?:[.,]\d+)?(?:\s*%|px|km|kg|MB|GB|TB|ms)?\b/g) ?? []
+  const words = text.toLowerCase().split(/\W+/).filter(w => w.length > 5 && !STOPWORDS.has(w))
+  return new Set([...numbers.slice(0, 10), ...words.slice(0, 20)])
+}
+
+function computeAgreement(
+  markers: Set<string>,
+  sourceId: number,
+  allPassages: Array<{ markers: Set<string>; sourceId: number }>,
+): number {
+  if (markers.size === 0) return 0
+  const confirmingSources = new Set<number>()
+  for (const other of allPassages) {
+    if (other.sourceId === sourceId) continue
+    let overlap = 0
+    for (const m of markers) {
+      if (other.markers.has(m)) overlap++
+    }
+    if (overlap / markers.size >= 0.2) {
+      confirmingSources.add(other.sourceId)
+    }
+  }
+  return confirmingSources.size
+}
+
+// ── Query relevance scoring ───────────────────────────────────────────────────
+
 function questionKeywords(question: string): Set<string> {
   return new Set(
     question.toLowerCase().split(/\W+/).filter(w => w.length > 3 && !STOPWORDS.has(w)),
@@ -66,22 +127,26 @@ function scorePassage(text: string, qWords: Set<string>): number {
   return matches / words.length
 }
 
+// ── Tool factory ──────────────────────────────────────────────────────────────
+
 /**
  * Creates the deep_research tool.
- * @param ctx - Firecrawl configuration
+ * @param ctx - Firecrawl configuration + optional focus mode for domain filtering
  * @param nextKey - Returns the next Firecrawl API key (handles round-robin externally)
  */
 export function createDeepResearchTool(
-  ctx: { firecrawlKeys: string[]; firecrawlEndpoint: string },
+  ctx: { firecrawlKeys: string[]; firecrawlEndpoint: string; focusMode?: FocusMode },
   nextKey: () => string,
 ): AgentTool<any, any> {
   return createTool({
     name: 'deep_research',
     description: `Perform comprehensive web research on a topic. Fires multiple search queries in parallel, deduplicates results by URL, scrapes the most relevant pages, scores passages by keyword relevance, and returns structured results with citable sources.
 
-Use this for complex research questions that require synthesising information from multiple sources (e.g. "compare GPU cloud providers", "best practices for X in 2026"). For simple factual lookups, prefer search_web.
+Each passage is tagged with [Source N, agree=M] where M is the number of independent sources corroborating the same facts. Use agree=0 passages with caution and mark them ⚠️ single source.
 
-The returned sources array is what powers [citation:N] tooltips — cite them with [citation:1], [citation:2], etc.`,
+Use this for complex research questions requiring multiple sources (comparisons, best practices, market overviews). For simple lookups, prefer search_web.
+
+Cite sources with [citation:1], [citation:2], etc.`,
     inputSchema: z.object({
       question: z.string().describe('The research question or topic to investigate'),
       breadth: z
@@ -96,14 +161,17 @@ The returned sources array is what powers [citation:N] tooltips — cite them wi
     execute: async ({ question, breadth }) => {
       const year = new Date().getFullYear()
       const queries = expandQuery(question, { year }).slice(0, 3)
+      const focusDomains = getFocusDomains(ctx.focusMode)
 
       // Parallel search across all query variants
       const searchResults = await Promise.allSettled(
         queries.map(q =>
           searchWithFirecrawl(
             q,
-            { endpoint: ctx.firecrawlEndpoint, apiKey: nextKey(), timeoutMs: 25_000 },
-            { limit: 5 },
+            // No markdown scraping here — we only need URLs/titles/descriptions.
+            // Full content is fetched in the scrapeWithFirecrawl pass below.
+            { endpoint: ctx.firecrawlEndpoint, apiKey: nextKey(), timeoutMs: 30_000 },
+            { limit: 5, ...focusDomains, scrapeOptions: null },
           ),
         ),
       )
@@ -133,12 +201,12 @@ The returned sources array is what powers [citation:N] tooltips — cite them wi
           scrapeWithFirecrawl(item.url, {
             endpoint: ctx.firecrawlEndpoint,
             apiKey: nextKey(),
-            timeoutMs: 12_000,
+            timeoutMs: 35_000,
           }),
         ),
       )
 
-      // Build sources array and score passages
+      // Build sources array (with A4 reliability)
       const qWords = questionKeywords(question)
       const sources: Array<{
         id: number
@@ -147,8 +215,16 @@ The returned sources array is what powers [citation:N] tooltips — cite them wi
         snippet: string
         domain: string
         favicon: string
+        reliability: number
       }> = []
-      const scoredPassages: Array<{ text: string; score: number; sourceId: number }> = []
+
+      // First pass: collect raw passages with fact markers
+      const rawPassages: Array<{
+        text: string
+        score: number
+        sourceId: number
+        markers: Set<string>
+      }> = []
 
       for (let idx = 0; idx < urlsToScrape.length; idx++) {
         const meta = urlsToScrape[idx]
@@ -156,6 +232,7 @@ The returned sources array is what powers [citation:N] tooltips — cite them wi
         const scrape = scrapeResult.status === 'fulfilled' ? scrapeResult.value : null
         const domain = safeHostname(meta.url)
         const sourceId = idx + 1
+        const reliability = computeReliability(domain)
 
         sources.push({
           id: sourceId,
@@ -164,28 +241,39 @@ The returned sources array is what powers [citation:N] tooltips — cite them wi
           snippet: meta.description.slice(0, 300),
           domain,
           favicon: domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32` : '',
+          reliability,
         })
 
         if (scrape?.markdown) {
           const paragraphs = scrape.markdown.split(/\n{2,}/).filter(p => p.trim().length >= 50)
           for (const p of paragraphs.slice(0, 40)) {
-            scoredPassages.push({
+            rawPassages.push({
               text: p.trim(),
               score: scorePassage(p, qWords),
               sourceId,
+              markers: extractFactMarkers(p),
             })
           }
         }
       }
 
-      const topPassages = scoredPassages
+      // Second pass: compute agreement across sources (A4)
+      const passagesWithAgreement = rawPassages.map(p => ({
+        ...p,
+        agreement: computeAgreement(p.markers, p.sourceId, rawPassages),
+      }))
+
+      // Sort sources by reliability descending (A4)
+      const sortedSources = [...sources].sort((a, b) => b.reliability - a.reliability)
+
+      const topPassages = passagesWithAgreement
         .sort((a, b) => b.score - a.score)
         .slice(0, 15)
-        .map(p => `[Source ${p.sourceId}] ${p.text}`)
+        .map(p => `[Source ${p.sourceId}, agree=${p.agreement}] ${p.text}`)
 
       return {
         question,
-        sources,
+        sources: sortedSources,
         passages: topPassages,
         totalSourcesFound: seen.size,
         sourcesScraped: scrapeResults.filter(r => r.status === 'fulfilled').length,

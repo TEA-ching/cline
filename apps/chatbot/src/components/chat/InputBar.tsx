@@ -31,6 +31,8 @@ import {
   fetchGitHubDirectory
 } from '../../utils/github'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
+import { FOCUS_MODES } from '@/tools/focus-modes'
+import type { FocusMode } from '@/tools/focus-modes'
 
 export interface SlashCommand {
   cmd: string
@@ -44,6 +46,8 @@ interface Props {
   supportsImages: boolean
   onUploadFiles?: (files: FileList) => void
   commands?: SlashCommand[]
+  focusMode?: FocusMode
+  onFocusChange?: (mode: FocusMode) => void
 }
 
 const DESKTOP_INIT_HEIGHT = 120
@@ -51,6 +55,7 @@ const MOBILE_INIT_HEIGHT = 80
 
 export const InputBar: React.FC<Props> = ({
   onSend, onAbort, isRunning, supportsImages, onUploadFiles, commands = [],
+  focusMode = 'web', onFocusChange,
 }) => {
   const isMobile = useMediaQuery('(max-width: 767px)')
   const [panelHeight, setPanelHeight] = useState(MOBILE_INIT_HEIGHT)
@@ -351,6 +356,25 @@ export const InputBar: React.FC<Props> = ({
           ))}
         </div>
       )}
+
+      {/* Focus mode selector */}
+      <div className="px-3 pb-1 flex gap-1 shrink-0 overflow-x-auto self-end" style={{ scrollbarWidth: 'none' }}>
+        {(Object.entries(FOCUS_MODES) as [FocusMode, typeof FOCUS_MODES[FocusMode]][]).map(([mode, cfg]) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => onFocusChange?.(mode)}
+            className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full border transition-colors whitespace-nowrap flex items-center gap-1 ${
+              focusMode === mode
+                ? 'border-primary-400 bg-accent text-white font-medium'
+                : 'border-default-200 text-default-400 hover:text-default-600 hover:border-default-300'
+            }`}
+          >
+            <span className="flex items-center bg">{cfg.icon}</span>
+            <span>{cfg.label}</span>
+          </button>
+        ))}
+      </div>
 
       <div className="flex-1 flex items-end gap-2 px-3 pb-3 min-h-0">
         {/* Add from URL button */}

@@ -55,6 +55,8 @@ import { useKeypoolRotation } from '@/hooks/useKeypoolRotation'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { listChatModels, modelSupportsImages, getFirecrawlKeys } from '@/lib/model-utils'
 import { BUILTIN_OPTONAL_TOOLS } from '@/tools/builtin'
+import { FOCUS_MODES } from '@/tools/focus-modes'
+import type { FocusMode } from '@/tools/focus-modes'
 import { recordKeyUsage, recordKeyError, extractErrorCode } from '@/lib/keypool-usage'
 import { SessionStore } from '@/session/session-store'
 import type { Session } from '@/session/session-store'
@@ -69,6 +71,9 @@ export const DEFAULT_SYSTEM_PROMPT = `You are an expert AI research assistant wi
 - Use deep_research for complex questions requiring multiple sources and deep analysis (e.g. comparisons, best practices, market overviews)
 - Use fetch_web_content to read a specific page
 - When citing sources, use [citation:N] format where N is the source number (e.g. "According to recent benchmarks [citation:1]...")
+
+**Source Reliability (A4):**
+Each passage from deep_research is tagged [Source N, agree=M]. When M=0, the fact comes from a single source — flag it explicitly: ⚠️ *Single source*. Prioritize facts confirmed by ≥2 sources (agree≥1). Sources are pre-sorted by reliability (.edu/.gov/journals > Wikipedia > general web).
 
 **After Research:**
 After answering a research question, call suggest_followups with 2-4 relevant follow-up questions.
@@ -113,6 +118,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   const [sessionId, setSessionId] = useState(() => `sess_${Date.now()}`)
   const [systemPrompt, setSystemPrompt] = useLocalStorageState('chatbot_system_prompt', DEFAULT_SYSTEM_PROMPT)
   const [enabledTools, setEnabledTools] = useLocalStorageState<string[]>('chatbot_enabled_optional_tools', [])
+  const [focusMode, setFocusMode] = useLocalStorageState<FocusMode>('chatbot_focus_mode', 'web')
 
   // Detect mobile screen size
   const isMobile = useMediaQuery('(max-width: 767px)')
@@ -177,14 +183,19 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   // Use currentKey from the pool instead of always keys[0]
   const agentConfig = useMemo(() => {
     if (!selectedProvider || !selectedModelId) return null
+    const focusLabel = FOCUS_MODES[focusMode]?.label ?? 'Web'
+    const focusDomainNote = focusMode !== 'web'
+      ? `\n\n**Active focus: ${FOCUS_MODES[focusMode]?.icon ?? ''} ${focusLabel}** — search and deep_research are restricted to ${focusLabel.toLowerCase()} sources.`
+      : ''
     return {
       providerId: selectedProviderId,
       modelId: selectedModelId,
       apiKey: currentKey?.key ?? selectedProvider.keys[0]?.key ?? '',
       baseUrl: selectedProvider.endpoint,
-      systemPrompt,
+      systemPrompt: systemPrompt + focusDomainNote,
       firecrawlKeys: firecrawlKeys.length > 0 ? firecrawlKeys : getFirecrawlKeys(vaultConfig),
       firecrawlEndpoint,
+      focusMode,
       enabledTools: enabledTools.filter(toolId => {
         const meta = BUILTIN_OPTONAL_TOOLS.find(t => t.id === toolId)
         if (!meta?.filter) return true
@@ -206,6 +217,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     selectedProvider?.endpoint,
     currentKey?.key,
     systemPrompt,
+    focusMode,
     firecrawlEndpoint,
     vaultMode,
     // biome-ignore lint/correctness/useExhaustiveDependencies: stable serialisation
@@ -459,7 +471,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   // -------------------------------------------------------------------------
   const handleLoadSession = useCallback((session: Session) => {
     setSessionId(session.id)
-    loadMessages(session.messages, session.agentMessages)
+    loadMessages(session.messages, session.agentMessages ? [...session.agentMessages] : undefined)
     handleModelChange(session.providerId, session.modelId)
     vfs.loadSnapshot(session.vfsSnapshot)
     setShowSessions(false)
@@ -687,6 +699,8 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
               supportsImages={!!selectedModel && modelSupportsImages(selectedModel)}
               onUploadFiles={vfs.uploadFiles}
               commands={SLASH_COMMANDS}
+              focusMode={focusMode}
+              onFocusChange={setFocusMode}
             />
           </div>
 

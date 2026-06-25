@@ -37,6 +37,7 @@ interface InitMessage {
   firecrawlEndpoint: string
   systemPrompt: string
   enabledTools: string[]
+  focusMode?: string
   vaultToken?: string
   corsProxyUrl?: string
   weatherApiKeys?: Array<{ key: string; sharedSecret?: string; signatureType?: string }>
@@ -264,6 +265,8 @@ async function handleInit(msg: InitMessage): Promise<void> {
         onFileCreated: postFileCreated,
         onAskQuestion,
         enabledTools: msg.enabledTools ?? [],
+        // biome-ignore lint/suspicious/noExplicitAny: FocusMode type lives in tools layer
+        focusMode: msg.focusMode as any,
       }),
       ...createOptionalTools(msg.enabledTools ?? [], {
         vfs,

@@ -36,7 +36,7 @@ export interface Session {
   /** SDK-format messages (includes tool calls/results). Absent in sessions
    * saved before this field was introduced; in that case the agent will
    * reconstruct a best-effort context from ChatMessage[] only. */
-  agentMessages?: AgentMessage[]
+  agentMessages?: readonly AgentMessage[]
   providerId: string
   modelId: string
   createdAt: number

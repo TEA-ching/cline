@@ -42,6 +42,7 @@ export interface AgentConfig {
   firecrawlKeys: string[]
   firecrawlEndpoint: string
   enabledTools?: string[]
+  focusMode?: string
   vaultToken?: string
   corsProxyUrl?: string
   weatherApiKeys?: Array<{ key: string; sharedSecret?: string; signatureType?: string }>
@@ -118,7 +119,7 @@ export interface UseAgentReturn {
   clearMessages: () => void
   /** Load a saved message list without touching the worker.
    * Pass agentMessages (SDK format) to fully restore tool call history. */
-  loadMessages: (messages: ChatMessage[], agentMessages?: AgentMessage[]) => void
+  loadMessages: (messages: ChatMessage[], agentMessages?: readonly AgentMessage[]) => void
   /** Returns the SDK-format messages from the last completed turn (for session persistence). */
   getLastAgentMessages: () => readonly AgentMessage[] | null
   syncVfsFile: (path: string, content: string) => void
@@ -229,6 +230,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
       firecrawlEndpoint: config.firecrawlEndpoint,
       systemPrompt: config.systemPrompt ?? '',
       enabledTools: config.enabledTools ?? [],
+      focusMode: config.focusMode,
       vaultToken: config.vaultToken,
       corsProxyUrl: config.corsProxyUrl,
       weatherApiKeys: config.weatherApiKeys,
@@ -621,7 +623,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     streamingMsgIdRef.current = null
   }, [])
 
-  const loadMessages = useCallback((msgs: ChatMessage[], agentMsgs?: AgentMessage[]) => {
+  const loadMessages = useCallback((msgs: ChatMessage[], agentMsgs?: readonly AgentMessage[]) => {
     setMessages(msgs)
     setTurnStartedAt(null)
     setStreamedTokens(0)
