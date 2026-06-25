@@ -27,6 +27,7 @@ import {
 	captureSdkError,
 	estimateTokens,
 	mergeModelOptions,
+	normalizeJsonLikeStringsForSchema,
 	omitUndefinedValues,
 	trimNonEmpty,
 } from "@cline/shared";
@@ -1154,13 +1155,17 @@ export class AgentRuntime {
 			skipReason = `Tool execution is disabled for provider ${providerId}`;
 		}
 
+		if (tool && !skipReason) {
+			input = normalizeJsonLikeStringsForSchema(input, tool.inputSchema);
+		}
+
 		let policyOverride: ToolPolicy | undefined;
 		if (tool && !skipReason) {
 			for (const hook of this.hooks.beforeTool) {
 				const result = (await hook({
 					snapshot: this.snapshot(),
 					tool,
-					toolCall,
+					toolCall: { ...toolCall, input },
 					input,
 				})) as AgentBeforeToolResult | undefined;
 				if (result?.input !== undefined) {
