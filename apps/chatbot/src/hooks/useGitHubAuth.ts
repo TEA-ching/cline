@@ -110,9 +110,9 @@ export function useGitHubAuth(): UseGitHubAuthReturn {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: JSON.stringify({ client_id: clientId, scope: SCOPE }),
+        body: new URLSearchParams({ client_id: clientId, scope: SCOPE }).toString(),
       })
       if (!codeRes.ok) throw new Error(`GitHub ${codeRes.status}: ${codeRes.statusText}`)
       const codeData: {
@@ -143,7 +143,7 @@ export function useGitHubAuth(): UseGitHubAuthReturn {
         if (abort.signal.aborted) break
 
         if (Date.now() > flow.expiresAt) {
-          setAuthError('Le code a expiré. Relancez la procédure.')
+          setAuthError('Code expired. Please restart the flow.')
           break
         }
 
@@ -153,13 +153,13 @@ export function useGitHubAuth(): UseGitHubAuthReturn {
             method: 'POST',
             headers: {
               'Accept': 'application/json',
-              'Content-Type': 'application/json',
+              'Content-Type': 'application/x-www-form-urlencoded',
             },
-            body: JSON.stringify({
+            body: new URLSearchParams({
               client_id: clientId,
               device_code: flow.deviceCode,
               grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-            }),
+            }).toString(),
             signal: abort.signal,
           })
           pollData = await pollRes.json()
@@ -189,15 +189,15 @@ export function useGitHubAuth(): UseGitHubAuthReturn {
             intervalSecs += 5
             break
           case 'expired_token':
-            setAuthError('Le code a expiré. Relancez la procédure.')
+            setAuthError('Code expired. Please restart the flow.')
             abort.abort()
             break
           case 'access_denied':
-            setAuthError('Autorisation refusée par GitHub.')
+            setAuthError('Authorization denied by GitHub.')
             abort.abort()
             break
           default:
-            setAuthError(pollData.error_description ?? pollData.error ?? 'Erreur inconnue')
+            setAuthError(pollData.error_description ?? pollData.error ?? 'Unknown error')
             abort.abort()
         }
       }

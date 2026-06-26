@@ -29,29 +29,29 @@ import type { DeviceFlowState } from '@/hooks/useGitHubAuth'
 /**
  * GitHub OAuth App setup — https://github.com/settings/developers
  * ─────────────────────────────────────────────────────────────────
- * 1. "New OAuth App" (or "Register a new application")
+ * 1. Click "New OAuth App" (or "Register a new application")
  *
  * Required fields:
- *   • Application name      : anything (e.g. "My Chatbot GitHub Explorer")
- *   • Homepage URL          : your app's origin (e.g. https://chatbot.example.com)
- *   • Authorization callback URL : any valid URL — Device Flow ignores it
- *                                  (e.g. https://chatbot.example.com/callback)
+ *   • Application name         : anything (e.g. "My GitHub Chatbot Explorer")
+ *   • Homepage URL             : your app origin (e.g. https://chatbot.example.com)
+ *   • Authorization callback URL: any valid URL — Device Flow ignores it
+ *                                 (e.g. https://chatbot.example.com/callback)
  *
- * ⚠️  Do NOT enable "Device Flow" — it is already enabled by default for OAuth Apps.
- * ⚠️  Do NOT check "Request user authorization (OAuth) during installation" (GitHub App only).
+ * ⚠️  CHECK "Enable Device Flow" in the app settings — without it GitHub returns 404.
+ * ⚠️  Do NOT check "Request user authorization (OAuth) during installation" (GitHub Apps only).
  *
  * 2. After creation, copy the "Client ID" (starts with "Ov23li…")
- *    → set it as the GITHUB_CLIENT_ID env variable in .env / .env.local:
+ *    → set it as the GITHUB_CLIENT_ID environment variable in .env / .env.local:
  *
  *      GITHUB_CLIENT_ID=Ov23liXXXXXXXXXXXXXX
  *
- *    If the variable is absent, the modal will show a text input so users
- *    can provide their own client_id at runtime.
+ *    If the variable is absent, the modal shows a text field so users can supply
+ *    their own client_id at runtime.
  *
  * 3. Never generate or store a "Client secret" — Device Flow does not need one.
  *
  * Required OAuth scope: "public_repo" (read-only access to public repositories).
- * To also explore private repositories, change SCOPE to "repo" in useGitHubAuth.ts.
+ * To also browse private repositories, change SCOPE to "repo" in useGitHubAuth.ts.
  */
 interface Props {
   /** Client ID of the GitHub OAuth App (from GITHUB_CLIENT_ID) */
@@ -120,18 +120,18 @@ export const GitHubAuthModal: React.FC<Props> = ({
           <div className="flex items-center justify-between w-full">
             <Card.Title className="flex items-center gap-2 text-lg font-semibold">
               <GitBranch className="h-5 w-5 text-default-600" />
-              Connecter GitHub
+              Connect GitHub
             </Card.Title>
             <button
               onClick={onCancel}
               className="rounded-md p-1 text-default-400 hover:text-default-700 hover:bg-default-100 transition-colors"
-              aria-label="Fermer"
+              aria-label="Close"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
           <Card.Description className="text-xs text-default-500 mt-1">
-            Authentification via le flux Device Flow GitHub (RFC 8628) — aucun secret requis.
+            Authentication via GitHub Device Flow (RFC 8628) — no client secret required.
           </Card.Description>
         </Card.Header>
 
@@ -140,14 +140,14 @@ export const GitHubAuthModal: React.FC<Props> = ({
           {!clientId && !deviceFlow && (
             <div className="space-y-2">
               <p className="text-sm text-default-600">
-                Entrez le <strong>Client ID</strong> de votre GitHub OAuth App.{' '}
+                Enter the <strong>Client ID</strong> of your GitHub OAuth App.{' '}
                 <a
                   href="https://github.com/settings/developers"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary-500 underline hover:text-primary-600 inline-flex items-center gap-0.5"
                 >
-                  Créer une app <ExternalLink className="h-3 w-3" />
+                  Create an app <ExternalLink className="h-3 w-3" />
                 </a>
               </p>
               <input
@@ -166,7 +166,7 @@ export const GitHubAuthModal: React.FC<Props> = ({
           {deviceFlow && (
             <div className="space-y-4">
               <p className="text-sm text-default-600">
-                <span className="font-semibold text-default-800">Étape 1</span> — Copiez ce code :
+                <span className="font-semibold text-default-800">Step 1</span> — Copy this code:
               </p>
               <div className="flex items-center gap-3">
                 <span className="flex-1 rounded-lg border border-default-300 bg-default-50 px-4 py-3 text-center font-mono text-2xl font-bold tracking-widest text-default-900 select-all">
@@ -174,7 +174,7 @@ export const GitHubAuthModal: React.FC<Props> = ({
                 </span>
                 <button
                   onClick={handleCopy}
-                  title="Copier le code"
+                  title="Copy code"
                   className="rounded-md p-2 text-default-500 hover:text-default-800 hover:bg-default-100 transition-colors"
                 >
                   {copied ? <Check className="h-4 w-4 text-success-500" /> : <Copy className="h-4 w-4" />}
@@ -182,7 +182,7 @@ export const GitHubAuthModal: React.FC<Props> = ({
               </div>
 
               <p className="text-sm text-default-600">
-                <span className="font-semibold text-default-800">Étape 2</span> — Ouvrez GitHub et collez le code :
+                <span className="font-semibold text-default-800">Step 2</span> — Open GitHub and paste the code:
               </p>
               <Button
                 variant="secondary"
@@ -190,7 +190,7 @@ export const GitHubAuthModal: React.FC<Props> = ({
                 onPress={handleOpenGitHub}
               >
                 <ExternalLink className="h-4 w-4 mr-2" />
-                Ouvrir github.com/login/device
+                Open github.com/login/device
               </Button>
 
               {/* Status */}
@@ -198,14 +198,14 @@ export const GitHubAuthModal: React.FC<Props> = ({
                 {isPolling ? (
                   <span className="flex items-center gap-1.5">
                     <Loader className="h-3 w-3 animate-spin" />
-                    En attente d'autorisation…
+                    Waiting for authorization…
                   </span>
                 ) : (
-                  <span>En attente…</span>
+                  <span>Waiting…</span>
                 )}
                 {secondsLeft !== null && (
                   <span className={secondsLeft < 30 ? 'text-warning-500 font-semibold' : ''}>
-                    Expire dans {secondsLeft}s
+                    Expires in {secondsLeft}s
                   </span>
                 )}
               </div>
@@ -216,7 +216,7 @@ export const GitHubAuthModal: React.FC<Props> = ({
           {justAuthorized && (
             <div className="flex items-center gap-2 rounded-lg bg-success-50 border border-success-200 px-4 py-3 text-sm text-success-700">
               <Check className="h-4 w-4 shrink-0" />
-              Compte GitHub connecté avec succès !
+              GitHub account connected successfully!
             </div>
           )}
 
@@ -230,7 +230,7 @@ export const GitHubAuthModal: React.FC<Props> = ({
 
         <Card.Footer className="mt-4 flex justify-end gap-2">
           <Button variant="outline" onPress={onCancel}>
-            Annuler
+            Cancel
           </Button>
           {!deviceFlow && (
             <Button
@@ -238,7 +238,7 @@ export const GitHubAuthModal: React.FC<Props> = ({
               onPress={handleStart}
               isDisabled={!(clientId ?? manualClientId).trim()}
             >
-              Démarrer
+              Start
             </Button>
           )}
         </Card.Footer>
