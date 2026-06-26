@@ -136,7 +136,10 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     startDeviceFlow,
     cancelDeviceFlow,
     logout: githubLogout,
-  } = useGitHubAuth()
+  } = useGitHubAuth({
+    corsProxyUrl: vaultMode === 'vault' ? `${new URL(import.meta.env.KEYPOOL_VAULT_URL).origin}/v1/keypool/corsproxy` : undefined,
+    vaultToken: vaultMode === 'vault' ? (VaultApi.getToken() ?? undefined) : undefined,
+  })
 
   const {
     spaces,

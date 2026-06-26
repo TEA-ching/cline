@@ -66,6 +66,16 @@ export default defineConfig(({ mode }) => {
         'Cross-Origin-Opener-Policy': 'same-origin',
         'Cross-Origin-Embedder-Policy': 'require-corp',
       },
+      proxy: {
+        // Forward GitHub OAuth endpoints server-side to bypass browser CORS restrictions.
+        // Maps /api/github/* → https://github.com/login/*
+        // Production uses the vault CORS proxy instead (see useGitHubAuth.ts).
+        '/api/github': {
+          target: 'https://github.com/login',
+          changeOrigin: true,
+          rewrite: (path: string) => path.replace('/api/github', ''),
+        },
+      },
     },
 
     build: {

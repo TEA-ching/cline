@@ -26,15 +26,34 @@
  * GitHub Device Authorization Grant (RFC 8628) for browser SPAs.
  * No client_secret required — only a client_id from a registered GitHub OAuth App.
  * Unauthenticated: 60 req/h  |  Authenticated: 5 000 req/h
+ *
+ * CORS: GitHub's OAuth endpoints block cross-origin browser requests.
+ * In production, requests are routed through the vault CORS proxy
+ * (corsProxyUrl + vaultToken). In development the Vite dev server
+ * proxies /api/github/* to https://github.com/login/* server-side.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 
 const LS_KEY = 'chatbot_github_token'
 
+// Absolute GitHub URLs — used when routing through the CORS proxy.
 const GH_DEVICE_CODE_URL = 'https://github.com/login/device/code'
 const GH_TOKEN_URL = 'https://github.com/login/oauth/access_token'
+
+// Relative URLs — used in development via the Vite dev-server proxy.
+// See vite.config.ts: server.proxy['/api/github'] → https://github.com/login
+const GH_DEVICE_CODE_DEV = '/api/github/device/code'
+const GH_TOKEN_DEV = '/api/github/oauth/access_token'
+
 const SCOPE = 'public_repo'
+
+export interface GitHubAuthOptions {
+  /** Vault CORS proxy base URL, e.g. https://vault.example.com/v1/keypool/corsproxy */
+  corsProxyUrl?: string
+  /** Vault bearer token used to authenticate against the CORS proxy */
+  vaultToken?: string
+}
 
 export interface DeviceFlowState {
   deviceCode: string
@@ -65,7 +84,29 @@ export interface UseGitHubAuthReturn {
   logout: () => void
 }
 
-export function useGitHubAuth(): UseGitHubAuthReturn {
+/**
+ * Build a fetch call that routes through the vault CORS proxy when available,
+ * or falls back to a relative URL for the Vite dev-server proxy.
+ */
+function makeProxiedFetch(
+  absoluteUrl: string,
+  devRelativeUrl: string,
+  corsProxyUrl: string | undefined,
+  vaultToken: string | undefined,
+  init: RequestInit,
+): Promise<Response> {
+  if (corsProxyUrl) {
+    const url = `${corsProxyUrl}?url=${encodeURIComponent(absoluteUrl)}`
+    const headers = new Headers(init.headers)
+    if (vaultToken) headers.set('Authorization', `Bearer ${vaultToken}`)
+    return fetch(url, { ...init, headers })
+  }
+  return fetch(devRelativeUrl, init)
+}
+
+export function useGitHubAuth(options?: GitHubAuthOptions): UseGitHubAuthReturn {
+  const { corsProxyUrl, vaultToken } = options ?? {}
+
   const [githubToken, setGithubToken] = useState<string | null>(
     () => localStorage.getItem(LS_KEY),
   )
@@ -77,8 +118,7 @@ export function useGitHubAuth(): UseGitHubAuthReturn {
   // Ref so the polling loop can be cancelled without stale-closure issues
   const pollAbortRef = useRef<AbortController | null>(null)
 
-  // Restore token from localStorage on mount (already done in useState initialiser,
-  // but sync it if another tab writes to the key)
+  // Sync token if another tab writes to localStorage
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === LS_KEY) setGithubToken(e.newValue)
@@ -106,14 +146,20 @@ export function useGitHubAuth(): UseGitHubAuthReturn {
 
     try {
       // ── Step 1: request device & user codes ─────────────────────────────
-      const codeRes = await fetch(GH_DEVICE_CODE_URL, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/x-www-form-urlencoded',
+      const codeRes = await makeProxiedFetch(
+        GH_DEVICE_CODE_URL,
+        GH_DEVICE_CODE_DEV,
+        corsProxyUrl,
+        vaultToken,
+        {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({ client_id: clientId, scope: SCOPE }).toString(),
         },
-        body: new URLSearchParams({ client_id: clientId, scope: SCOPE }).toString(),
-      })
+      )
       if (!codeRes.ok) throw new Error(`GitHub ${codeRes.status}: ${codeRes.statusText}`)
       const codeData: {
         device_code: string
@@ -149,19 +195,25 @@ export function useGitHubAuth(): UseGitHubAuthReturn {
 
         let pollData: Record<string, string>
         try {
-          const pollRes = await fetch(GH_TOKEN_URL, {
-            method: 'POST',
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/x-www-form-urlencoded',
+          const pollRes = await makeProxiedFetch(
+            GH_TOKEN_URL,
+            GH_TOKEN_DEV,
+            corsProxyUrl,
+            vaultToken,
+            {
+              method: 'POST',
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              body: new URLSearchParams({
+                client_id: clientId,
+                device_code: flow.deviceCode,
+                grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+              }).toString(),
+              signal: abort.signal,
             },
-            body: new URLSearchParams({
-              client_id: clientId,
-              device_code: flow.deviceCode,
-              grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-            }).toString(),
-            signal: abort.signal,
-          })
+          )
           pollData = await pollRes.json()
         } catch {
           // Network error — retry after interval
@@ -169,7 +221,6 @@ export function useGitHubAuth(): UseGitHubAuthReturn {
         }
 
         if (pollData.access_token) {
-          // ✅ Success
           localStorage.setItem(LS_KEY, pollData.access_token)
           setGithubToken(pollData.access_token)
           setIsPolling(false)
@@ -212,7 +263,7 @@ export function useGitHubAuth(): UseGitHubAuthReturn {
       setIsPolling(false)
       setDeviceFlow(null)
     }
-  }, [])
+  }, [corsProxyUrl, vaultToken])
 
   return {
     githubToken,
