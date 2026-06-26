@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
     define: {
       "import.meta.env.KEYPOOL_VAULT_URL": JSON.stringify(process.env.KEYPOOL_VAULT_URL ?? 'https://vault.exemple.com'),
       "import.meta.env.KEYPOOL_USAGE_DB": JSON.stringify(process.env.KEYPOOL_USAGE_DB_DIR ?? 'https://usage-db.exemple.com/v1/keypool/usage'),
-      "import.meta.env.GITHUB_CLIENT_ID": JSON.stringify(process.env.GITHUB_CLIENT_ID ?? ''),
+      "import.meta.env.GITHUB_CLIENT_ID": JSON.stringify(process.env.GITHUB_CLIENT_ID ?? (process.env._GITHUB_CLIENT_ID ?? '')),
       // Polyfill Node.js `process` for browser/Worker builds.
       // isBrowserEnvironment() checks window.document — false in a Worker —
       // so vendor files fall through to process.env / process.listeners etc.
@@ -28,9 +28,9 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       viteStaticCopy({
         targets: [
-          { src: 'node_modules/pyodide/pyodide.mjs',       dest: 'pyodide', rename: { stripBase: true } },
-          { src: 'node_modules/pyodide/pyodide.asm.mjs',    dest: 'pyodide', rename: { stripBase: true } },
-          { src: 'node_modules/pyodide/pyodide.asm.wasm',  dest: 'pyodide', rename: { stripBase: true } },
+          { src: 'node_modules/pyodide/pyodide.mjs', dest: 'pyodide', rename: { stripBase: true } },
+          { src: 'node_modules/pyodide/pyodide.asm.mjs', dest: 'pyodide', rename: { stripBase: true } },
+          { src: 'node_modules/pyodide/pyodide.asm.wasm', dest: 'pyodide', rename: { stripBase: true } },
           { src: 'node_modules/pyodide/python_stdlib.zip', dest: 'pyodide', rename: { stripBase: true } },
           { src: 'node_modules/pyodide/pyodide-lock.json', dest: 'pyodide', rename: { stripBase: true } },
         ],
@@ -43,7 +43,7 @@ export default defineConfig(({ mode }) => {
         // Point workspace packages to TypeScript sources (bypass pre-built dist bundles
         // that have bare specifiers not resolvable in Worker context).
         { find: '@cline/agents', replacement: fileURLToPath(new URL('../../sdk/packages/agents/src/index.ts', import.meta.url)) },
-        { find: '@cline/llms',   replacement: fileURLToPath(new URL('../../sdk/packages/llms/src/index.ts', import.meta.url)) },
+        { find: '@cline/llms', replacement: fileURLToPath(new URL('../../sdk/packages/llms/src/index.ts', import.meta.url)) },
         { find: '@cline/shared', replacement: fileURLToPath(new URL('../../sdk/packages/shared/src/index.browser.ts', import.meta.url)) },
         // Stub the Node.js-only debug capture module (uses node:crypto).
         // Regex matches both "./provider-request-capture" and any prefixed variant.

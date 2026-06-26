@@ -60,6 +60,8 @@ jobs:
           cd apps/chatbot
           export KEYPOOL_VAULT_URL=${{ secrets.KEYPOOL_VAULT_URL }}
           export KEYPOOL_USAGE_DB_DIR=${{ secrets.KEYPOOL_USAGE_DB_DIR }} 
+          export GITHUB_CLIENT_ID=${{ secrets._GITHUB_CLIENT_ID }} 
+          export _GITHUB_CLIENT_ID=${{ secrets._GITHUB_CLIENT_ID }}
           bun run build
 
       - name: Deploy
