@@ -363,6 +363,8 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   // -------------------------------------------------------------------------
   // Guard against queuing more than one rotation per turn
   const hasQueuedRotationRef = useRef(false)
+  // Track when a /compact turn is in progress so we can trim history afterward
+  const compactingRef = useRef(false)
   useEffect(() => {
     if (!rateLimitRetryAt) {
       // Turn ended / new turn started — reset the guard
@@ -596,6 +598,42 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   const contextWindow = selectedModel?.contextWindow ?? 0
 
   // -------------------------------------------------------------------------
+  // After a /compact turn finishes, replace all prior messages with the summary
+  // so the next agentSend only sees the compacted context.
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (isRunning || !compactingRef.current) return
+    const lastMsg = messages[messages.length - 1]
+    if (!lastMsg || lastMsg.role !== 'assistant') return
+
+    compactingRef.current = false
+
+    let lastUserIdx = -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') { lastUserIdx = i; break }
+    }
+    if (lastUserIdx <= 0) return
+
+    const compactNote: ChatMessage = {
+      id: uid(),
+      role: 'system',
+      content: '✅ Conversation compacted — previous messages replaced with summary.',
+      timestamp: Date.now(),
+    }
+    loadMessages([compactNote, ...messages.slice(lastUserIdx)])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRunning, messages])
+
+  const doCompact = useCallback((prompt?: string) => {
+    compactingRef.current = true
+    agentSend(
+      prompt ||
+      'Produce a concise summary of our conversation so far, capturing all important ' +
+      'decisions, context, and information. This will serve as a compressed record.',
+    )
+  }, [agentSend])
+
+  // -------------------------------------------------------------------------
   // Slash command dispatch
   // -------------------------------------------------------------------------
   const handleSend = useCallback((text: string, images?: string[]) => {
@@ -627,11 +665,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
           removeLastExchange()
           return
         case '/compact':
-          agentSend(
-            arg ||
-            'Produce a concise summary of our conversation so far, capturing all important ' +
-            'decisions, context, and information. This will serve as a compressed record.',
-          )
+          doCompact(arg || undefined)
           return
         case '/sessions':
           setShowSessions(true)
@@ -667,7 +701,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
 
     agentSend(trimmed, images)
   }, [
-    agentSend, clearMessages, reset, removeLastExchange,
+    agentSend, doCompact, clearMessages, reset, removeLastExchange,
     loadMessages, messages, systemPrompt, setSystemPrompt,
     contextWindow, contextUsedTokens,
   ])
@@ -677,11 +711,8 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
   }, [agentSend])
 
   const handleCompact = useCallback(() => {
-    agentSend(
-      'Produce a concise summary of our conversation so far, capturing all important ' +
-      'decisions, context, and information. This will serve as a compressed record.',
-    )
-  }, [agentSend])
+    doCompact()
+  }, [doCompact])
 
   // -------------------------------------------------------------------------
   // Skill toggle
