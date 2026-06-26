@@ -590,6 +590,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
     JSON.stringify(config?.enabledTools),
     config?.vaultToken,
     config?.corsProxyUrl,
+    config?.githubToken,
   ])
 
   // ---------------------------------------------------------------------------

@@ -286,6 +286,7 @@ export function createGitHubTool(ctx?: GitHubToolContext): AgentTool<any, any> {
 
           // ── search_code ───────────────────────────────────────────────────
           case 'search_code': {
+            if (!input.query) return { error: 'query is required for search_code' }
             let q = `${encodeURIComponent(input.query)}+repo:${input.owner}/${input.repo}`
             if (input.language) q += `+language:${encodeURIComponent(input.language)}`
             const perPage = input.per_page ?? 10
