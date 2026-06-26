@@ -563,7 +563,7 @@ const clinePass = createClineLikeSpec({
 	description: "Cline API endpoint with ClinePass models",
 	modelsProviderId: CLINE_PASS_PROVIDER_ID,
 	defaultModelId: firstGeneratedModelId(CLINE_PASS_PROVIDER_ID),
-	metadata: { usageCostDisplay: "hide" },
+	metadata: { usageCostDisplay: "subscription" },
 	defaults: {
 		options: {
 			onResponseError: async (response: Response) => {
@@ -996,7 +996,7 @@ export const BUILTIN_SPECS: BuiltinSpec[] = [
 		modelsFactory: buildOpenAICodexModels,
 		defaults: { baseUrl: "https://chatgpt.com/backend-api/codex" },
 		configFields: [],
-		metadata: { usageCostDisplay: "hide" },
+		metadata: { usageCostDisplay: "subscription" },
 	},
 	{
 		id: "openai-codex-cli",
@@ -1008,7 +1008,7 @@ export const BUILTIN_SPECS: BuiltinSpec[] = [
 		modelsProviderId: "openai",
 		defaults: { baseUrl: "https://chatgpt.com/backend-api/codex" },
 		configFields: [],
-		metadata: { usageCostDisplay: "hide" },
+		metadata: { usageCostDisplay: "subscription" },
 	},
 	{
 		id: "anthropic",
