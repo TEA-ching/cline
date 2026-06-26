@@ -89,85 +89,38 @@ export function createGitHubTool(ctx?: GitHubToolContext): AgentTool<any, any> {
       'getting the full file tree, searching code, viewing commits, issues, and pull requests. ' +
       'Works with public repos unauthenticated (60 req/h); add a GitHub token for 5000 req/h. ' +
       'Typical workflow: repo_info → full_tree → read_file for files of interest.',
-    inputSchema: z.discriminatedUnion('action', [
-      // ── repo_info ─────────────────────────────────────────────────────────
-      z.object({
-        action: z.literal('repo_info'),
-        owner: z.string().describe('Repository owner (user or org)'),
-        repo: z.string().describe('Repository name'),
-      }),
-      // ── list_dir ──────────────────────────────────────────────────────────
-      z.object({
-        action: z.literal('list_dir'),
-        owner: z.string(),
-        repo: z.string(),
-        path: z.string().optional().default('').describe('Directory path (empty = root)'),
-        ref: z.string().optional().describe('Branch, tag, or commit SHA (defaults to repo default branch)'),
-      }),
-      // ── read_file ─────────────────────────────────────────────────────────
-      z.object({
-        action: z.literal('read_file'),
-        owner: z.string(),
-        repo: z.string(),
-        path: z.string().describe('File path within the repository'),
-        ref: z.string().optional().describe('Branch, tag, or commit SHA'),
-        start_line: z.number().int().min(1).optional().describe('First line to return (1-based, for large files)'),
-        end_line: z.number().int().min(1).optional().describe('Last line to return (inclusive)'),
-      }),
-      // ── full_tree ─────────────────────────────────────────────────────────
-      z.object({
-        action: z.literal('full_tree'),
-        owner: z.string(),
-        repo: z.string(),
-        ref: z.string().optional().describe('Branch, tag, or SHA (defaults to default branch)'),
-        max_entries: z.number().int().min(10).max(2000).optional().default(500)
-          .describe('Max number of tree entries to return (default 500). Increase for very large repos.'),
-        filter_ext: z.array(z.string()).optional()
-          .describe('Only include files with these extensions, e.g. [".ts", ".tsx"]'),
-      }),
-      // ── search_code ───────────────────────────────────────────────────────
-      z.object({
-        action: z.literal('search_code'),
-        owner: z.string(),
-        repo: z.string(),
-        query: z.string().describe('Code search query (e.g. "useState", "createTool", "class MyService")'),
-        language: z.string().optional().describe('Filter by language (e.g. "typescript", "python")'),
-        per_page: z.number().int().min(1).max(30).optional().default(10),
-      }),
-      // ── list_commits ──────────────────────────────────────────────────────
-      z.object({
-        action: z.literal('list_commits'),
-        owner: z.string(),
-        repo: z.string(),
-        path: z.string().optional().describe('Limit commits that touch this file/directory'),
-        ref: z.string().optional().describe('Branch or SHA to start from'),
-        per_page: z.number().int().min(1).max(30).optional().default(10),
-      }),
-      // ── list_issues ───────────────────────────────────────────────────────
-      z.object({
-        action: z.literal('list_issues'),
-        owner: z.string(),
-        repo: z.string(),
-        state: z.enum(['open', 'closed', 'all']).optional().default('open'),
-        labels: z.string().optional().describe('Comma-separated label names to filter by'),
-        per_page: z.number().int().min(1).max(30).optional().default(10),
-      }),
-      // ── list_prs ──────────────────────────────────────────────────────────
-      z.object({
-        action: z.literal('list_prs'),
-        owner: z.string(),
-        repo: z.string(),
-        state: z.enum(['open', 'closed', 'all']).optional().default('open'),
-        per_page: z.number().int().min(1).max(30).optional().default(10),
-      }),
-      // ── get_pr_diff ───────────────────────────────────────────────────────
-      z.object({
-        action: z.literal('get_pr_diff'),
-        owner: z.string(),
-        repo: z.string(),
-        pull_number: z.number().int().min(1).describe('Pull request number'),
-      }),
-    ]),
+    // Flat schema avoids oneOf branches with identical enum fields (e.g. `state`
+    // in list_issues and list_prs), which the Anthropic API rejects with
+    // "enum items must be unique" when it flattens oneOf for validation.
+    inputSchema: z.object({
+      action: z.enum([
+        'repo_info', 'list_dir', 'read_file', 'full_tree',
+        'search_code', 'list_commits', 'list_issues', 'list_prs', 'get_pr_diff',
+      ]).describe(
+        'repo_info: basic metadata. list_dir: directory listing. read_file: file contents. ' +
+        'full_tree: full recursive file tree. search_code: code search. ' +
+        'list_commits: commit history. list_issues: issues. list_prs: pull requests. ' +
+        'get_pr_diff: PR unified diff.',
+      ),
+      owner: z.string().optional().describe('Repository owner (user or org)'),
+      repo: z.string().optional().describe('Repository name'),
+      path: z.string().optional().describe('File or directory path (empty = root for list_dir)'),
+      ref: z.string().optional().describe('Branch, tag, or commit SHA (defaults to repo default branch)'),
+      start_line: z.number().int().min(1).optional().describe('First line to return (1-based, read_file only)'),
+      end_line: z.number().int().min(1).optional().describe('Last line to return inclusive (read_file only)'),
+      max_entries: z.number().int().min(10).max(2000).optional().default(500)
+        .describe('Max tree entries to return, default 500 (full_tree only)'),
+      filter_ext: z.array(z.string()).optional()
+        .describe('Only include files with these extensions, e.g. [".ts", ".tsx"] (full_tree only)'),
+      query: z.string().optional().describe('Code search query, e.g. "useState" (search_code only)'),
+      language: z.string().optional().describe('Filter by language, e.g. "typescript" (search_code only)'),
+      state: z.enum(['open', 'closed', 'all']).optional().default('open')
+        .describe('Issue/PR state filter (list_issues, list_prs)'),
+      labels: z.string().optional().describe('Comma-separated label names to filter issues by (list_issues only)'),
+      per_page: z.number().int().min(1).max(30).optional().default(10)
+        .describe('Results per page (search_code, list_commits, list_issues, list_prs)'),
+      pull_number: z.number().int().min(1).optional().describe('Pull request number (get_pr_diff only)'),
+    }),
     timeoutMs: 20_000,
     // biome-ignore lint/suspicious/noExplicitAny: discriminated union input
     execute: async (input: any) => {
