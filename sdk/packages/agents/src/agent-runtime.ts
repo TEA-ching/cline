@@ -108,7 +108,14 @@ function resolveRuntimeConfig(
 		keypoolEventHandler,
 	});
 	const model = gateway.createAgentModel({ providerId, modelId });
-	return { ...rest, model };
+	// The prebuilt-model path preserves a caller-provided messageModelInfo;
+	// mirror that here so the provider/model constructor also tags assistant
+	// messages with modelInfo. An explicit caller-provided value still wins.
+	const messageModelInfo = rest.messageModelInfo ?? {
+		id: modelId,
+		provider: providerId,
+	};
+	return { ...rest, model, messageModelInfo };
 }
 
 function resolveToolPolicy(
