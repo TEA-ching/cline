@@ -1,10 +1,9 @@
-import { ApiConfiguration, clinePassDefaultModelId, ModelInfo, QwenApiRegions, resolveClinePassModelInfo } from "@shared/api"
+import { type ApiHandler as SdkApiHandler, type ApiStreamChunk as SdkApiStreamChunk } from "@cline/llms"
+import { ApiConfiguration, ModelInfo } from "@shared/api"
 import { Mode } from "@shared/storage/types"
-import { featureFlagsService } from "@/services/feature-flags"
 import { ClineStorageMessage } from "@/shared/messages/content"
-import { FeatureFlag } from "@/shared/services/feature-flags/feature-flags"
-import { Logger } from "@/shared/services/Logger"
 import { ClineTool } from "@/shared/tools"
+<<<<<<< HEAD
 import { AIhubmixHandler } from "./providers/aihubmix"
 import { AnthropicHandler } from "./providers/anthropic"
 import { AskSageHandler } from "./providers/asksage"
@@ -50,7 +49,23 @@ import { PoolsideHandler } from "./providers/poolside"
 import { WandbHandler } from "./providers/wandb"
 import { XAIHandler } from "./providers/xai"
 import { ZAiHandler } from "./providers/zai"
+=======
+>>>>>>> 94f5a47a5 (sdk migration: squashed pre-2026-06-02 work)
 import { ApiStream, ApiStreamUsageChunk } from "./transform/stream"
+
+// buildApiHandler now routes inference through the Cline SDK. It lives in
+// apps/vscode/src/sdk/sdk-api-handler.ts and callers import it directly from
+// there. It is deliberately NOT re-exported here: this barrel is imported
+// widely for *types* only, and re-exporting a value from the SDK module would
+// pull the entire SDK/session-factory runtime graph into every type importer
+// at module-eval time (which can break extension activation). Keep this file
+// types-only.
+
+// Re-export the SDK inference contracts so callers can depend on the SDK types
+// through the existing @core/api entry point. These are the canonical handler
+// and stream types going forward; the local interfaces below remain for the
+// classic provider classes until they are removed.
+export type { SdkApiHandler, SdkApiStreamChunk }
 
 export type CommonApiHandlerOptions = {
 	onRetryAttempt?: ApiConfiguration["onRetryAttempt"]
@@ -65,6 +80,7 @@ export interface ApiHandler {
 export interface ApiHandlerModel {
 	id: string
 	info: ModelInfo
+	providerId?: string
 }
 
 export interface ApiProviderInfo {
@@ -77,6 +93,7 @@ export interface ApiProviderInfo {
 export interface SingleCompletionHandler {
 	completePrompt(prompt: string): Promise<string>
 }
+<<<<<<< HEAD
 
 function createHandlerForProvider(
 	apiProvider: string | undefined,
@@ -563,3 +580,5 @@ export function buildApiHandler(configuration: ApiConfiguration, mode: Mode): Ap
 
 	return createHandlerForProvider(apiProvider, options, mode)
 }
+=======
+>>>>>>> 94f5a47a5 (sdk migration: squashed pre-2026-06-02 work)

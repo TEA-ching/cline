@@ -248,19 +248,6 @@ export const OcaProvider = ({ isPopup, currentMode }: OcaProviderProps) => {
 		await refreshModels()
 	}, [refreshModels])
 
-	// On first subscription result: if user exists, refresh models once.
-	const didInitialAuthCheckRef = useRef(false)
-	useEffect(() => {
-		if (!ready || didInitialAuthCheckRef.current) {
-			return
-		}
-		didInitialAuthCheckRef.current = true
-		if (isAuthenticated) {
-			void refreshModels()
-		}
-		// If user empty, do nothing (no auto login, no refresh)
-	}, [ready, isAuthenticated, refreshModels])
-
 	return (
 		<div>
 			{!ready ? (

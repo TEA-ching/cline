@@ -11,7 +11,7 @@ interface ConnectionInfo {
 }
 
 export const BrowserSettingsMenu = () => {
-	const { browserSettings, navigateToSettings } = useExtensionState()
+	const { browserSettings } = useExtensionState()
 	const containerRef = useRef<HTMLDivElement>(null)
 	const [showInfoPopover, setShowInfoPopover] = useState(false)
 	const [connectionInfo, setConnectionInfo] = useState<ConnectionInfo>({
@@ -61,10 +61,6 @@ export const BrowserSettingsMenu = () => {
 			document.removeEventListener("mousedown", handleClickOutside)
 		}
 	}, [showInfoPopover])
-
-	const openBrowserSettings = () => {
-		navigateToSettings("browser")
-	}
 
 	const toggleInfoPopover = () => {
 		setShowInfoPopover(!showInfoPopover)
@@ -195,10 +191,6 @@ export const BrowserSettingsMenu = () => {
 					)}
 				</div>
 			)}
-
-			<VSCodeButton appearance="icon" onClick={openBrowserSettings}>
-				<i className="codicon codicon-settings-gear" style={{ fontSize: "14.5px" }} />
-			</VSCodeButton>
 		</div>
 	)
 }

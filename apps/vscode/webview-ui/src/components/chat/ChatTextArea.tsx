@@ -15,10 +15,11 @@ import ContextMenu from "@/components/chat/ContextMenu"
 import { CHAT_CONSTANTS } from "@/components/chat/chat-view/constants"
 import SlashCommandMenu from "@/components/chat/SlashCommandMenu"
 import Thumbnails from "@/components/common/Thumbnails"
-import { getModeSpecificFields, normalizeApiConfiguration } from "@/components/settings/utils/providerUtils"
+import { getModeSpecificFields } from "@/components/settings/utils/providerUtils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import { usePlatform } from "@/context/PlatformContext"
+import { useNormalizedApiConfiguration } from "@/hooks/useNormalizedApiConfiguration"
 import { cn } from "@/lib/utils"
 import { FileServiceClient, ModelsServiceClient, StateServiceClient } from "@/services/grpc-client"
 import {
@@ -265,6 +266,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 		const [fileSearchResults, setFileSearchResults] = useState<SearchResult[]>([])
 		const [searchLoading, setSearchLoading] = useState(false)
 		const [, metaKeyChar] = useMetaKeyDetection(platform)
+		const { selectedProvider, selectedModelId } = useNormalizedApiConfiguration(mode)
 
 		// Fetch git commits when Git is selected or when typing a hash
 		useEffect(() => {
@@ -1146,7 +1148,6 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 		)
 
 		const modelDisplayName = useMemo(() => {
-			const { selectedProvider, selectedModelId } = normalizeApiConfiguration(apiConfiguration, mode)
 			const {
 				vsCodeLmModelSelector,
 				togetherModelId,
@@ -1185,7 +1186,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 				default:
 					return `${selectedProvider}:${selectedModelId}`
 			}
-		}, [apiConfiguration, mode])
+		}, [apiConfiguration, mode, selectedProvider, selectedModelId])
 
 		// Function to show error message for unsupported files for drag and drop
 		const showUnsupportedFileErrorMessage = () => {

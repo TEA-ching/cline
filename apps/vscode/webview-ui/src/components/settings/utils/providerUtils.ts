@@ -48,8 +48,6 @@ import {
 	moonshotModels,
 	nebiusDefaultModelId,
 	nebiusModels,
-	nousResearchDefaultModelId,
-	nousResearchModels,
 	openAiCodexDefaultModelId,
 	openAiCodexModels,
 	openAiModelInfoSaneDefaults,
@@ -81,11 +79,8 @@ import { Mode } from "@shared/storage/types"
 import * as reasoningSupport from "@shared/utils/reasoning-support"
 import { getKplModelInfo } from "@/components/chat/keypoolliveModelCache"
 
-export function supportsReasoningEffortForModelId(
-	modelId?: string,
-	_allowShortOpenAiIds = false,
-): boolean {
-	return reasoningSupport.supportsReasoningEffortForModel(modelId);
+export function supportsReasoningEffortForModelId(modelId?: string, _allowShortOpenAiIds = false): boolean {
+	return reasoningSupport.supportsReasoningEffortForModel(modelId)
 }
 
 /**
@@ -691,10 +686,7 @@ export function normalizeApiConfiguration(
  * @param mode The current mode ("plan" or "act")
  * @returns Object containing mode-specific field values for clean destructuring
  */
-export function getModeSpecificFields(
-	apiConfiguration: ApiConfiguration | undefined,
-	mode: Mode,
-) {
+export function getModeSpecificFields(apiConfiguration: ApiConfiguration | undefined, mode: Mode) {
 	if (!apiConfiguration) {
 		return {
 			// Core fields
@@ -711,7 +703,6 @@ export function getModeSpecificFields(
 			openAiModelId: undefined,
 			openRouterModelId: undefined,
 			clineModelId: undefined,
-			clinePassModelId: undefined,
 			groqModelId: undefined,
 			basetenModelId: undefined,
 			huggingFaceModelId: undefined,
@@ -726,7 +717,6 @@ export function getModeSpecificFields(
 			liteLlmModelInfo: undefined,
 			openRouterModelInfo: undefined,
 			clineModelInfo: undefined,
-			clinePassModelInfo: undefined,
 			requestyModelInfo: undefined,
 			groqModelInfo: undefined,
 			basetenModelInfo: undefined,
@@ -744,156 +734,62 @@ export function getModeSpecificFields(
 			// Other mode-specific fields
 			thinkingBudgetTokens: undefined,
 			reasoningEffort: undefined,
-		};
+		}
 	}
 
 	const openRouterModelId =
-		mode === "plan"
-			? apiConfiguration.planModeOpenRouterModelId
-			: apiConfiguration.actModeOpenRouterModelId;
+		mode === "plan" ? apiConfiguration.planModeOpenRouterModelId : apiConfiguration.actModeOpenRouterModelId
 	const openRouterModelInfo =
-		mode === "plan"
-			? apiConfiguration.planModeOpenRouterModelInfo
-			: apiConfiguration.actModeOpenRouterModelInfo;
+		mode === "plan" ? apiConfiguration.planModeOpenRouterModelInfo : apiConfiguration.actModeOpenRouterModelInfo
 
-	// Backward compatibility: Cline previously stored model selection in OpenRouter keys.
-	const clineModelId =
-		(mode === "plan"
-			? apiConfiguration.planModeClineModelId
-			: apiConfiguration.actModeClineModelId) || openRouterModelId;
-	const clineModelInfo =
-		(mode === "plan"
-			? apiConfiguration.planModeClineModelInfo
-			: apiConfiguration.actModeClineModelInfo) || openRouterModelInfo;
-	const clinePassModelId =
-		mode === "plan"
-			? apiConfiguration.planModeClinePassModelId
-			: apiConfiguration.actModeClinePassModelId;
-	const clinePassModelInfo =
-		mode === "plan"
-			? apiConfiguration.planModeClinePassModelInfo
-			: apiConfiguration.actModeClinePassModelInfo;
+	const clineModelId = mode === "plan" ? apiConfiguration.planModeClineModelId : apiConfiguration.actModeClineModelId
+	const clineModelInfo = mode === "plan" ? apiConfiguration.planModeClineModelInfo : apiConfiguration.actModeClineModelInfo
 
 	return {
 		// Core fields
-		apiProvider:
-			mode === "plan"
-				? apiConfiguration.planModeApiProvider
-				: apiConfiguration.actModeApiProvider,
-		apiModelId:
-			mode === "plan"
-				? apiConfiguration.planModeApiModelId
-				: apiConfiguration.actModeApiModelId,
+		apiProvider: mode === "plan" ? apiConfiguration.planModeApiProvider : apiConfiguration.actModeApiProvider,
+		apiModelId: mode === "plan" ? apiConfiguration.planModeApiModelId : apiConfiguration.actModeApiModelId,
 
 		// Provider-specific model IDs
-		togetherModelId:
-			mode === "plan"
-				? apiConfiguration.planModeTogetherModelId
-				: apiConfiguration.actModeTogetherModelId,
-		fireworksModelId:
-			mode === "plan"
-				? apiConfiguration.planModeFireworksModelId
-				: apiConfiguration.actModeFireworksModelId,
-		lmStudioModelId:
-			mode === "plan"
-				? apiConfiguration.planModeLmStudioModelId
-				: apiConfiguration.actModeLmStudioModelId,
-		ollamaModelId:
-			mode === "plan"
-				? apiConfiguration.planModeOllamaModelId
-				: apiConfiguration.actModeOllamaModelId,
-		liteLlmModelId:
-			mode === "plan"
-				? apiConfiguration.planModeLiteLlmModelId
-				: apiConfiguration.actModeLiteLlmModelId,
-		requestyModelId:
-			mode === "plan"
-				? apiConfiguration.planModeRequestyModelId
-				: apiConfiguration.actModeRequestyModelId,
-		openAiModelId:
-			mode === "plan"
-				? apiConfiguration.planModeOpenAiModelId
-				: apiConfiguration.actModeOpenAiModelId,
+		togetherModelId: mode === "plan" ? apiConfiguration.planModeTogetherModelId : apiConfiguration.actModeTogetherModelId,
+		fireworksModelId: mode === "plan" ? apiConfiguration.planModeFireworksModelId : apiConfiguration.actModeFireworksModelId,
+		lmStudioModelId: mode === "plan" ? apiConfiguration.planModeLmStudioModelId : apiConfiguration.actModeLmStudioModelId,
+		ollamaModelId: mode === "plan" ? apiConfiguration.planModeOllamaModelId : apiConfiguration.actModeOllamaModelId,
+		liteLlmModelId: mode === "plan" ? apiConfiguration.planModeLiteLlmModelId : apiConfiguration.actModeLiteLlmModelId,
+		requestyModelId: mode === "plan" ? apiConfiguration.planModeRequestyModelId : apiConfiguration.actModeRequestyModelId,
+		openAiModelId: mode === "plan" ? apiConfiguration.planModeOpenAiModelId : apiConfiguration.actModeOpenAiModelId,
 		openRouterModelId,
 		clineModelId,
-		clinePassModelId,
-		groqModelId:
-			mode === "plan"
-				? apiConfiguration.planModeGroqModelId
-				: apiConfiguration.actModeGroqModelId,
-		basetenModelId:
-			mode === "plan"
-				? apiConfiguration.planModeBasetenModelId
-				: apiConfiguration.actModeBasetenModelId,
+		groqModelId: mode === "plan" ? apiConfiguration.planModeGroqModelId : apiConfiguration.actModeGroqModelId,
+		basetenModelId: mode === "plan" ? apiConfiguration.planModeBasetenModelId : apiConfiguration.actModeBasetenModelId,
 		huggingFaceModelId:
-			mode === "plan"
-				? apiConfiguration.planModeHuggingFaceModelId
-				: apiConfiguration.actModeHuggingFaceModelId,
+			mode === "plan" ? apiConfiguration.planModeHuggingFaceModelId : apiConfiguration.actModeHuggingFaceModelId,
 		huaweiCloudMaasModelId:
-			mode === "plan"
-				? apiConfiguration.planModeHuaweiCloudMaasModelId
-				: apiConfiguration.actModeHuaweiCloudMaasModelId,
-		ocaModelId:
-			mode === "plan"
-				? apiConfiguration.planModeOcaModelId
-				: apiConfiguration.actModeOcaModelId,
-		hicapModelId:
-			mode === "plan"
-				? apiConfiguration.planModeHicapModelId
-				: apiConfiguration.actModeHicapModelId,
-		aihubmixModelId:
-			mode === "plan"
-				? apiConfiguration.planModeAihubmixModelId
-				: apiConfiguration.actModeAihubmixModelId,
+			mode === "plan" ? apiConfiguration.planModeHuaweiCloudMaasModelId : apiConfiguration.actModeHuaweiCloudMaasModelId,
+		ocaModelId: mode === "plan" ? apiConfiguration.planModeOcaModelId : apiConfiguration.actModeOcaModelId,
+		hicapModelId: mode === "plan" ? apiConfiguration.planModeHicapModelId : apiConfiguration.actModeHicapModelId,
+		aihubmixModelId: mode === "plan" ? apiConfiguration.planModeAihubmixModelId : apiConfiguration.actModeAihubmixModelId,
 		nousResearchModelId:
-			mode === "plan"
-				? apiConfiguration.planModeNousResearchModelId
-				: apiConfiguration.actModeNousResearchModelId,
+			mode === "plan" ? apiConfiguration.planModeNousResearchModelId : apiConfiguration.actModeNousResearchModelId,
 		vercelAiGatewayModelId:
-			mode === "plan"
-				? apiConfiguration.planModeVercelAiGatewayModelId
-				: apiConfiguration.actModeVercelAiGatewayModelId,
+			mode === "plan" ? apiConfiguration.planModeVercelAiGatewayModelId : apiConfiguration.actModeVercelAiGatewayModelId,
 
 		// Model info objects
-		openAiModelInfo:
-			mode === "plan"
-				? apiConfiguration.planModeOpenAiModelInfo
-				: apiConfiguration.actModeOpenAiModelInfo,
-		liteLlmModelInfo:
-			mode === "plan"
-				? apiConfiguration.planModeLiteLlmModelInfo
-				: apiConfiguration.actModeLiteLlmModelInfo,
+		openAiModelInfo: mode === "plan" ? apiConfiguration.planModeOpenAiModelInfo : apiConfiguration.actModeOpenAiModelInfo,
+		liteLlmModelInfo: mode === "plan" ? apiConfiguration.planModeLiteLlmModelInfo : apiConfiguration.actModeLiteLlmModelInfo,
 		openRouterModelInfo,
 		clineModelInfo,
-		clinePassModelInfo,
 		requestyModelInfo:
-			mode === "plan"
-				? apiConfiguration.planModeRequestyModelInfo
-				: apiConfiguration.actModeRequestyModelInfo,
-		groqModelInfo:
-			mode === "plan"
-				? apiConfiguration.planModeGroqModelInfo
-				: apiConfiguration.actModeGroqModelInfo,
-		basetenModelInfo:
-			mode === "plan"
-				? apiConfiguration.planModeBasetenModelInfo
-				: apiConfiguration.actModeBasetenModelInfo,
+			mode === "plan" ? apiConfiguration.planModeRequestyModelInfo : apiConfiguration.actModeRequestyModelInfo,
+		groqModelInfo: mode === "plan" ? apiConfiguration.planModeGroqModelInfo : apiConfiguration.actModeGroqModelInfo,
+		basetenModelInfo: mode === "plan" ? apiConfiguration.planModeBasetenModelInfo : apiConfiguration.actModeBasetenModelInfo,
 		huggingFaceModelInfo:
-			mode === "plan"
-				? apiConfiguration.planModeHuggingFaceModelInfo
-				: apiConfiguration.actModeHuggingFaceModelInfo,
+			mode === "plan" ? apiConfiguration.planModeHuggingFaceModelInfo : apiConfiguration.actModeHuggingFaceModelInfo,
 		vsCodeLmModelSelector:
-			mode === "plan"
-				? apiConfiguration.planModeVsCodeLmModelSelector
-				: apiConfiguration.actModeVsCodeLmModelSelector,
-		hicapModelInfo:
-			mode === "plan"
-				? apiConfiguration.planModeHicapModelInfo
-				: apiConfiguration.actModeHicapModelInfo,
+			mode === "plan" ? apiConfiguration.planModeVsCodeLmModelSelector : apiConfiguration.actModeVsCodeLmModelSelector,
+		hicapModelInfo: mode === "plan" ? apiConfiguration.planModeHicapModelInfo : apiConfiguration.actModeHicapModelInfo,
 		aihubmixModelInfo:
-			mode === "plan"
-				? apiConfiguration.planModeAihubmixModelInfo
-				: apiConfiguration.actModeAihubmixModelInfo,
+			mode === "plan" ? apiConfiguration.planModeAihubmixModelInfo : apiConfiguration.actModeAihubmixModelInfo,
 		vercelAiGatewayModelInfo:
 			mode === "plan"
 				? apiConfiguration.planModeVercelAiGatewayModelInfo
@@ -917,19 +813,11 @@ export function getModeSpecificFields(
 
 		// Other mode-specific fields
 		thinkingBudgetTokens:
-			mode === "plan"
-				? apiConfiguration.planModeThinkingBudgetTokens
-				: apiConfiguration.actModeThinkingBudgetTokens,
-		reasoningEffort:
-			mode === "plan"
-				? apiConfiguration.planModeReasoningEffort
-				: apiConfiguration.actModeReasoningEffort,
+			mode === "plan" ? apiConfiguration.planModeThinkingBudgetTokens : apiConfiguration.actModeThinkingBudgetTokens,
+		reasoningEffort: mode === "plan" ? apiConfiguration.planModeReasoningEffort : apiConfiguration.actModeReasoningEffort,
 		// Oracle Code Assist
-		ocaModelInfo:
-			mode === "plan"
-				? apiConfiguration.planModeOcaModelInfo
-				: apiConfiguration.actModeOcaModelInfo,
-	};
+		ocaModelInfo: mode === "plan" ? apiConfiguration.planModeOcaModelInfo : apiConfiguration.actModeOcaModelInfo,
+	}
 }
 
 /**
@@ -942,14 +830,14 @@ export async function syncModeConfigurations(
 	handleFieldsChange: (updates: Partial<ApiConfiguration>) => Promise<void>,
 ): Promise<void> {
 	if (!apiConfiguration) {
-		return;
+		return
 	}
 
-	const sourceFields = getModeSpecificFields(apiConfiguration, sourceMode);
-	const { apiProvider } = sourceFields;
+	const sourceFields = getModeSpecificFields(apiConfiguration, sourceMode)
+	const { apiProvider } = sourceFields
 
 	if (!apiProvider) {
-		return;
+		return
 	}
 
 	// Build the complete update object with both plan and act mode fields
@@ -961,195 +849,159 @@ export async function syncModeConfigurations(
 		actModeThinkingBudgetTokens: sourceFields.thinkingBudgetTokens,
 		planModeReasoningEffort: sourceFields.reasoningEffort,
 		actModeReasoningEffort: sourceFields.reasoningEffort,
-	};
+	}
 
 	// Handle provider-specific fields
 	switch (apiProvider) {
 		case "openrouter":
-			updates.planModeOpenRouterModelId = sourceFields.openRouterModelId;
-			updates.actModeOpenRouterModelId = sourceFields.openRouterModelId;
-			updates.planModeOpenRouterModelInfo = sourceFields.openRouterModelInfo;
-			updates.actModeOpenRouterModelInfo = sourceFields.openRouterModelInfo;
-			break;
+			updates.planModeOpenRouterModelId = sourceFields.openRouterModelId
+			updates.actModeOpenRouterModelId = sourceFields.openRouterModelId
+			updates.planModeOpenRouterModelInfo = sourceFields.openRouterModelInfo
+			updates.actModeOpenRouterModelInfo = sourceFields.openRouterModelInfo
+			break
 
 		case "cline":
-			updates.planModeClineModelId = sourceFields.clineModelId;
-			updates.actModeClineModelId = sourceFields.clineModelId;
-			updates.planModeClineModelInfo = sourceFields.clineModelInfo;
-			updates.actModeClineModelInfo = sourceFields.clineModelInfo;
-			break;
-
-		case "cline-pass":
-			updates.planModeClinePassModelId = sourceFields.clinePassModelId;
-			updates.actModeClinePassModelId = sourceFields.clinePassModelId;
-			updates.planModeClinePassModelInfo = sourceFields.clinePassModelInfo;
-			updates.actModeClinePassModelInfo = sourceFields.clinePassModelInfo;
-			break;
+			updates.planModeClineModelId = sourceFields.clineModelId
+			updates.actModeClineModelId = sourceFields.clineModelId
+			updates.planModeClineModelInfo = sourceFields.clineModelInfo
+			updates.actModeClineModelInfo = sourceFields.clineModelInfo
+			break
 
 		case "requesty":
-			updates.planModeRequestyModelId = sourceFields.requestyModelId;
-			updates.actModeRequestyModelId = sourceFields.requestyModelId;
-			updates.planModeRequestyModelInfo = sourceFields.requestyModelInfo;
-			updates.actModeRequestyModelInfo = sourceFields.requestyModelInfo;
-			break;
+			updates.planModeRequestyModelId = sourceFields.requestyModelId
+			updates.actModeRequestyModelId = sourceFields.requestyModelId
+			updates.planModeRequestyModelInfo = sourceFields.requestyModelInfo
+			updates.actModeRequestyModelInfo = sourceFields.requestyModelInfo
+			break
 
 		case "openai":
-			updates.planModeOpenAiModelId = sourceFields.openAiModelId;
-			updates.actModeOpenAiModelId = sourceFields.openAiModelId;
-			updates.planModeOpenAiModelInfo = sourceFields.openAiModelInfo;
-			updates.actModeOpenAiModelInfo = sourceFields.openAiModelInfo;
-			break;
+			updates.planModeOpenAiModelId = sourceFields.openAiModelId
+			updates.actModeOpenAiModelId = sourceFields.openAiModelId
+			updates.planModeOpenAiModelInfo = sourceFields.openAiModelInfo
+			updates.actModeOpenAiModelInfo = sourceFields.openAiModelInfo
+			break
 
 		case "ollama":
-			updates.planModeOllamaModelId = sourceFields.ollamaModelId;
-			updates.actModeOllamaModelId = sourceFields.ollamaModelId;
-			break;
+			updates.planModeOllamaModelId = sourceFields.ollamaModelId
+			updates.actModeOllamaModelId = sourceFields.ollamaModelId
+			break
 
 		case "lmstudio":
-			updates.planModeLmStudioModelId = sourceFields.lmStudioModelId;
-			updates.actModeLmStudioModelId = sourceFields.lmStudioModelId;
-			break;
+			updates.planModeLmStudioModelId = sourceFields.lmStudioModelId
+			updates.actModeLmStudioModelId = sourceFields.lmStudioModelId
+			break
 
 		case "vscode-lm":
-			updates.planModeVsCodeLmModelSelector =
-				sourceFields.vsCodeLmModelSelector;
-			updates.actModeVsCodeLmModelSelector = sourceFields.vsCodeLmModelSelector;
-			break;
+			updates.planModeVsCodeLmModelSelector = sourceFields.vsCodeLmModelSelector
+			updates.actModeVsCodeLmModelSelector = sourceFields.vsCodeLmModelSelector
+			break
 
 		case "litellm":
-			updates.planModeLiteLlmModelId = sourceFields.liteLlmModelId;
-			updates.actModeLiteLlmModelId = sourceFields.liteLlmModelId;
-			updates.planModeLiteLlmModelInfo = sourceFields.liteLlmModelInfo;
-			updates.actModeLiteLlmModelInfo = sourceFields.liteLlmModelInfo;
-			break;
+			updates.planModeLiteLlmModelId = sourceFields.liteLlmModelId
+			updates.actModeLiteLlmModelId = sourceFields.liteLlmModelId
+			updates.planModeLiteLlmModelInfo = sourceFields.liteLlmModelInfo
+			updates.actModeLiteLlmModelInfo = sourceFields.liteLlmModelInfo
+			break
 
 		case "groq":
-			updates.planModeGroqModelId = sourceFields.groqModelId;
-			updates.actModeGroqModelId = sourceFields.groqModelId;
-			updates.planModeGroqModelInfo = sourceFields.groqModelInfo;
-			updates.actModeGroqModelInfo = sourceFields.groqModelInfo;
-			break;
+			updates.planModeGroqModelId = sourceFields.groqModelId
+			updates.actModeGroqModelId = sourceFields.groqModelId
+			updates.planModeGroqModelInfo = sourceFields.groqModelInfo
+			updates.actModeGroqModelInfo = sourceFields.groqModelInfo
+			break
 
 		case "huggingface":
-			updates.planModeHuggingFaceModelId = sourceFields.huggingFaceModelId;
-			updates.actModeHuggingFaceModelId = sourceFields.huggingFaceModelId;
-			updates.planModeHuggingFaceModelInfo = sourceFields.huggingFaceModelInfo;
-			updates.actModeHuggingFaceModelInfo = sourceFields.huggingFaceModelInfo;
-			break;
+			updates.planModeHuggingFaceModelId = sourceFields.huggingFaceModelId
+			updates.actModeHuggingFaceModelId = sourceFields.huggingFaceModelId
+			updates.planModeHuggingFaceModelInfo = sourceFields.huggingFaceModelInfo
+			updates.actModeHuggingFaceModelInfo = sourceFields.huggingFaceModelInfo
+			break
 
 		case "baseten":
-			updates.planModeBasetenModelId = sourceFields.basetenModelId;
-			updates.actModeBasetenModelId = sourceFields.basetenModelId;
-			updates.planModeBasetenModelInfo = sourceFields.basetenModelInfo;
-			updates.actModeBasetenModelInfo = sourceFields.basetenModelInfo;
-			break;
+			updates.planModeBasetenModelId = sourceFields.basetenModelId
+			updates.actModeBasetenModelId = sourceFields.basetenModelId
+			updates.planModeBasetenModelInfo = sourceFields.basetenModelInfo
+			updates.actModeBasetenModelInfo = sourceFields.basetenModelInfo
+			break
 
 		case "together":
-			updates.planModeTogetherModelId = sourceFields.togetherModelId;
-			updates.actModeTogetherModelId = sourceFields.togetherModelId;
-			break;
+			updates.planModeTogetherModelId = sourceFields.togetherModelId
+			updates.actModeTogetherModelId = sourceFields.togetherModelId
+			break
 
 		case "fireworks":
-			updates.planModeFireworksModelId = sourceFields.fireworksModelId;
-			updates.actModeFireworksModelId = sourceFields.fireworksModelId;
-			break;
+			updates.planModeFireworksModelId = sourceFields.fireworksModelId
+			updates.actModeFireworksModelId = sourceFields.fireworksModelId
+			break
 
 		case "bedrock":
-			updates.planModeApiModelId = sourceFields.apiModelId;
-			updates.actModeApiModelId = sourceFields.apiModelId;
-			updates.planModeAwsBedrockCustomSelected =
-				sourceFields.awsBedrockCustomSelected;
-			updates.actModeAwsBedrockCustomSelected =
-				sourceFields.awsBedrockCustomSelected;
-			updates.planModeAwsBedrockCustomModelBaseId =
-				sourceFields.awsBedrockCustomModelBaseId;
-			updates.actModeAwsBedrockCustomModelBaseId =
-				sourceFields.awsBedrockCustomModelBaseId;
-			break;
+			updates.planModeApiModelId = sourceFields.apiModelId
+			updates.actModeApiModelId = sourceFields.apiModelId
+			updates.planModeAwsBedrockCustomSelected = sourceFields.awsBedrockCustomSelected
+			updates.actModeAwsBedrockCustomSelected = sourceFields.awsBedrockCustomSelected
+			updates.planModeAwsBedrockCustomModelBaseId = sourceFields.awsBedrockCustomModelBaseId
+			updates.actModeAwsBedrockCustomModelBaseId = sourceFields.awsBedrockCustomModelBaseId
+			break
 		case "huawei-cloud-maas":
-			updates.planModeHuaweiCloudMaasModelId =
-				sourceFields.huaweiCloudMaasModelId;
-			updates.actModeHuaweiCloudMaasModelId =
-				sourceFields.huaweiCloudMaasModelId;
-			updates.planModeHuaweiCloudMaasModelInfo =
-				sourceFields.huaweiCloudMaasModelInfo;
-			updates.actModeHuaweiCloudMaasModelInfo =
-				sourceFields.huaweiCloudMaasModelInfo;
-			break;
+			updates.planModeHuaweiCloudMaasModelId = sourceFields.huaweiCloudMaasModelId
+			updates.actModeHuaweiCloudMaasModelId = sourceFields.huaweiCloudMaasModelId
+			updates.planModeHuaweiCloudMaasModelInfo = sourceFields.huaweiCloudMaasModelInfo
+			updates.actModeHuaweiCloudMaasModelInfo = sourceFields.huaweiCloudMaasModelInfo
+			break
 
 		case "dify":
 			// Dify doesn't have mode-specific model configurations
 			// The model is configured in the Dify application itself
-			break;
+			break
 
 		case "hicap":
-			updates.planModeHicapModelId = sourceFields.hicapModelId;
-			updates.actModeHicapModelId = sourceFields.hicapModelId;
-			updates.planModeHicapModelInfo = sourceFields.hicapModelInfo;
-			updates.actModeHicapModelInfo = sourceFields.hicapModelInfo;
-			break;
+			updates.planModeHicapModelId = sourceFields.hicapModelId
+			updates.actModeHicapModelId = sourceFields.hicapModelId
+			updates.planModeHicapModelInfo = sourceFields.hicapModelInfo
+			updates.actModeHicapModelInfo = sourceFields.hicapModelInfo
+			break
 
 		case "vercel-ai-gateway":
 			// Vercel AI Gateway uses its own model fields
-			updates.planModeVercelAiGatewayModelId =
-				sourceFields.vercelAiGatewayModelId;
-			updates.actModeVercelAiGatewayModelId =
-				sourceFields.vercelAiGatewayModelId;
-			updates.planModeVercelAiGatewayModelInfo =
-				sourceFields.vercelAiGatewayModelInfo;
-			updates.actModeVercelAiGatewayModelInfo =
-				sourceFields.vercelAiGatewayModelInfo;
-			break;
+			updates.planModeVercelAiGatewayModelId = sourceFields.vercelAiGatewayModelId
+			updates.actModeVercelAiGatewayModelId = sourceFields.vercelAiGatewayModelId
+			updates.planModeVercelAiGatewayModelInfo = sourceFields.vercelAiGatewayModelInfo
+			updates.actModeVercelAiGatewayModelInfo = sourceFields.vercelAiGatewayModelInfo
+			break
 		case "oca":
-			updates.planModeOcaModelId = sourceFields.ocaModelId;
-			updates.actModeOcaModelId = sourceFields.ocaModelId;
-			updates.planModeOcaModelInfo = sourceFields.ocaModelInfo;
-			updates.actModeOcaModelInfo = sourceFields.ocaModelInfo;
-			break;
+			updates.planModeOcaModelId = sourceFields.ocaModelId
+			updates.actModeOcaModelId = sourceFields.ocaModelId
+			updates.planModeOcaModelInfo = sourceFields.ocaModelInfo
+			updates.actModeOcaModelInfo = sourceFields.ocaModelInfo
+			break
 		case "nousResearch":
-			updates.planModeNousResearchModelId = sourceFields.nousResearchModelId;
-			updates.actModeNousResearchModelId = sourceFields.nousResearchModelId;
-			break;
+			updates.planModeNousResearchModelId = sourceFields.nousResearchModelId
+			updates.actModeNousResearchModelId = sourceFields.nousResearchModelId
+			break
 
 		case "aihubmix":
-			updates.planModeAihubmixModelId = sourceFields.aihubmixModelId;
-			updates.planModeAihubmixModelInfo = sourceFields.aihubmixModelInfo;
-			updates.actModeAihubmixModelId = sourceFields.aihubmixModelId;
-			updates.actModeAihubmixModelInfo = sourceFields.aihubmixModelInfo;
-			break;
+			updates.planModeAihubmixModelId = sourceFields.aihubmixModelId
+			updates.planModeAihubmixModelInfo = sourceFields.aihubmixModelInfo
+			updates.actModeAihubmixModelId = sourceFields.aihubmixModelId
+			updates.actModeAihubmixModelInfo = sourceFields.aihubmixModelInfo
+			break
 
-		// Providers that use apiProvider + apiModelId fields
-		case "anthropic":
-		case "claude-code":
-		case "vertex":
-		case "gemini":
-		case "openai-native":
-		case "openai-codex":
-		case "deepseek":
-		case "qwen":
-		case "doubao":
-		case "mistral":
-		case "asksage":
-		case "xai":
-		case "nebius":
-		case "wandb":
-		case "cohere":
-		case "sambanova":
-		case "cerebras":
-		case "sapaicore":
-		case "zai":
-		case "minimax":
+		// Default branch: providers that use the common `apiProvider` +
+		// `apiModelId` ApiConfiguration field pair (anthropic, claude-code,
+		// vertex, gemini, openai-native, openai-codex, deepseek, qwen,
+		// doubao, mistral, asksage, xai, nebius, wandb, sambanova,
+		// cerebras, sapaicore, zai, minimax).
 		default:
-			updates.planModeApiModelId = sourceFields.apiModelId;
-			updates.actModeApiModelId = sourceFields.apiModelId;
-			break;
+			updates.planModeApiModelId = sourceFields.apiModelId
+			updates.actModeApiModelId = sourceFields.apiModelId
+			break
 	}
 
 	// Make the atomic update
-	await handleFieldsChange(updates);
+	await handleFieldsChange(updates)
 }
 
-export { filterOpenRouterModelIds } from "@shared/utils/model-filters";
+export { filterOpenRouterModelIds } from "@shared/utils/model-filters"
 
 // Helper to get provider-specific configuration info and empty state guidance
 export const getProviderInfo = (
@@ -1161,110 +1013,88 @@ export const getProviderInfo = (
 		case "baseten":
 			return {
 				modelId:
-					effectiveMode === "plan"
-						? apiConfiguration.planModeBasetenModelId
-						: apiConfiguration.actModeBasetenModelId,
+					effectiveMode === "plan" ? apiConfiguration.planModeBasetenModelId : apiConfiguration.actModeBasetenModelId,
 				baseUrl: apiConfiguration.basetenBaseUrl,
 				helpText: "Start Baseten and load a model to begin",
-			};
+			}
 		case "lmstudio":
 			return {
 				modelId:
-					effectiveMode === "plan"
-						? apiConfiguration.planModeLmStudioModelId
-						: apiConfiguration.actModeLmStudioModelId,
+					effectiveMode === "plan" ? apiConfiguration.planModeLmStudioModelId : apiConfiguration.actModeLmStudioModelId,
 				baseUrl: apiConfiguration.lmStudioBaseUrl,
 				helpText: "Start LM Studio and load a model to begin",
-			};
+			}
 		case "ollama":
 			return {
 				modelId:
-					effectiveMode === "plan"
-						? apiConfiguration.planModeOllamaModelId
-						: apiConfiguration.actModeOllamaModelId,
+					effectiveMode === "plan" ? apiConfiguration.planModeOllamaModelId : apiConfiguration.actModeOllamaModelId,
 				baseUrl: apiConfiguration.ollamaBaseUrl,
 				helpText: "Run `ollama serve` and pull a model",
-			};
+			}
 		case "litellm":
 			return {
 				modelId:
-					effectiveMode === "plan"
-						? apiConfiguration.planModeLiteLlmModelId
-						: apiConfiguration.actModeLiteLlmModelId,
+					effectiveMode === "plan" ? apiConfiguration.planModeLiteLlmModelId : apiConfiguration.actModeLiteLlmModelId,
 				baseUrl: apiConfiguration.liteLlmBaseUrl,
 				helpText: "Add your LiteLLM proxy URL in settings",
-			};
+			}
 		case "openai":
 			return {
 				modelId:
-					effectiveMode === "plan"
-						? apiConfiguration.planModeOpenAiModelId
-						: apiConfiguration.actModeOpenAiModelId,
+					effectiveMode === "plan" ? apiConfiguration.planModeOpenAiModelId : apiConfiguration.actModeOpenAiModelId,
 				baseUrl: apiConfiguration.openAiBaseUrl,
 				helpText: "Add your OpenAI API key and endpoint",
-			};
+			}
 		case "vscode-lm":
 			return {
 				modelId: undefined,
 				baseUrl: undefined,
 				helpText: "Select a VS Code language model from settings",
-			};
+			}
 		case "requesty":
 			return {
 				modelId:
-					effectiveMode === "plan"
-						? apiConfiguration.planModeRequestyModelId
-						: apiConfiguration.actModeRequestyModelId,
+					effectiveMode === "plan" ? apiConfiguration.planModeRequestyModelId : apiConfiguration.actModeRequestyModelId,
 				baseUrl: apiConfiguration.requestyBaseUrl,
 				helpText: "Add your Requesty API key in settings",
-			};
+			}
 		case "together":
 			return {
 				modelId:
-					effectiveMode === "plan"
-						? apiConfiguration.planModeTogetherModelId
-						: apiConfiguration.actModeTogetherModelId,
+					effectiveMode === "plan" ? apiConfiguration.planModeTogetherModelId : apiConfiguration.actModeTogetherModelId,
 				baseUrl: undefined,
 				helpText: "Add your Together AI API key in settings",
-			};
+			}
 		case "dify":
 			return {
 				modelId: undefined,
 				baseUrl: apiConfiguration.difyBaseUrl,
 				helpText: "Configure your Dify workflow URL and API key",
-			};
+			}
 		case "hicap":
 			return {
-				modelId:
-					effectiveMode === "plan"
-						? apiConfiguration.planModeHicapModelId
-						: apiConfiguration.actModeHicapModelId,
+				modelId: effectiveMode === "plan" ? apiConfiguration.planModeHicapModelId : apiConfiguration.actModeHicapModelId,
 				baseUrl: undefined,
 				helpText: "Add your HiCap API key in settings",
-			};
+			}
 		case "oca":
 			return {
-				modelId:
-					effectiveMode === "plan"
-						? apiConfiguration.planModeOcaModelId
-						: apiConfiguration.actModeOcaModelId,
+				modelId: effectiveMode === "plan" ? apiConfiguration.planModeOcaModelId : apiConfiguration.actModeOcaModelId,
 				baseUrl: apiConfiguration.ocaBaseUrl,
 				helpText: "Configure your OCA endpoint in settings",
-			};
+			}
 		case "aihubmix":
 			return {
 				modelId:
-					effectiveMode === "plan"
-						? apiConfiguration.planModeAihubmixModelId
-						: apiConfiguration.actModeAihubmixModelId,
+					effectiveMode === "plan" ? apiConfiguration.planModeAihubmixModelId : apiConfiguration.actModeAihubmixModelId,
 				baseUrl: apiConfiguration.aihubmixBaseUrl,
 				helpText: "Add your AIHubMix API key in settings",
-			};
+			}
 		default:
 			return {
 				modelId: undefined,
 				baseUrl: undefined,
 				helpText: "Configure this provider in model settings",
-			};
+			}
 	}
-};
+}
