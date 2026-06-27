@@ -122,7 +122,7 @@ export function createGitHubTool(ctx?: GitHubToolContext): AgentTool<any, any> {
       pull_number: z.number().int().min(1).optional().describe('Pull request number (get_pr_diff only)'),
     }),
     timeoutMs: 20_000,
-    // biome-ignore lint/suspicious/noExplicitAny: discriminated union input
+    // biome-ignore lint/suspicious/noExplicitAny: flat input schema, action dispatch handles field presence
     execute: async (input: any) => {
       try {
         switch (input.action) {
