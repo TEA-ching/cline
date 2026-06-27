@@ -422,8 +422,8 @@ async function executeWithRetry(
     // so the main-thread lastKeyError effect doesn't race with rate_limited.
     const fullMsg = result.error?.stack ? `${cleanMsg}\n${result.error.stack}` : cleanMsg
     console.error('[agent.worker] error:', fullMsg)
-    if (isRateLimit) postKeyError(fullMsg)
-    postTurnError(fullMsg)
+    if (isRateLimit) postKeyError(cleanMsg)
+    postTurnError(cleanMsg)
     return
   }
 }
