@@ -28,7 +28,6 @@ import type { VirtualFS } from '@/vfs/virtual-fs'
 import {
   scrapeWithFirecrawl,
   searchWithFirecrawl,
-  pickFirecrawlKey,
 } from './firecrawl-client'
 import { emulateShellCommands } from './shell-emulator'
 import { createResearchPlanTool, createCompleteResearchStepTool } from './research-tool'
@@ -433,8 +432,6 @@ export function createBrowserTools(
   ctx: BrowserToolContext,
 // biome-ignore lint/suspicious/noExplicitAny: tool input/output types vary per tool
 ): AgentTool<any, any>[] {
-  let firecrawlCallCount = 0
-
   const vfsRead = createTool({
     name: 'vfs_read',
     description: 'Read one or more files from the virtual file system.',
@@ -785,28 +782,11 @@ export function createBrowserTools(
       url: z.string().url(),
     }),
     execute: async ({ url }) => {
-      const key = pickFirecrawlKey(ctx.firecrawlKeys, firecrawlCallCount++)
-      try {
-        return await scrapeWithFirecrawl(url, {
-          endpoint: ctx.firecrawlEndpoint,
-          apiKey: key,
-          timeoutMs: 35_000,
-        })
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        if (msg.includes('auth failed')) {
-          // Key already marked failed by scrapeWithFirecrawl; try once with the next key
-          const nextKey = pickFirecrawlKey(ctx.firecrawlKeys, firecrawlCallCount++)
-          if (nextKey !== key) {
-            return await scrapeWithFirecrawl(url, {
-              endpoint: ctx.firecrawlEndpoint,
-              apiKey: nextKey,
-              timeoutMs: 35_000,
-            })
-          }
-        }
-        throw err
-      }
+      return await scrapeWithFirecrawl(
+        url,
+        { endpoint: ctx.firecrawlEndpoint, apiKey: ctx.firecrawlKeys[0] ?? '', timeoutMs: 35_000 },
+        ctx.firecrawlKeys,
+      )
     },
   })
 
@@ -827,27 +807,11 @@ export function createBrowserTools(
       const focusDomains = getFocusDomains(ctx.focusMode)
       const effectiveAllowed = focusDomains.includeDomains ?? includeDomains
       const effectiveBlocked = focusDomains.excludeDomains ?? excludeDomains
-      const key = pickFirecrawlKey(ctx.firecrawlKeys, firecrawlCallCount++)
-      try {
-        return await searchWithFirecrawl(
-          query,
-          { endpoint: ctx.firecrawlEndpoint, apiKey: key, timeoutMs: 90_000 },
-          { limit, includeDomains: effectiveAllowed, excludeDomains: effectiveBlocked },
-        )
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        if (msg.includes('auth failed')) {
-          const nextKey = pickFirecrawlKey(ctx.firecrawlKeys, firecrawlCallCount++)
-          if (nextKey !== key) {
-            return await searchWithFirecrawl(
-              query,
-              { endpoint: ctx.firecrawlEndpoint, apiKey: nextKey, timeoutMs: 90_000 },
-              { limit, includeDomains: effectiveAllowed, excludeDomains: effectiveBlocked },
-            )
-          }
-        }
-        throw err
-      }
+      return await searchWithFirecrawl(
+        query,
+        { endpoint: ctx.firecrawlEndpoint, apiKey: ctx.firecrawlKeys[0] ?? '', timeoutMs: 90_000 },
+        { keys: ctx.firecrawlKeys, limit, includeDomains: effectiveAllowed, excludeDomains: effectiveBlocked },
+      )
     },
   })
 
@@ -892,10 +856,11 @@ export function createBrowserTools(
     },
   })
 
-  const deepResearch = createDeepResearchTool(
-    { firecrawlKeys: ctx.firecrawlKeys, firecrawlEndpoint: ctx.firecrawlEndpoint, focusMode: ctx.focusMode },
-    () => pickFirecrawlKey(ctx.firecrawlKeys, firecrawlCallCount++),
-  )
+  const deepResearch = createDeepResearchTool({
+    firecrawlKeys: ctx.firecrawlKeys,
+    firecrawlEndpoint: ctx.firecrawlEndpoint,
+    focusMode: ctx.focusMode,
+  })
 
   const suggestFollowups = createTool({
     name: 'suggest_followups',

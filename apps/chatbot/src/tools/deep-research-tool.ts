@@ -132,11 +132,9 @@ function scorePassage(text: string, qWords: Set<string>): number {
 /**
  * Creates the deep_research tool.
  * @param ctx - Firecrawl configuration + optional focus mode for domain filtering
- * @param nextKey - Returns the next Firecrawl API key (handles round-robin externally)
  */
 export function createDeepResearchTool(
   ctx: { firecrawlKeys: string[]; firecrawlEndpoint: string; focusMode?: FocusMode },
-  nextKey: () => string,
 ): AgentTool<any, any> {
   return createTool({
     name: 'deep_research',
@@ -170,8 +168,8 @@ Cite sources with [citation:1], [citation:2], etc.`,
             q,
             // No markdown scraping here — we only need URLs/titles/descriptions.
             // Full content is fetched in the scrapeWithFirecrawl pass below.
-            { endpoint: ctx.firecrawlEndpoint, apiKey: nextKey(), timeoutMs: 30_000 },
-            { limit: 5, ...focusDomains, scrapeOptions: null },
+            { endpoint: ctx.firecrawlEndpoint, apiKey: ctx.firecrawlKeys[0] ?? '', timeoutMs: 30_000 },
+            { keys: ctx.firecrawlKeys, limit: 5, ...focusDomains, scrapeOptions: null },
           ),
         ),
       )
@@ -198,11 +196,11 @@ Cite sources with [citation:1], [citation:2], etc.`,
       // Scrape pages in parallel
       const scrapeResults = await Promise.allSettled(
         urlsToScrape.map(item =>
-          scrapeWithFirecrawl(item.url, {
-            endpoint: ctx.firecrawlEndpoint,
-            apiKey: nextKey(),
-            timeoutMs: 35_000,
-          }),
+          scrapeWithFirecrawl(
+            item.url,
+            { endpoint: ctx.firecrawlEndpoint, apiKey: ctx.firecrawlKeys[0] ?? '', timeoutMs: 35_000 },
+            ctx.firecrawlKeys,
+          ),
         ),
       )
 

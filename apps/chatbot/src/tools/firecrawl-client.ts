@@ -37,23 +37,48 @@ const failedFirecrawlKeys = new Set<string>()
 // Set of keys that have run out of credits (402 errors)
 const outOfCreditsKeys = new Set<string>()
 
+// Billing period end (ms epoch) per key — used to auto-recover a key once its period resets
+const keyBillingPeriodEnd = new Map<string, number>()
+
 // Cache for credit usage information to avoid frequent API calls
 const creditUsageCache = new Map<string, {
   remainingCredits: number
   lastChecked: number
   expiresAt: number
+  billingPeriodEnd?: number // ms epoch — preserved when key is marked out-of-credits
 }>()
 
 // In-flight credit fetch promises — deduplicates concurrent fetches for the same key
 const pendingCreditFetches = new Map<string, Promise<FirecrawlCreditUsage>>()
+
+/**
+ * Removes keys from `outOfCreditsKeys` whose billing period has already reset.
+ * Called before any key-selection operation so stale blacklist entries don't
+ * prevent use of keys that have received fresh credits.
+ */
+function clearExpiredOutOfCreditsKeys(): void {
+  if (outOfCreditsKeys.size === 0) return
+  const now = Date.now()
+  for (const key of outOfCreditsKeys) {
+    const periodEnd = keyBillingPeriodEnd.get(key)
+    if (periodEnd !== undefined && now >= periodEnd) {
+      outOfCreditsKeys.delete(key)
+      keyBillingPeriodEnd.delete(key)
+    }
+  }
+}
 
 export function markFirecrawlKeyFailed(key: string): void {
   failedFirecrawlKeys.add(key)
 }
 
 export function markFirecrawlKeyOutOfCredits(key: string): void {
+  // Preserve billing period end before deleting cache so auto-recovery still works
+  const cached = creditUsageCache.get(key)
+  if (cached?.billingPeriodEnd !== undefined) {
+    keyBillingPeriodEnd.set(key, cached.billingPeriodEnd)
+  }
   outOfCreditsKeys.add(key)
-  // Remove from cache so it won't be selected again
   creditUsageCache.delete(key)
 }
 
@@ -74,7 +99,7 @@ export function getFirecrawlCreditMap(keys: string[]): Record<string, number | n
   return map
 }
 
-class FirecrawlOutOfCreditsError extends Error {
+export class FirecrawlOutOfCreditsError extends Error {
   constructor(message: string, public readonly remainingCredits: number = 0) {
     super(message)
     this.name = 'FirecrawlOutOfCreditsError'
@@ -95,11 +120,16 @@ function isCreditCacheValid(key: string): boolean {
 }
 
 function updateCreditCache(key: string, usage: FirecrawlCreditUsage): void {
+  const billingPeriodEnd = usage.billingPeriodEnd ? new Date(usage.billingPeriodEnd).getTime() : undefined
   creditUsageCache.set(key, {
     remainingCredits: usage.remainingCredits,
     lastChecked: Date.now(),
     expiresAt: Date.now() + CREDIT_CACHE_DURATION_MS,
+    billingPeriodEnd,
   })
+  if (billingPeriodEnd) {
+    keyBillingPeriodEnd.set(key, billingPeriodEnd)
+  }
 }
 
 /**
@@ -213,6 +243,8 @@ async function checkCreditsBeforeCall(config: FirecrawlConfig): Promise<void> {
  * Fetches credit data in parallel for stale keys; deduplicates in-flight fetches.
  */
 async function getOptimalKeyWithCredits(keys: string[], endpoint: string): Promise<string> {
+  if (keys.length === 0) throw new Error('No Firecrawl API keys configured')
+  clearExpiredOutOfCreditsKeys()
   const eligibleKeys = keys.filter(k => !failedFirecrawlKeys.has(k) && !outOfCreditsKeys.has(k))
   if (eligibleKeys.length === 0) {
     throw new FirecrawlOutOfCreditsError('All Firecrawl API keys have failed or have no credits remaining', 0)
@@ -403,11 +435,19 @@ export async function scrapeWithFirecrawl(
 
   if (response.status === 401 || response.status === 403) {
     markFirecrawlKeyFailed(activeKey)
+    if (keys && keys.length > 1) {
+      const remaining = keys.filter(k => !failedFirecrawlKeys.has(k) && !outOfCreditsKeys.has(k))
+      if (remaining.length > 0) return scrapeWithFirecrawl(url, config, remaining)
+    }
     throw new Error(`Firecrawl scrape auth failed: ${response.status} ${response.statusText}`)
   }
 
   if (response.status === 402) {
     markFirecrawlKeyOutOfCredits(activeKey)
+    if (keys && keys.length > 1) {
+      const remaining = keys.filter(k => !failedFirecrawlKeys.has(k) && !outOfCreditsKeys.has(k))
+      if (remaining.length > 0) return scrapeWithFirecrawl(url, config, remaining)
+    }
     throw new FirecrawlOutOfCreditsError(
       `Firecrawl scrape failed: no credits remaining (402 ${response.statusText})`,
       0,
@@ -491,11 +531,19 @@ export async function searchWithFirecrawl(
 
   if (response.status === 401 || response.status === 403) {
     markFirecrawlKeyFailed(activeKey)
+    if (opts?.keys && opts.keys.length > 1) {
+      const remaining = opts.keys.filter(k => !failedFirecrawlKeys.has(k) && !outOfCreditsKeys.has(k))
+      if (remaining.length > 0) return searchWithFirecrawl(query, config, { ...opts, keys: remaining })
+    }
     throw new Error(`Firecrawl search auth failed: ${response.status} ${response.statusText}`)
   }
 
   if (response.status === 402) {
     markFirecrawlKeyOutOfCredits(activeKey)
+    if (opts?.keys && opts.keys.length > 1) {
+      const remaining = opts.keys.filter(k => !failedFirecrawlKeys.has(k) && !outOfCreditsKeys.has(k))
+      if (remaining.length > 0) return searchWithFirecrawl(query, config, { ...opts, keys: remaining })
+    }
     throw new FirecrawlOutOfCreditsError(
       `Firecrawl search failed: no credits remaining (402 ${response.statusText})`,
       0,
@@ -535,22 +583,31 @@ export async function searchWithFirecrawl(
 
 /**
  * Credit-aware key selector — picks the eligible key with the most cached credits.
- * Falls back to round-robin over all non-failed keys when no credit data is available.
+ * Throws `FirecrawlOutOfCreditsError` when all keys have been marked failed or out-of-credits
+ * (no silent fallback to exhausted keys).
+ * Falls back to round-robin over eligible keys when no credit data is available yet.
  */
 export function pickFirecrawlKey(keys: string[], callCount: number): string {
   if (keys.length === 0) throw new Error('No Firecrawl API keys configured')
 
+  clearExpiredOutOfCreditsKeys()
   const eligible = keys.filter(k => !failedFirecrawlKeys.has(k) && !outOfCreditsKeys.has(k))
-  const pool = eligible.length > 0 ? eligible : keys
 
-  // If we have credit data for any key in the pool, prefer the richest one
-  const withCredits = pool
+  if (eligible.length === 0) {
+    throw new FirecrawlOutOfCreditsError(
+      'All Firecrawl API keys have failed or have no credits remaining',
+      0,
+    )
+  }
+
+  // If we have credit data for any eligible key, prefer the richest one
+  const withCredits = eligible
     .map(k => ({ key: k, credits: creditUsageCache.get(k)?.remainingCredits ?? -1 }))
     .filter(item => item.credits > 0)
     .sort((a, b) => b.credits - a.credits)
 
   if (withCredits.length > 0) return withCredits[0].key
 
-  // No credit data yet — round-robin
-  return pool[callCount % pool.length]
+  // No credit data yet — round-robin over eligible keys only
+  return eligible[callCount % eligible.length]
 }
