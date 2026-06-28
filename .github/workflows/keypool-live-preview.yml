@@ -157,13 +157,6 @@ jobs:
           bun run build:sdk
           # bun run build:models
 
-      - name: Install VSCode extension dependencies
-        working-directory: .
-        run: |
-          cd apps/vscode
-          bun install
-        shell: bash
-
       - name: Build VSCode protos
         working-directory: .
         run: |
