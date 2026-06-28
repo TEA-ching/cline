@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
   // Lire la version du SDK depuis le package.json
   let sdkVersion = '0.0.0';
   try {
-    const sdkPackagePath = resolve(__dirname, '../../../sdk/packages/sdk/package.json');
+    const sdkPackagePath = resolve(__dirname, '../../sdk/packages/sdk/package.json');
     const packageJson = JSON.parse(readFileSync(sdkPackagePath, 'utf-8'));
     sdkVersion = packageJson.version;
   } catch (error) {
