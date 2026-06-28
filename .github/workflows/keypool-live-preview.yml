@@ -156,7 +156,6 @@ jobs:
           rm -rf apps/cline-hub
           rm -rf apps/clinepool-download
           rm -rf apps/examples
-          bun run build
           bun run build:models
           bun run build:sdk
 
