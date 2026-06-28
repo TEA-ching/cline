@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 import React from 'react';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink,LibraryBig } from 'lucide-react';
 import { Drawer } from '@heroui/react';
 
 export interface Source {
@@ -48,7 +48,7 @@ export const SourcesPanel: React.FC<Props> = ({ sources, onClose, isOpen }) => {
           <Drawer.Dialog>
             <Drawer.CloseTrigger />
             <Drawer.Header>
-              <Drawer.Heading>📚 Sources ({sources.length})</Drawer.Heading>
+              <Drawer.Heading><LibraryBig className="h-5 w-5" /> Sources ({sources.length})</Drawer.Heading>
             </Drawer.Header>
             <Drawer.Body>
               <div className="flex-1 overflow-y-auto p-3 space-y-3">
