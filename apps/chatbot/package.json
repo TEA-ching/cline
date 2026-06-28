@@ -14,6 +14,7 @@
     "@cline/agents": "workspace:*",
     "@cline/llms": "workspace:*",
     "@cline/shared": "workspace:*",
+    "@cline/core": "workspace:*",
     "@heroui/react": "3.1.0",
     "@heroui/styles": "3.1.0",
     "@jitl/quickjs-singlefile-browser-release-asyncify": "^0.32.0",

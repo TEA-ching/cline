@@ -66,6 +66,8 @@ import { SpacesBrowser } from '@/components/spaces/SpacesBrowser'
 import { useGitHubAuth } from '@/hooks/useGitHubAuth'
 import { GitHubAuthModal } from '@/components/github/GitHubAuthModal'
 import type { AiConfig } from '@/types/ai-config'
+import packageJson from '@/../package.json' with { type: 'json' } 
+import { CORE_BUILD_VERSION as sdkVersion } from '@cline/core/'
 
 // ---------------------------------------------------------------------------
 
@@ -95,6 +97,7 @@ export const SLASH_COMMANDS = [
   { cmd: '/sessions', desc: 'Browse & restore saved conversations' },
   { cmd: '/tools', desc: 'Manage optional tools' },
   { cmd: '/prompt', desc: '/prompt <text> — view or set system prompt' },
+  { cmd: '/version', desc: 'Show app version' },
 ]
 
 const HELP_TEXT = SLASH_COMMANDS
@@ -636,6 +639,19 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     )
   }, [agentSend])
 
+  //-------------------------------------------------------------------------
+  // Version helper
+  //-------------------------------------------------------------------------
+  const handleShowVersion = useCallback(() => {
+    const sysMsg: ChatMessage = {
+      id: uid(),
+      role: 'system',
+      content: `Chatbot version: ${packageJson.version}\n\nVault mode: ${vaultMode}\n\nModel: ${selectedModelId ?? 'N/A'}\nProvider: ${selectedProviderId ?? 'N/A'} \nSDK: ${sdkVersion}`,
+      timestamp: Date.now(),
+    }
+    loadMessages([...messages, sysMsg])
+  }, [loadMessages, messages])
+
   // -------------------------------------------------------------------------
   // Slash command dispatch
   // -------------------------------------------------------------------------
@@ -683,6 +699,9 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
           } else {
             addSystem(`Current system prompt:\n\n${systemPrompt}`)
           }
+          return
+        case '/version':
+          handleShowVersion()
           return
         default:
           // Unknown command — fall through and send as normal message
