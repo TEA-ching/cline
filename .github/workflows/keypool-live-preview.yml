@@ -186,7 +186,7 @@ jobs:
           bunx vsce package \
             --target ${{ matrix.platform }}-${{ matrix.arch }} \
             --allow-package-secrets sendgrid \
-            --no-dependencies \s
+            --no-dependencies \
             --out "clinepool-${{ needs.setup.outputs.version }}-preview-${{ needs.setup.outputs.datetime_safe }}-${{ matrix.platform }}-${{ matrix.arch }}.vsix"
         shell: bash
 
