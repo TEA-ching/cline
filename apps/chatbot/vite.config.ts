@@ -3,13 +3,27 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
 import { fileURLToPath, URL } from 'node:url'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 export default defineConfig(({ mode }) => {
+  // Lire la version du SDK depuis le package.json
+  let sdkVersion = '0.0.0';
+  try {
+    const sdkPackagePath = resolve(__dirname, '../../../sdk/packages/sdk/package.json');
+    const packageJson = JSON.parse(readFileSync(sdkPackagePath, 'utf-8'));
+    sdkVersion = packageJson.version;
+  } catch (error) {
+    console.warn('Impossible de lire la version du SDK:', error);
+  }
+
   return {
     define: {
       "import.meta.env.KEYPOOL_VAULT_URL": JSON.stringify(process.env.KEYPOOL_VAULT_URL ?? 'https://vault.exemple.com'),
       "import.meta.env.KEYPOOL_USAGE_DB": JSON.stringify(process.env.KEYPOOL_USAGE_DB_DIR ?? 'https://usage-db.exemple.com/v1/keypool/usage'),
       "import.meta.env.GITHUB_CLIENT_ID": JSON.stringify(process.env.GITHUB_CLIENT_ID ?? (process.env._GITHUB_CLIENT_ID ?? '')),
+      // La version du SDK exposée globalement
+      "import.meta.env.___SDK_VERSION___": JSON.stringify(sdkVersion),
       // Polyfill Node.js `process` for browser/Worker builds.
       // isBrowserEnvironment() checks window.document — false in a Worker —
       // so vendor files fall through to process.env / process.listeners etc.
