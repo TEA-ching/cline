@@ -151,11 +151,6 @@ function tsProtoc(outDir, protoFiles, protoOptions) {
 		`--ts_proto_opt=${protoOptions.join(",")}`,
 		...protoFiles,
 	];
-	// On Windows, inject node_modules/.bin into PATH so protoc can discover protoc-gen-ts_proto.cmd
-	// via Windows PATHEXT without needing an explicit --plugin= path (which can't exec .cmd files).
-	const env = isWindows
-		? { ...process.env, PATH: `${TS_PROTO_BIN_DIR};${process.env.PATH ?? ""}` }
-		: undefined;
 	try {
 		log_verbose(
 			chalk.cyan(
@@ -163,7 +158,7 @@ function tsProtoc(outDir, protoFiles, protoOptions) {
 			),
 		);
 		log_verbose(`${PROTOC} ${args.join(" ")}`);
-		execFileSync(PROTOC, args, { stdio: "inherit", ...(env ? { env } : {}) });
+		execFileSync(PROTOC, args, { stdio: "inherit" });
 	} catch (error) {
 		console.error(
 			chalk.red("Error generating TypeScript for proto files:"),
