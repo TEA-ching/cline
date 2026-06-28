@@ -145,7 +145,6 @@ jobs:
           bun install
           # avoid conflicts
           rm -rf apps/web
-          rm -rf apps/cli
           rm -rf apps/cline-hub
           rm -rf apps/clinepool-download
           rm -rf apps/examples
