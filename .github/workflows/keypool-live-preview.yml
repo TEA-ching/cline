@@ -142,8 +142,12 @@ jobs:
       - name: Install root dependencies
         working-directory: .
         run: |
-          # avoid conflicting vite
+          # avoid conflicts
           rm -rf apps/web
+          rm -rf apps/cli
+          rm -rf apps/cline-hub
+          rm -rf apps/clinepool-download
+          rm -rf apps/examples
           bun install --include=optional
         shell: bash
 
@@ -151,13 +155,8 @@ jobs:
         working-directory: .
         shell: bash
         run: |
-          rm -rf apps/web
-          rm -rf apps/cli
-          rm -rf apps/cline-hub
-          rm -rf apps/clinepool-download
-          rm -rf apps/examples
-          bun run build:models
           bun run build:sdk
+          bun run build:models
 
       - name: Install VSCode extension dependencies
         working-directory: apps/vscode
