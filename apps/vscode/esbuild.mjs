@@ -155,9 +155,7 @@ const extensionConfig = {
 	...baseConfig,
 	entryPoints: ["src/extension.ts"],
 	outfile: `${destDir}/extension.js`,
-	// better-sqlite3 is a native module (.node file) and cannot be bundled;
-	// it must be externalized so Node resolves it from node_modules at runtime.
-	external: ["vscode", "better-sqlite3"],
+	external: ["vscode"],
 }
 
 // Standalone-specific configuration

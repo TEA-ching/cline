@@ -458,6 +458,8 @@
 	},
 	"dependencies": {
 		"@ai-sdk/cohere": "^3.0.38",
+		"@ai-sdk/openai": "^3.0.72",
+		"@ai-sdk/provider-utils": "^5.0.1",
 		"@anthropic-ai/sdk": "^0.37.0",
 		"@bufbuild/protobuf": "^2.2.5",
 		"@cline/agents": "workspace:*",

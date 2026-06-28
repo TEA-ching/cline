@@ -179,10 +179,12 @@ jobs:
         shell: bash
 
       - name: Build and Package VSIX
+        working-directory: apps/vscode
         run: |
           bunx vsce package \
             --target ${{ matrix.platform }}-${{ matrix.arch }} \
             --allow-package-secrets sendgrid \
+            --no-dependencies \s
             --out "clinepool-${{ needs.setup.outputs.version }}-preview-${{ needs.setup.outputs.datetime_safe }}-${{ matrix.platform }}-${{ matrix.arch }}.vsix"
         shell: bash
 
