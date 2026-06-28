@@ -142,7 +142,7 @@ jobs:
       - name: Install root dependencies
         working-directory: .
         run: |
-          bun install --include=optional
+          bun install
           # avoid conflicts
           rm -rf apps/web
           rm -rf apps/cli
@@ -156,7 +156,7 @@ jobs:
         shell: bash
         run: |
           bun run build:sdk
-          bun run build:models
+          # bun run build:models
 
       - name: Install VSCode extension dependencies
         working-directory: apps/vscode
