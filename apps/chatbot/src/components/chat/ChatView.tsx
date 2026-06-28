@@ -67,7 +67,7 @@ import { useGitHubAuth } from '@/hooks/useGitHubAuth'
 import { GitHubAuthModal } from '@/components/github/GitHubAuthModal'
 import type { AiConfig } from '@/types/ai-config'
 import packageJson from '@/../package.json' with { type: 'json' } 
-import { CORE_BUILD_VERSION as sdkVersion } from '@cline/core/'
+import corePackageJson from '@/../../sdk/packages/sdk/package.json' with { type: 'json' }
 
 // ---------------------------------------------------------------------------
 
@@ -646,7 +646,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     const sysMsg: ChatMessage = {
       id: uid(),
       role: 'system',
-      content: `Chatbot version: ${packageJson.version}\n\nVault mode: ${vaultMode}\n\nModel: ${selectedModelId ?? 'N/A'}\nProvider: ${selectedProviderId ?? 'N/A'} \nSDK: ${sdkVersion}`,
+      content: `Chatbot version: ${packageJson.version}\n\nVault mode: ${vaultMode}\n\nModel: ${selectedModelId ?? 'N/A'}\nProvider: ${selectedProviderId ?? 'N/A'} \nSDK: ${corePackageJson.version}`,
       timestamp: Date.now(),
     }
     loadMessages([...messages, sysMsg])
