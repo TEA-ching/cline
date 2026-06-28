@@ -159,18 +159,21 @@ jobs:
           # bun run build:models
 
       - name: Install VSCode extension dependencies
-        working-directory: apps/vscode
-        run: bun install
+        run: |
+          cd apps/vscode
+          bun install
         shell: bash
 
       - name: Build VSCode protos
-        working-directory: apps/vscode
-        run: bun run protos
+        run: |
+          cd apps/vscode
+          bun run protos
         shell: bash
 
       - name: Build VSCode extension webview UI
-        working-directory: apps/vscode
-        run: bun run build:webview
+        run: |
+          cd apps/vscode
+          bun run build:webview
         shell: bash
 
       - name: Rebuild native modules (skip on Windows)
@@ -182,8 +185,8 @@ jobs:
         shell: bash
 
       - name: Build and Package VSIX
-        working-directory: apps/vscode
         run: |
+          cd apps/vscode
           bunx vsce package \
             --target ${{ matrix.platform }}-${{ matrix.arch }} \
             --allow-package-secrets sendgrid \
