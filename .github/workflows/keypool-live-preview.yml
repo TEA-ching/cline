@@ -159,18 +159,21 @@ jobs:
           # bun run build:models
 
       - name: Install VSCode extension dependencies
+        working-directory: .
         run: |
           cd apps/vscode
           bun install
         shell: bash
 
       - name: Build VSCode protos
+        working-directory: .
         run: |
           cd apps/vscode
           bun run protos
         shell: bash
 
       - name: Build VSCode extension webview UI
+        working-directory: .
         run: |
           cd apps/vscode
           bun run build:webview
@@ -185,6 +188,7 @@ jobs:
         shell: bash
 
       - name: Build and Package VSIX
+        working-directory: .
         run: |
           cd apps/vscode
           bunx vsce package \
