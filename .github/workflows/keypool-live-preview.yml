@@ -151,14 +151,14 @@ jobs:
         working-directory: .
         shell: bash
         run: |
-          bun run build
-          bun run build:models
-          bun run build:sdk
           rm -rf apps/web
           rm -rf apps/cli
           rm -rf apps/cline-hub
           rm -rf apps/clinepool-download
           rm -rf apps/examples
+          bun run build
+          bun run build:models
+          bun run build:sdk
 
       - name: Install VSCode extension dependencies
         working-directory: apps/vscode
