@@ -86,13 +86,6 @@ old_docs/**
 !node_modules/@vscode/codicons/dist/codicon.css
 !node_modules/@vscode/codicons/dist/codicon.ttf
 
-# Include better-sqlite3 native module (KeypoolLive usage stats).
-# The binary is rebuilt for VS Code's Electron ABI by `npm run rebuild:native`
-# (called automatically by vscode:prepublish before every `vsce package` run).
-!node_modules/better-sqlite3/**
-!node_modules/bindings/**
-!node_modules/file-uri-to-path/**
-
 # Include default themes JSON files used in getTheme
 !src/integrations/theme/default-themes/**
 
@@ -112,3 +105,14 @@ webview-ui/.vite-port
 *storybook.log
 storybook-static
 **/StorybookDecorator.tsx
+
+../
+../../.claude/**
+../../.vscode-test/**
+../../.git/**
+../clinepool-download/
+../examples/
+../chatbot/
+../cli/
+../cline-hub/
+
