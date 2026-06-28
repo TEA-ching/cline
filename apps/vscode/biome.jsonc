@@ -182,7 +182,10 @@
 				"!!**/*.js",
 				"!!**/scripts/**",
 				"!!**/*.tsx",
-				"!!**/testing-platform/**"
+				"!!**/testing-platform/**",
+				"!!src/core/api/providers/cohere.ts",
+				"!!src/core/api/providers/poolside.ts",
+				"!!src/core/keypoollive/**"
 			]
 		},
 		{

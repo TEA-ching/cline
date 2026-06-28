@@ -165,9 +165,9 @@ jobs:
         run: bun run protos
         shell: bash
 
-      - name: Install VSCode extension webview UI dependencies
-        working-directory: apps/vscode/webview-ui
-        run: npm install
+      - name: Build VSCode extension webview UI
+        working-directory: apps/vscode
+        run: bun run build:webview
         shell: bash
 
       - name: Rebuild native modules (skip on Windows)
@@ -180,7 +180,7 @@ jobs:
 
       - name: Build and Package VSIX
         run: |
-          npx vsce package \
+          bunx vsce package \
             --target ${{ matrix.platform }}-${{ matrix.arch }} \
             --allow-package-secrets sendgrid \
             --out "clinepool-${{ needs.setup.outputs.version }}-preview-${{ needs.setup.outputs.datetime_safe }}-${{ matrix.platform }}-${{ matrix.arch }}.vsix"

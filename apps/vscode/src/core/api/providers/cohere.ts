@@ -5,7 +5,7 @@ import { fetch } from "@/shared/net";
 import { HostProvider } from "@/hosts/host-provider";
 import path from "path";
 import fs from "fs/promises";
-import type { CommonApiHandlerOptions } from "../";
+import type { CommonApiHandlerOptions } from "./ai-sdk-handler";
 import { AiSdkHandler } from "./ai-sdk-handler";
 
 interface CohereHandlerOptions extends CommonApiHandlerOptions {
@@ -72,7 +72,6 @@ export class CohereHandler extends AiSdkHandler {
 			: { cohere: { strict_tools: "true" } }
 
 		super({
-			onRetryAttempt: options.onRetryAttempt,
 			model: provider(modelId),
 			modelInfo,
 			modelId,
@@ -145,10 +144,7 @@ function resolveModel(options: CohereHandlerOptions): { id: CohereModelId; info:
  * @returns {typeof fetch} - A new fetch function with all corrections applied
  */
 function patchCohereUsageFetch(baseFetch: typeof fetch): typeof fetch {
-
-
-
-	return async (input, init) => {
+	const patchedFetch = async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
 		// Patch tool schemas and add strict_tools when tools are present.
 		if (init?.body) {
 			const body = typeof init.body === "string" ? JSON.parse(init.body) : init.body
@@ -215,6 +211,7 @@ function patchCohereUsageFetch(baseFetch: typeof fetch): typeof fetch {
 		)
 		return new Response(patched, { status: response.status, statusText: response.statusText, headers: response.headers })
 	}
+	return patchedFetch as unknown as typeof fetch
 }
 
 // Constraints that Cohere strict_tools=true does not support and must be stripped.

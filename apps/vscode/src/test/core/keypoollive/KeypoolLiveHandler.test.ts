@@ -4,7 +4,6 @@ import * as sinon from "sinon"
 import { KeypoolLiveHandler } from "../../../core/api/providers/keypoollive"
 import { clearVaultCache } from "../../../core/keypoollive/AiVault"
 import { KeypoolUsageDb } from "../../../core/keypoollive/KeypoolUsageDb"
-import { OpenAiHandler } from "../../../core/api/providers/openai"
 import { resetKeyPool } from "../../../core/keypoollive/KeyPool"
 import { cleanupSession, configureSessionKeyManager, getSessionApiConfig } from "../../../core/keypoollive/SessionKeyManager"
 import { mockFetchForTesting } from "../../../shared/net"
@@ -24,10 +23,8 @@ describe("KeypoolLiveHandler", () => {
 		sandbox.stub(KeypoolUsageDb, "recordUsage")
 		sandbox.stub(KeypoolUsageDb, "recordError")
 		sandbox.stub(Math, "random").returns(0)
-		sandbox.stub(OpenAiHandler.prototype as unknown as { createMessage: () => AsyncGenerator<unknown, void, unknown> }, "createMessage").callsFake(async function* () {
-			yield { type: "usage", inputTokens: 10, outputTokens: 5 }
-			yield { type: "text", text: "ok" }
-		})
+		// TODO: OpenAiHandler moved to @cline/llms SDK — stub createHandler or mock
+		// the SSE HTTP response via mockFetchForTesting to control handler output.
 	})
 
 	afterEach(() => {

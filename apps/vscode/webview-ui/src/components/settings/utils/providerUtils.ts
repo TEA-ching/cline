@@ -1,79 +1,18 @@
 import {
 	type ApiConfiguration,
 	type ApiProvider,
-	anthropicDefaultModelId,
-	anthropicModels,
-	askSageDefaultModelId,
-	askSageModels,
-	basetenDefaultModelId,
-	basetenModels,
-	bedrockDefaultModelId,
-	bedrockModels,
-	cerebrasDefaultModelId,
-	cerebrasModels,
-	claudeCodeDefaultModelId,
-	claudeCodeModels,
 	clinePassDefaultModelId,
-	clinePassModels,
-	deepSeekDefaultModelId,
-	deepSeekModels,
-	doubaoDefaultModelId,
-	doubaoModels,
-	fireworksDefaultModelId,
-	fireworksModels,
-	geminiDefaultModelId,
-	geminiModels,
-	groqDefaultModelId,
-	groqModels,
-	hicapModelInfoSaneDefaults,
-	huaweiCloudMaasDefaultModelId,
-	huaweiCloudMaasModels,
-	huggingFaceDefaultModelId,
-	huggingFaceModels,
-	internationalQwenDefaultModelId,
-	internationalQwenModels,
-	internationalZAiDefaultModelId,
-	internationalZAiModels,
-	liteLlmModelInfoSaneDefaults,
 	type ModelInfo,
-	mainlandQwenDefaultModelId,
-	mainlandQwenModels,
-	mainlandZAiDefaultModelId,
-	mainlandZAiModels,
-	minimaxDefaultModelId,
-	minimaxModels,
-	mistralDefaultModelId,
-	mistralModels,
-	moonshotDefaultModelId,
-	moonshotModels,
-	nebiusDefaultModelId,
-	nebiusModels,
-	openAiCodexDefaultModelId,
-	openAiCodexModels,
-	openAiModelInfoSaneDefaults,
-	openAiNativeDefaultModelId,
-	openAiNativeModels,
+	openAiModelInfoSafeDefaults,
 	openRouterDefaultModelId,
 	openRouterDefaultModelInfo,
-	qwenCodeDefaultModelId,
-	qwenCodeModels,
 	requestyDefaultModelId,
 	requestyDefaultModelInfo,
 	resolveClinePassModelInfo,
-	sambanovaDefaultModelId,
-	sambanovaModels,
-	sapAiCoreDefaultModelId,
-	sapAiCoreModels,
-	vertexDefaultModelId,
-	vertexModels,
-	wandbDefaultModelId,
-	wandbModels,
 	cohereDefaultModelId,
 	cohereModels,
 	poolsideModels,
 	poolsideDefaultModelId,
-	xaiDefaultModelId,
-	xaiModels,
 } from "@shared/api"
 import { Mode } from "@shared/storage/types"
 import * as reasoningSupport from "@shared/utils/reasoning-support"
@@ -81,109 +20,6 @@ import { getKplModelInfo } from "@/components/chat/keypoolliveModelCache"
 
 export function supportsReasoningEffortForModelId(modelId?: string, _allowShortOpenAiIds = false): boolean {
 	return reasoningSupport.supportsReasoningEffortForModel(modelId)
-}
-
-/**
- * Returns the static model list for a provider.
- * For providers with dynamic models (openrouter, cline, ollama, etc.), returns undefined.
- * Some providers depend on configuration (qwen, zai) for region-specific models.
- */
-export function getModelsForProvider(
-	provider: ApiProvider,
-	apiConfiguration?: ApiConfiguration,
-	dynamicModels: {
-		liteLlmModels?: Record<string, ModelInfo>;
-		basetenModels?: Record<string, ModelInfo>;
-	} = {},
-): Record<string, ModelInfo> | undefined {
-	switch (provider) {
-		case "anthropic":
-			return anthropicModels;
-		case "claude-code":
-			return claudeCodeModels;
-		case "bedrock":
-			return bedrockModels;
-		case "vertex":
-			return vertexModels;
-		case "gemini":
-			return geminiModels;
-		case "openai-native":
-			return openAiNativeModels;
-		case "openai-codex":
-			return openAiCodexModels;
-		case "cline-pass":
-			return clinePassModels;
-		case "deepseek":
-			return deepSeekModels;
-		case "qwen":
-			return apiConfiguration?.qwenApiLine === "china"
-				? mainlandQwenModels
-				: internationalQwenModels;
-		case "qwen-code":
-			return qwenCodeModels;
-		case "doubao":
-			return doubaoModels;
-		case "mistral":
-			return mistralModels;
-		case "asksage":
-			return askSageModels;
-		case "xai":
-			return xaiModels;
-		case "moonshot":
-			return moonshotModels;
-		case "nebius":
-			return nebiusModels;
-		case "wandb":
-			return wandbModels
-		case "cohere":
-			return cohereModels
-		case "poolside":
-			return poolsideModels
-		case "keypoollive":
-			return undefined
-		case "sambanova":
-			return sambanovaModels;
-		case "cerebras":
-			return cerebrasModels;
-		case "groq":
-			return groqModels;
-		case "baseten":
-			return dynamicModels?.basetenModels || basetenModels;
-		case "sapaicore":
-			return sapAiCoreModels;
-		case "huawei-cloud-maas":
-			return huaweiCloudMaasModels;
-		case "zai":
-			return apiConfiguration?.zaiApiLine === "china"
-				? mainlandZAiModels
-				: internationalZAiModels;
-		case "fireworks":
-			return fireworksModels;
-		case "minimax":
-			return minimaxModels;
-		case "huggingface":
-			return huggingFaceModels;
-		case "nousResearch":
-			return nousResearchModels;
-		case "litellm":
-			return dynamicModels?.liteLlmModels;
-		// Providers with dynamic models - return undefined
-		case "openrouter":
-		case "cline":
-		case "openai":
-		case "ollama":
-		case "lmstudio":
-		case "vscode-lm":
-		case "requesty":
-		case "hicap":
-		case "dify":
-		case "vercel-ai-gateway":
-		case "oca":
-		case "aihubmix":
-		case "together":
-		default:
-			return undefined;
-	}
 }
 
 /**
@@ -196,7 +32,10 @@ export interface NormalizedApiConfig {
 }
 
 /**
- * Normalizes API configuration to ensure consistent values
+ * Normalizes API configuration to ensure consistent values.
+ * Handles our custom providers (cohere, poolside, keypoollive) fully;
+ * for upstream SDK-backed providers, returns provider + modelId from config
+ * with a generic ModelInfo fallback.
  */
 export function normalizeApiConfiguration(
 	apiConfiguration: ApiConfiguration | undefined,
@@ -241,61 +80,6 @@ export function normalizeApiConfiguration(
 	};
 
 	switch (provider) {
-		case "anthropic":
-			return getProviderData(anthropicModels, anthropicDefaultModelId);
-		case "claude-code":
-			return getProviderData(claudeCodeModels, claudeCodeDefaultModelId);
-		case "bedrock": {
-			const awsBedrockCustomSelected =
-				currentMode === "plan"
-					? apiConfiguration?.planModeAwsBedrockCustomSelected
-					: apiConfiguration?.actModeAwsBedrockCustomSelected;
-			if (awsBedrockCustomSelected) {
-				const baseModelId =
-					currentMode === "plan"
-						? apiConfiguration?.planModeAwsBedrockCustomModelBaseId
-						: apiConfiguration?.actModeAwsBedrockCustomModelBaseId;
-
-				return {
-					selectedProvider: provider,
-					selectedModelId: modelId || bedrockDefaultModelId,
-					selectedModelInfo:
-						(baseModelId &&
-							bedrockModels[baseModelId as keyof typeof bedrockModels]) ||
-						bedrockModels[bedrockDefaultModelId],
-				};
-			}
-			return getProviderData(bedrockModels, bedrockDefaultModelId);
-		}
-		case "vertex":
-			return getProviderData(vertexModels, vertexDefaultModelId);
-		case "gemini":
-			return getProviderData(geminiModels, geminiDefaultModelId);
-		case "openai-native":
-			return getProviderData(openAiNativeModels, openAiNativeDefaultModelId);
-		case "openai-codex":
-			return getProviderData(openAiCodexModels, openAiCodexDefaultModelId);
-		case "deepseek":
-			return getProviderData(deepSeekModels, deepSeekDefaultModelId);
-		case "qwen": {
-			const qwenModels =
-				apiConfiguration?.qwenApiLine === "china"
-					? mainlandQwenModels
-					: internationalQwenModels;
-			const qwenDefaultId =
-				apiConfiguration?.qwenApiLine === "china"
-					? mainlandQwenDefaultModelId
-					: internationalQwenDefaultModelId;
-			return getProviderData(qwenModels, qwenDefaultId);
-		}
-		case "qwen-code":
-			return getProviderData(qwenCodeModels, qwenCodeDefaultModelId);
-		case "doubao":
-			return getProviderData(doubaoModels, doubaoDefaultModelId);
-		case "mistral":
-			return getProviderData(mistralModels, mistralDefaultModelId);
-		case "asksage":
-			return getProviderData(askSageModels, askSageDefaultModelId);
 		case "openrouter": {
 			const openRouterModelId =
 				currentMode === "plan"
@@ -391,7 +175,7 @@ export function normalizeApiConfiguration(
 			return {
 				selectedProvider: provider,
 				selectedModelId: openAiModelId || "",
-				selectedModelInfo: openAiModelInfo || openAiModelInfoSaneDefaults,
+				selectedModelInfo: openAiModelInfo || openAiModelInfoSafeDefaults,
 			};
 		}
 		case "hicap": {
@@ -402,7 +186,7 @@ export function normalizeApiConfiguration(
 			return {
 				selectedProvider: provider,
 				selectedModelId: hicapModelId || "",
-				selectedModelInfo: hicapModelInfoSaneDefaults,
+				selectedModelInfo: openAiModelInfoSafeDefaults,
 			};
 		}
 		case "ollama": {
@@ -414,7 +198,7 @@ export function normalizeApiConfiguration(
 				selectedProvider: provider,
 				selectedModelId: ollamaModelId || "",
 				selectedModelInfo: {
-					...openAiModelInfoSaneDefaults,
+					...openAiModelInfoSafeDefaults,
 					contextWindow: Number(
 						apiConfiguration?.ollamaApiOptionsCtxNum ?? 32768,
 					),
@@ -430,7 +214,7 @@ export function normalizeApiConfiguration(
 				selectedProvider: provider,
 				selectedModelId: lmStudioModelId || "",
 				selectedModelInfo: {
-					...openAiModelInfoSaneDefaults,
+					...openAiModelInfoSafeDefaults,
 					contextWindow: Number(apiConfiguration?.lmStudioMaxTokens ?? 32768),
 				},
 			};
@@ -446,8 +230,8 @@ export function normalizeApiConfiguration(
 					? `${vsCodeLmModelSelector.vendor}/${vsCodeLmModelSelector.family}`
 					: "",
 				selectedModelInfo: {
-					...openAiModelInfoSaneDefaults,
-					supportsImages: false, // VSCode LM API currently doesn't support images
+					...openAiModelInfoSafeDefaults,
+					supportsImages: false,
 				},
 			};
 		}
@@ -463,41 +247,9 @@ export function normalizeApiConfiguration(
 			return {
 				selectedProvider: provider,
 				selectedModelId: liteLlmModelId || "",
-				selectedModelInfo: liteLlmModelInfo || liteLlmModelInfoSaneDefaults,
+				selectedModelInfo: liteLlmModelInfo || openAiModelInfoSafeDefaults,
 			};
 		}
-		case "xai":
-			return getProviderData(xaiModels, xaiDefaultModelId);
-		case "moonshot":
-			return getProviderData(moonshotModels, moonshotDefaultModelId);
-		case "huggingface": {
-			const huggingFaceModelId =
-				currentMode === "plan"
-					? apiConfiguration?.planModeHuggingFaceModelId
-					: apiConfiguration?.actModeHuggingFaceModelId;
-			const huggingFaceModelInfo =
-				currentMode === "plan"
-					? apiConfiguration?.planModeHuggingFaceModelInfo
-					: apiConfiguration?.actModeHuggingFaceModelInfo;
-			return {
-				selectedProvider: provider,
-				selectedModelId: huggingFaceModelId || huggingFaceDefaultModelId,
-				selectedModelInfo:
-					huggingFaceModelInfo || huggingFaceModels[huggingFaceDefaultModelId],
-			};
-		}
-		case "nebius":
-			return getProviderData(nebiusModels, nebiusDefaultModelId);
-		case "wandb":
-			return getProviderData(wandbModels, wandbDefaultModelId)
-		case "cohere":
-			return getProviderData(cohereModels, cohereDefaultModelId)
-		case "poolside":
-			return getProviderData(poolsideModels, poolsideDefaultModelId)
-		case "sambanova":
-			return getProviderData(sambanovaModels, sambanovaDefaultModelId);
-		case "cerebras":
-			return getProviderData(cerebrasModels, cerebrasDefaultModelId);
 		case "groq": {
 			const groqModelId =
 				currentMode === "plan"
@@ -509,8 +261,8 @@ export function normalizeApiConfiguration(
 					: apiConfiguration?.actModeGroqModelInfo;
 			return {
 				selectedProvider: provider,
-				selectedModelId: groqModelId || groqDefaultModelId,
-				selectedModelInfo: groqModelInfo || groqModels[groqDefaultModelId],
+				selectedModelId: groqModelId || "",
+				selectedModelInfo: groqModelInfo || openAiModelInfoSafeDefaults,
 			};
 		}
 		case "baseten": {
@@ -522,19 +274,12 @@ export function normalizeApiConfiguration(
 				currentMode === "plan"
 					? apiConfiguration?.planModeBasetenModelInfo
 					: apiConfiguration?.actModeBasetenModelInfo;
-			const finalBasetenModelId = basetenModelId || basetenDefaultModelId;
 			return {
 				selectedProvider: provider,
-				selectedModelId: finalBasetenModelId,
-				selectedModelInfo: basetenModelInfo ||
-					basetenModels[finalBasetenModelId as keyof typeof basetenModels] ||
-					basetenModels[basetenDefaultModelId] || {
-						description: "Baseten model",
-					},
+				selectedModelId: basetenModelId || "",
+				selectedModelInfo: basetenModelInfo || openAiModelInfoSafeDefaults,
 			};
 		}
-		case "sapaicore":
-			return getProviderData(sapAiCoreModels, sapAiCoreDefaultModelId);
 		case "huawei-cloud-maas": {
 			const huaweiCloudMaasModelId =
 				currentMode === "plan"
@@ -546,11 +291,23 @@ export function normalizeApiConfiguration(
 					: apiConfiguration?.actModeHuaweiCloudMaasModelInfo;
 			return {
 				selectedProvider: provider,
-				selectedModelId:
-					huaweiCloudMaasModelId || huaweiCloudMaasDefaultModelId,
-				selectedModelInfo:
-					huaweiCloudMaasModelInfo ||
-					huaweiCloudMaasModels[huaweiCloudMaasDefaultModelId],
+				selectedModelId: huaweiCloudMaasModelId || "",
+				selectedModelInfo: huaweiCloudMaasModelInfo || openAiModelInfoSafeDefaults,
+			};
+		}
+		case "huggingface": {
+			const huggingFaceModelId =
+				currentMode === "plan"
+					? apiConfiguration?.planModeHuggingFaceModelId
+					: apiConfiguration?.actModeHuggingFaceModelId;
+			const huggingFaceModelInfo =
+				currentMode === "plan"
+					? apiConfiguration?.planModeHuggingFaceModelInfo
+					: apiConfiguration?.actModeHuggingFaceModelInfo;
+			return {
+				selectedProvider: provider,
+				selectedModelId: huggingFaceModelId || "",
+				selectedModelInfo: huggingFaceModelInfo || openAiModelInfoSafeDefaults,
 			};
 		}
 		case "dify":
@@ -569,7 +326,6 @@ export function normalizeApiConfiguration(
 				},
 			};
 		case "vercel-ai-gateway": {
-			// Vercel AI Gateway uses its own model fields
 			const vercelModelId =
 				currentMode === "plan"
 					? apiConfiguration?.planModeVercelAiGatewayModelId
@@ -584,31 +340,6 @@ export function normalizeApiConfiguration(
 				selectedModelInfo: vercelModelInfo || openRouterDefaultModelInfo,
 			};
 		}
-		case "zai": {
-			const zaiModels =
-				apiConfiguration?.zaiApiLine === "china"
-					? mainlandZAiModels
-					: internationalZAiModels;
-			const zaiDefaultId =
-				apiConfiguration?.zaiApiLine === "china"
-					? mainlandZAiDefaultModelId
-					: internationalZAiDefaultModelId;
-			return getProviderData(zaiModels, zaiDefaultId);
-		}
-		case "fireworks": {
-			const fireworksModelId =
-				currentMode === "plan"
-					? apiConfiguration?.planModeFireworksModelId
-					: apiConfiguration?.actModeFireworksModelId;
-			return {
-				selectedProvider: provider,
-				selectedModelId: fireworksModelId || fireworksDefaultModelId,
-				selectedModelInfo:
-					fireworksModelId && fireworksModelId in fireworksModels
-						? fireworksModels[fireworksModelId as keyof typeof fireworksModels]
-						: fireworksModels[fireworksDefaultModelId],
-			};
-		}
 		case "oca": {
 			const ocaModelId =
 				currentMode === "plan"
@@ -621,7 +352,7 @@ export function normalizeApiConfiguration(
 			return {
 				selectedProvider: provider,
 				selectedModelId: ocaModelId || "",
-				selectedModelInfo: ocaModelInfo || liteLlmModelInfoSaneDefaults,
+				selectedModelInfo: ocaModelInfo || openAiModelInfoSafeDefaults,
 			};
 		}
 		case "aihubmix": {
@@ -636,11 +367,9 @@ export function normalizeApiConfiguration(
 			return {
 				selectedProvider: provider,
 				selectedModelId: aihubmixModelId || "",
-				selectedModelInfo: aihubmixModelInfo || openAiModelInfoSaneDefaults,
+				selectedModelInfo: aihubmixModelInfo || openAiModelInfoSafeDefaults,
 			};
 		}
-		case "minimax":
-			return getProviderData(minimaxModels, minimaxDefaultModelId);
 		case "nousResearch": {
 			const nousResearchModelId =
 				currentMode === "plan"
@@ -648,15 +377,25 @@ export function normalizeApiConfiguration(
 					: apiConfiguration?.actModeNousResearchModelId;
 			return {
 				selectedProvider: provider,
-				selectedModelId: nousResearchModelId || nousResearchDefaultModelId,
-				selectedModelInfo:
-					nousResearchModelId && nousResearchModelId in nousResearchModels
-						? nousResearchModels[
-								nousResearchModelId as keyof typeof nousResearchModels
-							]
-						: nousResearchModels[nousResearchDefaultModelId],
+				selectedModelId: nousResearchModelId || "",
+				selectedModelInfo: openAiModelInfoSafeDefaults,
 			}
 		}
+		case "fireworks": {
+			const fireworksModelId =
+				currentMode === "plan"
+					? apiConfiguration?.planModeFireworksModelId
+					: apiConfiguration?.actModeFireworksModelId;
+			return {
+				selectedProvider: provider,
+				selectedModelId: fireworksModelId || "",
+				selectedModelInfo: openAiModelInfoSafeDefaults,
+			};
+		}
+		case "cohere":
+			return getProviderData(cohereModels, cohereDefaultModelId)
+		case "poolside":
+			return getProviderData(poolsideModels, poolsideDefaultModelId)
 		case "keypoollive": {
 			const kplCached = modelId ? getKplModelInfo(modelId) : undefined
 			const kplModelInfo: ModelInfo = {
@@ -676,7 +415,11 @@ export function normalizeApiConfiguration(
 			}
 		}
 		default:
-			return getProviderData(anthropicModels, anthropicDefaultModelId);
+			return {
+				selectedProvider: provider,
+				selectedModelId: modelId || "",
+				selectedModelInfo: openAiModelInfoSafeDefaults,
+			};
 	}
 }
 
@@ -997,7 +740,7 @@ export async function syncModeConfigurations(
 		// `apiModelId` ApiConfiguration field pair (anthropic, claude-code,
 		// vertex, gemini, openai-native, openai-codex, deepseek, qwen,
 		// doubao, mistral, asksage, xai, nebius, wandb, sambanova,
-		// cerebras, sapaicore, zai, minimax).
+		// cerebras, sapaicore, zai, minimax, cohere, poolside, keypoollive).
 		default:
 			updates.planModeApiModelId = sourceFields.apiModelId
 			updates.actModeApiModelId = sourceFields.apiModelId

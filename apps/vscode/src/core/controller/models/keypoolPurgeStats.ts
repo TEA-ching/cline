@@ -11,10 +11,7 @@ import { keypoolInjectEnvConfig } from "./keypoolInjectEnvConfig"
 /**
  * Purges all usage and error statistics stored in the NDJSON files.
  */
-export async function keypoolPurgeStats(
-	controller: Controller,
-	_request: EmptyRequest,
-): Promise<KeypoolPurgeStatsResponse> {
+export async function keypoolPurgeStats(controller: Controller, _request: EmptyRequest): Promise<KeypoolPurgeStatsResponse> {
 	try {
 		keypoolInjectEnvConfig(controller)
 		KeypoolUsageDb.purge()

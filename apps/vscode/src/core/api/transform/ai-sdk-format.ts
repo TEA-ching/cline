@@ -103,11 +103,12 @@ export function convertToAiSdkMessages(
 							mediaType: img.source.media_type as string,
 						})
 					} else if ("url" in img.source) {
-						// URLImageSource
+						// URLImageSource (future-proofing: not in current SDK types)
+						const urlSrc = img.source as unknown as { url: string; media_type?: string }
 						contentParts.push({
 							type: "image",
-							image: img.source.url,
-							mediaType: "url" in img.source && "media_type" in img.source ? img.source.media_type as string : undefined,
+							image: urlSrc.url,
+							mediaType: urlSrc.media_type,
 						})
 					}
 				} else if (block.type === "tool_result") {

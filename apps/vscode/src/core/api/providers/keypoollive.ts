@@ -15,18 +15,16 @@ import type { AiProtocol, ResolvedApiConfig } from "@/core/keypoollive/types";
 import type { ClineStorageMessage } from "@/shared/messages/content";
 import type { ClineTool } from "@/shared/tools";
 import { Logger } from "@/shared/services/Logger";
+import { fetch } from "@/shared/net";
 import type {
 	ApiHandler,
-	ApiHandlerModel,
+	ApiStream,
 	CommonApiHandlerOptions,
-} from "../index";
-import type { ApiStream } from "../transform/stream";
-import { AnthropicHandler } from "./anthropic";
+} from "./ai-sdk-handler";
+import type { ApiHandlerModel } from "../index";
+import { createHandler } from "@cline/llms";
 import { CohereHandler } from "./cohere";
 import { PoolsideHandler } from "./poolside";
-import { GeminiHandler } from "./gemini";
-import { MistralHandler } from "./mistral";
-import { OpenAiHandler } from "./openai";
 
 /**
  * Maps an AiProtocol to the correct Cloudflare AI Gateway provider slug.
@@ -208,62 +206,59 @@ export class KeypoolLiveHandler implements ApiHandler {
 		);
 
 		switch (protocol) {
-			case "anthropic":
-				return new AnthropicHandler({
-					apiKey,
-					anthropicBaseUrl: baseUrl,
-					apiModelId: model.id,
-					onRetryAttempt: this.options.onRetryAttempt,
-				});
-			case "gemini":
-				return new GeminiHandler({
-					geminiApiKey: apiKey,
-					geminiBaseUrl: baseUrl,
-					apiModelId: model.id,
-					onRetryAttempt: this.options.onRetryAttempt,
-				});
 			case "cohere":
 				return new CohereHandler({
 					cohereBaseUrl: baseUrl,
 					cohereApiKey: apiKey,
 					apiModelId: model.id,
-					onRetryAttempt: this.options.onRetryAttempt,
-				});
-			case "mistral":
-				return new MistralHandler({
-					mistralApiKey: apiKey,
-					apiModelId: model.id,
-					onRetryAttempt: this.options.onRetryAttempt,
 				});
 			case "poolside":
 				return new PoolsideHandler({
 					poolsideApiKey: apiKey,
 					poolsideBaseUrl: baseUrl,
 					apiModelId: model.id,
-					onRetryAttempt: this.options.onRetryAttempt,
 				});
+			case "anthropic":
+				return createHandler({
+					providerId: "anthropic",
+					modelId: model.id,
+					apiKey,
+					baseUrl,
+					fetch,
+					onRetryAttempt: this.options.onRetryAttempt,
+				} as Parameters<typeof createHandler>[0]) as unknown as ApiHandler;
+			case "gemini":
+				return createHandler({
+					providerId: "gemini",
+					modelId: model.id,
+					apiKey,
+					baseUrl,
+					fetch,
+					onRetryAttempt: this.options.onRetryAttempt,
+				} as Parameters<typeof createHandler>[0]) as unknown as ApiHandler;
+			case "mistral":
+				return createHandler({
+					providerId: "mistral",
+					modelId: model.id,
+					apiKey,
+					fetch,
+					onRetryAttempt: this.options.onRetryAttempt,
+				} as Parameters<typeof createHandler>[0]) as unknown as ApiHandler;
 			case "openai":
 			default: {
-				const openAiHeaders: Record<string, string> = {
+				const headers: Record<string, string> = {
 					...this.buildGatewayHeaders(),
 					...(config.userAgent ? { "User-Agent": config.userAgent } : {}),
 				};
-				return new OpenAiHandler({
-					openAiApiKey: apiKey,
-					openAiBaseUrl: baseUrl ?? "https://api.openai.com/v1",
-					openAiModelId: model.id,
-					openAiModelInfo: {
-						contextWindow: model.contextWindow ?? 128_000,
-						maxTokens: model.maxOutputTokens,
-						supportsImages: model.supportsImages ?? false,
-						supportsPromptCache: model.supportsPromptCache ?? false,
-						supportsTools: model.supportsTools ?? false,
-						inputPrice: model.inputPrice,
-						outputPrice: model.outputPrice,
-					},
-					openAiHeaders,
+				return createHandler({
+					providerId: "openai-compatible",
+					modelId: model.id,
+					apiKey,
+					baseUrl: baseUrl ?? "https://api.openai.com/v1",
+					headers,
+					fetch,
 					onRetryAttempt: this.options.onRetryAttempt,
-				});
+				} as Parameters<typeof createHandler>[0]) as unknown as ApiHandler;
 			}
 		}
 	}

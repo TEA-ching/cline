@@ -58,6 +58,8 @@ const KNOWN_API_PROVIDERS = {
 	wandb: true,
 	xiaomi: true,
 	"cline-pass": true,
+	cohere: true,
+	keypoollive: true,
 } satisfies Record<ApiProvider, true>
 
 const normalizeProviderId = (raw: string): string => raw.trim().toLowerCase()

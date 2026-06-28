@@ -2,13 +2,50 @@ import type { LanguageModel } from "ai"
 import { streamText } from "ai"
 import type { ProviderOptions } from "@ai-sdk/provider-utils"
 import type { ModelInfo } from "@shared/api"
-import { calculateApiCostOpenAI } from "@utils/cost"
 import type { ClineStorageMessage } from "@/shared/messages/content"
 import type { ClineTool } from "@/shared/tools"
-import type { ApiHandler, ApiHandlerModel, CommonApiHandlerOptions } from "../"
-import { withRetry } from "../retry"
-import type { ApiStream } from "../transform/stream"
+import type { ApiHandlerModel } from "../"
 import { convertToAiSdkMessages, convertToAiSdkTools } from "../transform/ai-sdk-format"
+
+export interface CommonApiHandlerOptions {
+	onRetryAttempt?: (attempt: number, error: unknown) => void
+}
+
+export interface ApiStreamTextChunk { type: "text"; text: string }
+export interface ApiStreamReasoningChunk { type: "reasoning"; reasoning: string }
+export interface ApiStreamUsageChunk {
+	type: "usage"
+	inputTokens: number
+	outputTokens: number
+	cacheWriteTokens?: number
+	cacheReadTokens?: number
+	totalCost?: number
+}
+export interface ApiStreamToolCall {
+	call_id: string
+	function: { id: string; name: string; arguments: string }
+}
+export interface ApiStreamToolCallsChunk { type: "tool_calls"; tool_call: ApiStreamToolCall }
+export interface ApiStreamDoneChunk { type: "done" }
+
+export type ApiStreamChunk =
+	| ApiStreamTextChunk
+	| ApiStreamReasoningChunk
+	| ApiStreamUsageChunk
+	| ApiStreamToolCallsChunk
+	| ApiStreamDoneChunk
+
+export type ApiStream = AsyncGenerator<ApiStreamChunk>
+
+export interface ApiHandler {
+	createMessage(
+		systemPrompt: string,
+		messages: ClineStorageMessage[],
+		tools?: ClineTool[],
+		useResponseApi?: boolean,
+	): ApiStream
+	getModel(): ApiHandlerModel
+}
 
 export interface AiSdkHandlerOptions extends CommonApiHandlerOptions {
 	model: LanguageModel
@@ -22,15 +59,6 @@ export interface AiSdkHandlerOptions extends CommonApiHandlerOptions {
  * Generic ApiHandler backed by the Vercel AI SDK (ai@6).
  * Extend this class and call super() with a provider-specific LanguageModel to
  * add support for any provider that has an @ai-sdk/* package.
- *
- * Example:
- *   import { createMyProvider } from "@ai-sdk/my-provider"
- *   class MyHandler extends AiSdkHandler {
- *     constructor(opts) {
- *       const provider = createMyProvider({ apiKey: opts.apiKey, fetch })
- *       super({ model: provider(modelId), modelInfo, modelId, ...opts })
- *     }
- *   }
  */
 export class AiSdkHandler implements ApiHandler {
 	protected options: AiSdkHandlerOptions
@@ -39,7 +67,6 @@ export class AiSdkHandler implements ApiHandler {
 		this.options = options
 	}
 
-	@withRetry()
 	async *createMessage(
 		systemPrompt: string,
 		messages: ClineStorageMessage[],
@@ -53,7 +80,7 @@ export class AiSdkHandler implements ApiHandler {
 		const result = streamText({
 			model,
 			messages: sdkMessages,
-			tools: sdkTools as any, // avoid complex ToolSet generic inference
+			tools: sdkTools as any,
 			maxOutputTokens: modelInfo.maxTokens,
 			temperature: 0,
 			providerOptions,
@@ -70,7 +97,6 @@ export class AiSdkHandler implements ApiHandler {
 					break
 
 				case "tool-call": {
-					// Cast needed because ToolSet generics obscure the known shape
 					const call = part as unknown as { toolCallId: string; toolName: string; input: unknown }
 					yield {
 						type: "tool_calls",
@@ -92,13 +118,17 @@ export class AiSdkHandler implements ApiHandler {
 					if (totalUsage) {
 						const inputTokens = totalUsage.inputTokens ?? 0
 						const outputTokens = totalUsage.outputTokens ?? 0
+						const totalCost =
+							((inputTokens * (modelInfo.inputPrice ?? 0)) +
+								(outputTokens * (modelInfo.outputPrice ?? 0))) /
+							1_000_000
 						yield {
 							type: "usage",
 							inputTokens,
 							outputTokens,
 							cacheWriteTokens: totalUsage.inputTokenDetails?.cacheWriteTokens ?? 0,
 							cacheReadTokens: totalUsage.inputTokenDetails?.cacheReadTokens ?? 0,
-							totalCost: calculateApiCostOpenAI(modelInfo, inputTokens, outputTokens),
+							totalCost,
 						}
 					}
 					break
@@ -106,12 +136,6 @@ export class AiSdkHandler implements ApiHandler {
 
 				case "error": {
 					const err = part.error
-					// @ai-sdk/* wraps Zod schema failures as TypeValidationError, which carries the
-					// original raw value that failed validation (.value field).  For Cohere error
-					// responses (finish_reason: "ERROR", usage: {}) the raw event contains the
-					// provider's own human-readable error string — surface that instead of the Zod
-					// path dump so callers see e.g. "No valid response generated. Try updating
-					// messages" rather than "Invalid input: expected object, received undefined".
 					if (err != null && typeof err === "object" && "value" in err) {
 						const raw = (err as { value?: unknown }).value
 						if (

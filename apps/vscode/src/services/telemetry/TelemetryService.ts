@@ -2409,6 +2409,31 @@ export class TelemetryService {
 	 *   'HookFactory.exec.started'
 	 * )
 	 */
+	public captureLegacyTaskMigration(payload: {
+		taskId: string
+		outcome: "success" | "skipped" | "error"
+		reason: string
+		durationMs: number
+		legacyApiHistoryLength?: number
+		convertedMessageCount?: number
+		sdkLookupFailed: boolean
+		hasFavorite: boolean
+		hasCost: boolean
+		hasTokenUsage?: boolean
+		hasCwd: boolean
+	}): void {
+		this.capture({ event: "task.legacy_migration", properties: payload })
+	}
+
+	public captureLegacyTaskMigrationBacklog(payload: {
+		pendingLegacyTaskCount: number
+		migratedSdkTaskCount: number
+		visibleSdkTaskCount: number
+		visibleTaskCount: number
+	}): void {
+		this.capture({ event: "task.legacy_migration_backlog", properties: payload })
+	}
+
 	public safeCapture(telemetryFn: () => void, context?: string): void {
 		try {
 			telemetryFn()

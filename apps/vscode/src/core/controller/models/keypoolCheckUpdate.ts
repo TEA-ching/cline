@@ -58,7 +58,7 @@ function extractVersion(tagName: string): string {
 /**
  * Extracts the build date from a GitHub release tag name to an ISO date string.
  * Tags are expected to be in the format "preview/YYYY-MM-DDTHH-MM-SSZ".
- * @param tagName 
+ * @param tagName
  * @returns ISO date string or null if the tag format is invalid
  */
 function extractBuildDate(tagName: string): string | null {
@@ -72,17 +72,13 @@ function extractBuildDate(tagName: string): string | null {
 	return null
 }
 
-export async function keypoolCheckUpdate(
-	_controller: Controller,
-	_request: EmptyRequest,
-): Promise<KeypoolCheckUpdateResponse> {
+export async function keypoolCheckUpdate(_controller: Controller, _request: EmptyRequest): Promise<KeypoolCheckUpdateResponse> {
 	try {
 		const currentVersion = ExtensionRegistryInfo.version
 
-		const response = await fetch(
-			`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=30`,
-			{ headers: { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" } },
-		)
+		const response = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=30`, {
+			headers: { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+		})
 
 		if (!response.ok) {
 			return KeypoolCheckUpdateResponse.create({
@@ -130,7 +126,9 @@ export async function keypoolCheckUpdate(
 		}
 
 		const tagBuildDate = extractBuildDate(latest.tag_name)
-		Logger.info(`[keypoolCheckUpdate] Current build date: ${buildDate.toISOString()}, Latest release build date (extracted tag): ${tagBuildDate}`)
+		Logger.info(
+			`[keypoolCheckUpdate] Current build date: ${buildDate.toISOString()}, Latest release build date (extracted tag): ${tagBuildDate}`,
+		)
 
 		const tagBuildDateObj = tagBuildDate ? new Date(tagBuildDate) : null
 		Logger.info(`[keypoolCheckUpdate] Parsed latest release build date: ${tagBuildDateObj?.toISOString()}`)
@@ -138,11 +136,15 @@ export async function keypoolCheckUpdate(
 		// If current build is the same or newer than the release, no update needed
 		// Only compare if we successfully parsed the tag build date
 		if (tagBuildDateObj && buildDate >= tagBuildDateObj) {
-			Logger.info(`[keypoolCheckUpdate] Current build date (${buildDate.toISOString()}) is the same or newer than the latest release build date (${tagBuildDateObj?.toISOString()}). Full tag: ${latest.tag_name}. No update needed.`)
+			Logger.info(
+				`[keypoolCheckUpdate] Current build date (${buildDate.toISOString()}) is the same or newer than the latest release build date (${tagBuildDateObj?.toISOString()}). Full tag: ${latest.tag_name}. No update needed.`,
+			)
 			updateAvailable = false
 		}
 
-		Logger.info(`[keypoolCheckUpdate] Current version: ${currentVersion}, Latest version: ${latestVersion}, Update available: ${updateAvailable}, Build date: ${buildDate}, Full tag: ${latest.tag_name}, Published  build date: ${tagBuildDateObj?.toISOString()}, VSIX asset: ${vsixAsset.name}`)
+		Logger.info(
+			`[keypoolCheckUpdate] Current version: ${currentVersion}, Latest version: ${latestVersion}, Update available: ${updateAvailable}, Build date: ${buildDate}, Full tag: ${latest.tag_name}, Published  build date: ${tagBuildDateObj?.toISOString()}, VSIX asset: ${vsixAsset.name}`,
+		)
 		return KeypoolCheckUpdateResponse.create({
 			currentVersion,
 			latestVersion,

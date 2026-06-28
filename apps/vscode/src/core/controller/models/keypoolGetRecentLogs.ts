@@ -6,10 +6,7 @@ import { KeypoolLog } from "@/core/keypoollive/KeypoolLog"
 import { Logger } from "@/shared/services/Logger"
 import type { Controller } from ".."
 
-export async function keypoolGetRecentLogs(
-	_controller: Controller,
-	request: KeypoolLogsRequest,
-): Promise<KeypoolLogsResponse> {
+export async function keypoolGetRecentLogs(_controller: Controller, request: KeypoolLogsRequest): Promise<KeypoolLogsResponse> {
 	try {
 		const count = request.count > 0 ? request.count : 20
 		const raw = KeypoolLog.getLastNLogEntries(count)

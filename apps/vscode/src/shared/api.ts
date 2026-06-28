@@ -49,6 +49,8 @@ export type ApiProvider =
 	| "nousResearch"
 	| "wandb"
 	| "xiaomi"
+	| "cohere"
+	| "keypoollive"
 
 export const DEFAULT_API_PROVIDER = "openrouter" as ApiProvider
 
