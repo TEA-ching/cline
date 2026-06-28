@@ -286,14 +286,11 @@ message Settings {
   optional string act_mode_cline_model_id = 180;
   optional OpenRouterModelInfo act_mode_cline_model_info = 181;
   optional bool show_feature_tips = 182;
-<<<<<<< HEAD
   optional bool lazy_teammate_mode_enabled = 183;
   optional string keypoollive_vault_url = 184;
   optional bool keypoollive_use_gateway = 185;
   optional string keypoollive_gateway_id = 186;
   optional bool keypoollive_gateway_cache_skip = 187;
-=======
->>>>>>> 94f5a47a5 (sdk migration: squashed pre-2026-06-02 work)
 }
 
 message State {
