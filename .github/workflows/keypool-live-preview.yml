@@ -142,13 +142,13 @@ jobs:
       - name: Install root dependencies
         working-directory: .
         run: |
+          bun install --include=optional
           # avoid conflicts
           rm -rf apps/web
           rm -rf apps/cli
           rm -rf apps/cline-hub
           rm -rf apps/clinepool-download
           rm -rf apps/examples
-          bun install --include=optional
         shell: bash
 
       - name: Build root packages and CLI (to ensure vsce can find the built CLI for packaging)
