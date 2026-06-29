@@ -543,7 +543,7 @@ async function handleClineResponseError(
 
 const cline = createClineLikeSpec({
 	id: "cline",
-	name: "Cline",
+	name: "Cline Usage-Billing",
 	popular: 1,
 	modelsFactory: buildClineModels,
 	defaultModelId: CLINE_DEFAULT_MODEL_ID,

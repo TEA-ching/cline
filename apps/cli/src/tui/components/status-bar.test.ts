@@ -99,4 +99,28 @@ describe("model display helpers", () => {
 			}),
 		).toBe(262_144);
 	});
+
+	it("keeps ClinePass visible when model ids have provider prefixes", () => {
+		expect(
+			resolveModelDisplayName({
+				providerId: "cline-pass",
+				modelId: "zai/glm-5.2",
+				knownModels: {
+					"zai/glm-5.2": { name: "GLM 5.2" },
+				},
+			}),
+		).toBe("ClinePass/glm-5.2");
+	});
+
+	it("uses the friendly model name for non-ClinePass providers", () => {
+		expect(
+			resolveModelDisplayName({
+				providerId: "cline",
+				modelId: "zai/glm-5.2",
+				knownModels: {
+					"zai/glm-5.2": { name: "GLM 5.2" },
+				},
+			}),
+		).toBe("GLM 5.2");
+	});
 });
