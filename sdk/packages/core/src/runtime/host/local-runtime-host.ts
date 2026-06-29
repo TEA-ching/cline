@@ -10,6 +10,7 @@ import {
 	createSessionId,
 	type ITelemetryService,
 	isLikelyAuthError,
+	type KeypoolEventHandler,
 	normalizeUserInput,
 } from "@cline/shared";
 import { setHomeDirIfUnset } from "@cline/shared/storage";
@@ -187,6 +188,11 @@ export interface LocalRuntimeHostOptions {
 	 * the AI gateway providers when issuing HTTP requests.
 	 */
 	fetch?: typeof fetch;
+	/**
+	 * Optional callback for keypoollive key lifecycle events (key-selected, key-rotated, …).
+	 * Forwarded to every local session that uses the keypoollive provider.
+	 */
+	keypoolEventHandler?: KeypoolEventHandler;
 }
 
 export class LocalRuntimeHost implements RuntimeHost {
@@ -202,6 +208,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 	private readonly oauthTokenManager: RuntimeOAuthTokenManager;
 	private readonly defaultTelemetry?: ITelemetryService;
 	private readonly defaultFetch?: typeof fetch;
+	private readonly keypoolEventHandler?: KeypoolEventHandler;
 	private readonly events = new RuntimeHostEventBus();
 	private readonly sessions = new Map<string, ActiveSession>();
 	private readonly usageBySession = new Map<string, SessionAccumulatedUsage>();
@@ -238,6 +245,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 		this.defaultTelemetry = options.telemetry;
 		this.defaultTelemetry?.setDistinctId(distinctId);
 		this.defaultFetch = options.fetch;
+		this.keypoolEventHandler = options.keypoolEventHandler;
 
 		this.pendingPromptsController = new PendingPromptsController({
 			getSession: (sid) => this.sessions.get(sid),
@@ -404,6 +412,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 			defaultCapabilities: capabilities,
 			defaultToolPolicies: this.defaultToolPolicies,
 			defaultFetch: this.defaultFetch,
+			keypoolEventHandler: this.keypoolEventHandler,
 			onPluginEvent: (event) => {
 				if (event.name === "plugin_log") {
 					this.eventBridge.handlePluginLog(

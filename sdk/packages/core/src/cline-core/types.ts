@@ -4,6 +4,7 @@ import type {
 	AutomationEventEnvelope,
 	BasicLogger,
 	ITelemetryService,
+	KeypoolEventHandler,
 } from "@cline/shared";
 import type { CronEventSuppression } from "../cron/events/cron-event-ingress";
 import type {
@@ -262,6 +263,11 @@ export interface ClineCoreOptions {
 	 *     `@cline/core/hub` for the scheduler
 	 */
 	fetch?: typeof fetch;
+	/**
+	 * Optional callback for keypoollive key lifecycle events (key-selected, key-rotated, …).
+	 * Fires on each key rotation or selection for local sessions using the keypoollive provider.
+	 */
+	keypoolEventHandler?: KeypoolEventHandler;
 	/**
 	 * An already-constructed session backend to use instead of resolving one automatically.
 	 * Intended for testing or embedding a custom persistence layer.

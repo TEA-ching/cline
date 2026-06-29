@@ -171,7 +171,7 @@ async function projectAgentEvent(
 			return;
 		}
 		if (agentEvent.contentType === "reasoning") {
-			if (agentEvent.redacted && !agentEvent.reasoning) {
+			if (agentEvent.redacted) {
 				ctx.publish(
 					ctx.buildEvent(
 						"reasoning.delta",
@@ -190,7 +190,7 @@ async function projectAgentEvent(
 						"reasoning.delta",
 						{
 							text: agentEvent.reasoning,
-							redacted: agentEvent.redacted === true,
+							redacted: false,
 						},
 						sessionId,
 					),

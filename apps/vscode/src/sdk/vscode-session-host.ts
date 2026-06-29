@@ -101,6 +101,17 @@ export class VscodeSessionHost implements SdkSessionHost {
 			toolPolicies: options.toolPolicies,
 			telemetry: options.telemetry,
 			distinctId: getDistinctId() || undefined,
+			keypoolEventHandler: (event) => {
+				if (event.type === "key-rotated") {
+					Logger.log(
+						`[KeypoolLive] Key rotation triggered for ${event.providerName}/${event.modelId}: ***${event.failedKeyHint.replace(/^\*+/, "")} (attempt ${event.attempt + 1})`,
+					)
+				} else if (event.type === "key-exhausted") {
+					Logger.warn(
+						`[KeypoolLive] All key rotation attempts exhausted for ${event.providerName}/${event.modelId}: ${event.error}`,
+					)
+				}
+			},
 			prepare: async () => ({
 				applyToStartSessionInput: async (input: ClineCoreStartInput): Promise<ClineCoreStartInput> => {
 					const remoteConfigIntegration = options.getRemoteConfigIntegration?.()
