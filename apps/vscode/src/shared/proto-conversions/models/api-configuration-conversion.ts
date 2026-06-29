@@ -1,21 +1,21 @@
 import {
-	LiteLLMModelInfo,
-	OpenAiCompatibleModelInfo,
-	OpenRouterModelInfo,
-	ModelsApiConfiguration as ProtoApiConfiguration,
-	OcaModelInfo as ProtoOcaModelInfo,
-	ThinkingConfig,
-} from "@shared/proto/cline/models"
+    LiteLLMModelInfo,
+    OpenAiCompatibleModelInfo,
+    OpenRouterModelInfo,
+    ModelsApiConfiguration as ProtoApiConfiguration,
+    OcaModelInfo as ProtoOcaModelInfo,
+    ThinkingConfig,
+} from "@shared/proto/cline/models";
 import {
-	ApiConfiguration,
-	ApiProvider,
-	LiteLLMModelInfo as AppLiteLLMModelInfo,
-	OpenAiCompatibleModelInfo as AppOpenAiCompatibleModelInfo,
-	BedrockModelId,
-	ModelInfo,
-	OcaModelInfo,
-} from "../../api"
-import { OpenaiReasoningEffort } from "../../storage/types"
+    ApiConfiguration,
+    ApiProvider,
+    LiteLLMModelInfo as AppLiteLLMModelInfo,
+    OpenAiCompatibleModelInfo as AppOpenAiCompatibleModelInfo,
+    BedrockModelId,
+    ModelInfo,
+    OcaModelInfo,
+} from "../../api";
+import { OpenaiReasoningEffort } from "../../storage/types";
 
 // Convert application ThinkingConfig to proto ThinkingConfig
 function convertThinkingConfigToProto(config: ModelInfo["thinkingConfig"]): ThinkingConfig | undefined {
@@ -315,6 +315,7 @@ export function convertApiConfigurationToProto(config: ApiConfiguration): ProtoA
 		keypoolliveGatewayId: config.keypoolliveGatewayId,
 		keypoolliveGatewayCacheSkip: config.keypoolliveGatewayCacheSkip,
 		keypoolliveMaxDbSizeMb: config.keypoolliveMaxDbSizeMb,
+		keypoolliveAggressiveRotation: config.keypoolliveAggressiveRotation,
 		asksageApiUrl: config.asksageApiUrl,
 		asksageApiKey: config.asksageApiKey,
 		xaiApiKey: config.xaiApiKey,
@@ -508,6 +509,7 @@ export function convertProtoToApiConfiguration(protoConfig: ProtoApiConfiguratio
 		keypoolliveGatewayId: protoConfig.keypoolliveGatewayId,
 		keypoolliveGatewayCacheSkip: protoConfig.keypoolliveGatewayCacheSkip,
 		keypoolliveMaxDbSizeMb: protoConfig.keypoolliveMaxDbSizeMb,
+		keypoolliveAggressiveRotation: protoConfig.keypoolliveAggressiveRotation,
 		asksageApiUrl: protoConfig.asksageApiUrl,
 		asksageApiKey: protoConfig.asksageApiKey,
 		xaiApiKey: protoConfig.xaiApiKey,

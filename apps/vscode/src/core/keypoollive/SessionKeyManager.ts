@@ -147,6 +147,7 @@ export async function rotateSessionKey(
 	const { loadPersistentStateOnce } = await import("./KeyPool");
 	await loadPersistentStateOnce();
 
+	Logger.info(`[KeypoolLive] Rotating API key ***${current?.apiKey.slice(-8) ?? "unknown"} for session ${sessionId}, provider ${providerName}, model ${modelId ?? "default"} due to ${reason}`);
 	return getSessionApiConfig(sessionId, providerName, modelId);
 }
 

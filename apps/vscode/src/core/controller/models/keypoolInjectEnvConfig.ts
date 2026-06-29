@@ -16,6 +16,7 @@ export function keypoolInjectEnvConfig(controller: Controller): void {
 	const apiConfig = controller.stateManager.getApiConfiguration()
 	const secret = apiConfig.keypoolliveSecret
 	const remoteStorageUrl = apiConfig.keypoolliveRemoteStorageUrl
+	const aggressiveRotation = apiConfig.keypoolliveAggressiveRotation
 
 	if (secret) {
 		process.env.KEYPOOL_LIVE_SECRET = secret
@@ -24,5 +25,10 @@ export function keypoolInjectEnvConfig(controller: Controller): void {
 	if (remoteStorageUrl) {
 		Logger.debug("[keypoolInjectEnvConfig] Injecting remote storage URL:", remoteStorageUrl)
 		process.env.KEYPOOL_LIVE_REMOTE_STORAGE_URL = remoteStorageUrl
+	}
+
+	if (aggressiveRotation) {
+		Logger.debug("[keypoolInjectEnvConfig] Injecting aggressive rotation flag")
+		process.env.KEYPOOL_LIVE_AGGRESSIVE_ROTATION = "true"
 	}
 }

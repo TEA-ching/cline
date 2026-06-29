@@ -2,26 +2,28 @@
 // © 2026 Ronan LE MEILLAT — MIT License
 
 import type { OpenAiCompatibleModelInfo } from "@shared/api";
+import type { Message } from "@cline/shared";
+import type { ApiStreamChunk as SdkApiStreamChunk } from "@cline/llms";
 import { getCachedVaultModel, getCachedVaultProvider, loadAiVault } from "@/core/keypoollive/AiVault";
+
+// SDK ApiStream type (not exported but used by handlers)
+type SdkApiStream = AsyncGenerator<SdkApiStreamChunk> & { id?: string };
 import { KeypoolLog } from "@/core/keypoollive/KeypoolLog";
 import { KeypoolUsageDb } from "@/core/keypoollive/KeypoolUsageDb";
 import { markKeyAsUsed } from "@/core/keypoollive/KeyPool";
 import {
-	configureSessionKeyManager,
-	getSessionApiConfig,
-	rotateSessionKey,
+    configureSessionKeyManager,
+    getSessionApiConfig,
+    rotateSessionKey,
 } from "@/core/keypoollive/SessionKeyManager";
 import type { AiProtocol, ResolvedApiConfig } from "@/core/keypoollive/types";
 import type { ClineStorageMessage } from "@/shared/messages/content";
-import type { ClineTool } from "@/shared/tools";
 import { Logger } from "@/shared/services/Logger";
 import { fetch } from "@/shared/net";
 import type {
-	ApiHandler,
-	ApiStream,
-	CommonApiHandlerOptions,
+    ApiHandler,
+    CommonApiHandlerOptions,
 } from "./ai-sdk-handler";
-import type { ApiHandlerModel } from "../index";
 import { createHandler } from "@cline/llms";
 import { CohereHandler } from "./cohere";
 import { PoolsideHandler } from "./poolside";
@@ -66,6 +68,13 @@ function formatKeyHint(apiKey: string): string {
 }
 
 /**
+ * Generates a unique response ID for streaming responses
+ */
+function generateResponseId(): string {
+	return `keypool-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+}
+
+/**
  * Shows a VSCode information toast if running inside the extension host (no-op in standalone).
  * This provides user feedback for key rotation events and other important notifications.
  *
@@ -94,7 +103,7 @@ function isKeyError(e: any): boolean {
 	// Also match message-based rate-limit signals: sub-handlers (Mistral, OpenAI, etc.)
 	// sometimes wrap 429s without a numeric status field.
 	const msg = ((e?.message ?? "") + " " + (e?.error?.message ?? "")).toLowerCase();
-	return /rate.?limit|too many requests|quota|throttle/.test(msg);
+	return /rate.?limit|too many requests|quota|throttle|resource.?exhausted/.test(msg);
 }
 
 interface KeypoolLiveHandlerOptions extends CommonApiHandlerOptions {
@@ -106,6 +115,7 @@ interface KeypoolLiveHandlerOptions extends CommonApiHandlerOptions {
 	keypoolliveGatewayId?: string;
 	keypoolliveGatewayCacheSkip?: boolean;
 	keypoolliveMaxDbSizeMb?: number;
+	keypoolliveAggressiveRotation?: boolean;
 	/** Format: "providerName/modelId" e.g. "openai/gpt-4o" */
 	apiModelId?: string;
 	ulid?: string;
@@ -116,13 +126,16 @@ interface KeypoolLiveHandlerOptions extends CommonApiHandlerOptions {
  *
  * This class manages API requests to various AI providers using keys from a KeypoolLive vault.
  * It handles key rotation, usage tracking, and Cloudflare AI Gateway integration.
+ *
+ * Implements the SDK ApiHandler interface (duck typing), delegating to ephemeral provider-specific handlers
+ * while managing key rotation and vault access.
  */
 
 // Protocols that correctly return tool calls via delta.tool_calls in the streaming response.
 // Unknown protocols (e.g. "poolside") must use XML system-prompt mode instead.
 const NATIVE_TOOL_PROTOCOLS: string[] = ["openai", "anthropic", "gemini", "cohere", "mistral"];
 
-export class KeypoolLiveHandler implements ApiHandler {
+export class KeypoolLiveHandler {
 	private options: KeypoolLiveHandlerOptions;
 	private resolvedConfig: ResolvedApiConfig | null = null;
 
@@ -164,6 +177,10 @@ export class KeypoolLiveHandler implements ApiHandler {
 		// Apply the user-configured DB size limit (default 50 MB if not set)
 		if (options.keypoolliveMaxDbSizeMb !== undefined) {
 			KeypoolUsageDb.setMaxSizeMb(options.keypoolliveMaxDbSizeMb);
+		}
+		// Apply the aggressive rotation flag if set
+		if (options.keypoolliveAggressiveRotation) {
+			process.env.KEYPOOL_LIVE_AGGRESSIVE_ROTATION = "true";
 		}
 	}
 
@@ -297,18 +314,21 @@ export class KeypoolLiveHandler implements ApiHandler {
 	 * 6. Handles errors with automatic key rotation and retry
 	 *
 	 * @param systemPrompt - System prompt for the AI model
-	 * @param messages - Conversation history
-	 * @param tools - Optional tools for function calling
+	 * @param messages - Conversation history (SDK format)
+	 * @param tools - Optional tools for function calling (SDK format)
 	 * @param useResponseApi - Whether to use response API format
-	 * @returns Async generator yielding API response chunks
+	 * @returns Async generator yielding API response chunks (SDK format)
 	 * @throws Will throw the last error if all attempts fail
 	 */
 	async *createMessage(
 		systemPrompt: string,
-		messages: ClineStorageMessage[],
-		tools?: ClineTool[],
+		messages: Message[],
+		tools?: any[],
 		useResponseApi?: boolean,
-	): ApiStream {
+	): SdkApiStream {
+		// Convert SDK Message format to ClineStorageMessage for internal use
+		const clineMessages = messages as unknown as ClineStorageMessage[];
+		const responseId = generateResponseId();
 		const { vaultProviderName, vaultModelId } = this.parseModelId();
 
 		if (!vaultProviderName) {
@@ -320,11 +340,27 @@ export class KeypoolLiveHandler implements ApiHandler {
 			throw new Error("[KeypoolLive] Vault URL not configured.");
 		}
 
-		let config = await getSessionApiConfig(
-			KEYPOOLLIVE_SESSION_ID,
-			vaultProviderName,
-			vaultModelId || undefined,
-		);
+		let config: ResolvedApiConfig | null;
+		// Check aggressive rotation from both option and environment variable
+		// Environment variable is used for runtime changes to the setting
+		const aggressiveRotation = this.options.keypoolliveAggressiveRotation ||
+			process.env.KEYPOOL_LIVE_AGGRESSIVE_ROTATION === "true";
+
+		if (aggressiveRotation) {
+			// In aggressive rotation mode, force a new key for each request
+			config = await rotateSessionKey(
+				KEYPOOLLIVE_SESSION_ID,
+				vaultProviderName,
+				vaultModelId || undefined,
+				"user_request",
+			);
+		} else {
+			config = await getSessionApiConfig(
+				KEYPOOLLIVE_SESSION_ID,
+				vaultProviderName,
+				vaultModelId || undefined,
+			);
+		}
 		if (!config) {
 			throw new Error(
 				`[KeypoolLive] Could not resolve API key for provider "${vaultProviderName}"`,
@@ -356,7 +392,7 @@ export class KeypoolLiveHandler implements ApiHandler {
 					modelId: vaultModelId || config.model.id,
 					messages: [
 						{ role: "system", content: systemPrompt },
-						...messages.map(msg => ({
+						...clineMessages.map(msg => ({
 							role: msg.role === "user" ? "user" : "assistant",
 							content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)
 						}))
@@ -370,7 +406,7 @@ export class KeypoolLiveHandler implements ApiHandler {
 
 				for await (const chunk of ephemeral.createMessage(
 					systemPrompt,
-					messages,
+					clineMessages,
 					tools,
 					useResponseApi,
 				)) {
@@ -378,7 +414,12 @@ export class KeypoolLiveHandler implements ApiHandler {
 						promptTokens = chunk.inputTokens;
 						completionTokens = chunk.outputTokens;
 					}
-					yield chunk;
+					// Adapt local chunk types to SDK format by adding response ID
+					const sdkChunk: SdkApiStreamChunk = {
+						...chunk,
+						id: responseId,
+					} as SdkApiStreamChunk;
+					yield sdkChunk;
 				}
 
 				// Record usage on success
@@ -445,12 +486,33 @@ export class KeypoolLiveHandler implements ApiHandler {
 	}
 
 	/**
+	 * Convert messages to the format expected by the provider.
+	 * Since KeypoolLiveHandler delegates to ephemeral handlers,
+	 * this returns messages in standard format for the underlying protocol.
+	 *
+	 * @param systemPrompt - System prompt for the request
+	 * @param messages - Conversation history (SDK format)
+	 * @returns Formatted messages for the provider
+	 */
+	getMessages(systemPrompt: string, messages: Message[]): unknown {
+		// Convert SDK Message format to ClineStorageMessage for internal use
+		const clineMessages = messages as unknown as ClineStorageMessage[];
+		return {
+			systemPrompt,
+			messages: clineMessages.map(msg => ({
+				role: msg.role === "user" ? "user" : "assistant",
+				content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)
+			}))
+		}
+	}
+
+	/**
 	 * Returns model information for the configured provider and model.
 	 * This is used by the UI model picker and for validating model capabilities.
 	 *
-	 * @returns ApiHandlerModel containing model ID and capabilities
+	 * @returns Model info compatible with SDK ApiHandler interface
 	 */
-	getModel(): ApiHandlerModel {
+	getModel(): any {
 		const { vaultProviderName, vaultModelId } = this.parseModelId();
 		// resolvedConfig is set after the first createMessage(); before that, fall back to the
 		// vault cache (populated by the constructor preload) so the model picker shows correct values.

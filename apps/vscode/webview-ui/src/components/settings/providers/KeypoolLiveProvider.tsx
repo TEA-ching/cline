@@ -130,6 +130,25 @@ export const KeypoolLiveProvider = ({ isPopup: _isPopup, currentMode: _currentMo
 				KeypoolLive loads AI provider API keys from an AES-256-CBC encrypted vault and manages key rotation automatically.
 			</p>
 
+			{/* Aggressive Rotation */}
+			<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+				<label htmlFor="keypoollive-aggressive-rotation" style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap" }}>
+					Aggressive Rotation
+				</label>
+				<input
+					id="keypoollive-aggressive-rotation"
+					onChange={(e) => {
+						handleFieldChange("keypoolliveAggressiveRotation", e.target.checked)
+					}}
+					style={{ width: 20 }}
+					type="checkbox"
+					checked={apiConfiguration?.keypoolliveAggressiveRotation ?? false}
+				/>
+				<span style={{ fontSize: 11, color: "var(--vscode-descriptionForeground)" }}>
+					If enabled, keys will be rotated on each request.
+				</span>
+			</div>
+
 			{/* Vault URL */}
 			<DebouncedTextField
 				initialValue={apiConfiguration?.keypoolliveVaultUrl || ""}

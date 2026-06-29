@@ -1,24 +1,24 @@
-import { AutoApprovalSettings, DEFAULT_AUTO_APPROVAL_SETTINGS } from "@shared/AutoApprovalSettings"
+import { AutoApprovalSettings, DEFAULT_AUTO_APPROVAL_SETTINGS } from "@shared/AutoApprovalSettings";
 import {
-	ApiProvider,
-	DEFAULT_API_PROVIDER,
-	LiteLLMModelInfo,
-	ModelInfo,
-	type OcaModelInfo,
-	OpenAiCompatibleModelInfo,
-} from "@shared/api"
-import { BrowserSettings, DEFAULT_BROWSER_SETTINGS } from "@shared/BrowserSettings"
-import { ClineRulesToggles } from "@shared/cline-rules"
-import { DEFAULT_FOCUS_CHAIN_SETTINGS, FocusChainSettings } from "@shared/FocusChainSettings"
-import { HistoryItem } from "@shared/HistoryItem"
-import { DEFAULT_MCP_DISPLAY_MODE, McpDisplayMode } from "@shared/McpDisplayMode"
-import { WorkspaceRoot } from "@shared/multi-root/types"
-import { GlobalInstructionsFile } from "@shared/remote-config/schema"
-import { Mode } from "@shared/storage/types"
-import { TelemetrySetting } from "@shared/TelemetrySetting"
-import { UserInfo } from "@shared/UserInfo"
-import { LanguageModelChatSelector } from "vscode"
-import { type BlobStoreSettings } from "./types"
+    ApiProvider,
+    DEFAULT_API_PROVIDER,
+    LiteLLMModelInfo,
+    ModelInfo,
+    type OcaModelInfo,
+    OpenAiCompatibleModelInfo,
+} from "@shared/api";
+import { BrowserSettings, DEFAULT_BROWSER_SETTINGS } from "@shared/BrowserSettings";
+import { ClineRulesToggles } from "@shared/cline-rules";
+import { DEFAULT_FOCUS_CHAIN_SETTINGS, FocusChainSettings } from "@shared/FocusChainSettings";
+import { HistoryItem } from "@shared/HistoryItem";
+import { DEFAULT_MCP_DISPLAY_MODE, McpDisplayMode } from "@shared/McpDisplayMode";
+import { WorkspaceRoot } from "@shared/multi-root/types";
+import { GlobalInstructionsFile } from "@shared/remote-config/schema";
+import { Mode } from "@shared/storage/types";
+import { TelemetrySetting } from "@shared/TelemetrySetting";
+import { UserInfo } from "@shared/UserInfo";
+import { LanguageModelChatSelector } from "vscode";
+import { type BlobStoreSettings } from "./types";
 
 // ============================================================================
 // SINGLE SOURCE OF TRUTH FOR STORAGE KEYS
@@ -248,6 +248,7 @@ const API_HANDLER_SETTINGS_FIELDS = {
 	keypoolliveGatewayCacheSkip: { default: false as boolean },
 	keypoolliveMaxDbSizeMb: { default: 50 as number },
 	keypoolliveRemoteStorageUrl: { default: undefined as string | undefined },
+	keypoolliveAggressiveRotation: { default: false as boolean },
 } satisfies FieldDefinitions
 
 const USER_SETTINGS_FIELDS = {

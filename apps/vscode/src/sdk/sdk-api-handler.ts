@@ -14,6 +14,7 @@ import { fetch } from "@/shared/net"
 import { buildBedrockProviderConfig } from "./bedrock-config"
 import { resolveApiKey, resolveBaseUrl, resolveModelId, resolveVertexProviderConfig } from "./cline-session-factory"
 import { toSdkProviderId } from "./model-catalog/sdk-provider-id"
+import { KeypoolLiveHandler } from "@core/api/providers/keypoollive"
 
 export interface BuildApiHandlerOptions {
 	/**
@@ -94,8 +95,45 @@ export function buildSdkProviderConfig(
  * This is the SDK replacement for the legacy per-provider handler factory. The
  * returned handler implements the same `createMessage`/`getModel` surface, so
  * existing callers continue to work unchanged.
+ *
+ * Special handling for KeypoolLive: creates a KeypoolLiveHandler instead of using
+ * the SDK gateway, to support vault-based key rotation and aggressive rotation mode.
  */
 export function buildApiHandler(configuration: ApiConfiguration, mode: Mode, options?: BuildApiHandlerOptions): ApiHandler {
+	const providerId = (mode === "plan" ? configuration.planModeApiProvider : configuration.actModeApiProvider) ?? "cline"
+
+	// KeypoolLive is a custom vault-based provider that requires its own handler
+	if (providerId === "keypoollive") {
+		// Inject KeypoolLive environment variables for runtime configuration changes
+		// This ensures that settings changed in the UI are picked up on the next request
+		if (configuration.keypoolliveSecret) {
+			process.env.KEYPOOL_LIVE_SECRET = configuration.keypoolliveSecret
+		}
+		if (configuration.keypoolliveRemoteStorageUrl) {
+			process.env.KEYPOOL_LIVE_REMOTE_STORAGE_URL = configuration.keypoolliveRemoteStorageUrl
+		}
+		if (configuration.keypoolliveAggressiveRotation) {
+			process.env.KEYPOOL_LIVE_AGGRESSIVE_ROTATION = "true"
+		} else {
+			// Clear the flag if disabled
+			delete process.env.KEYPOOL_LIVE_AGGRESSIVE_ROTATION
+		}
+
+		const modelId = resolveModelId(providerId, mode, configuration)
+		return new KeypoolLiveHandler({
+			keypoolliveVaultUrl: configuration.keypoolliveVaultUrl,
+			keypoolliveSecret: configuration.keypoolliveSecret,
+			keypoolliveRemoteStorageUrl: configuration.keypoolliveRemoteStorageUrl,
+			keypoolliveGatewaySecret: configuration.keypoolliveGatewaySecret,
+			keypoolliveUseGateway: configuration.keypoolliveUseGateway,
+			keypoolliveGatewayId: configuration.keypoolliveGatewayId,
+			keypoolliveGatewayCacheSkip: configuration.keypoolliveGatewayCacheSkip,
+			keypoolliveMaxDbSizeMb: configuration.keypoolliveMaxDbSizeMb,
+			keypoolliveAggressiveRotation: configuration.keypoolliveAggressiveRotation,
+			apiModelId: modelId,
+		}) as any
+	}
+
 	const providerConfig = buildSdkProviderConfig(configuration, mode, options)
 	const handler = createHandler(providerConfig)
 	const getModel = handler.getModel.bind(handler)

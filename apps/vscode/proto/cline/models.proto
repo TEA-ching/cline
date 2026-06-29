@@ -425,6 +425,7 @@ message ModelsApiOptions {
   optional bool keypoollive_gateway_cache_skip = 48;
   optional int32 keypoollive_max_db_size_mb = 49;
   optional string keypoollive_remote_storage_url = 50;
+  optional bool keypoollive_aggressive_rotation = 51;
 
   // Plan mode configurations
   optional string plan_mode_api_provider = 100;
@@ -744,6 +745,8 @@ message ModelsApiConfiguration {
   optional string cohere_api_key = 94;
   optional int32 keypoollive_max_db_size_mb = 95;
   optional string poolside_api_key = 96;
+  optional bool keypoollive_aggressive_rotation = 97;
+  optional string keypoollive_remote_storage_url = 98;
 
   // Plan mode configurations
   optional string plan_mode_api_provider = 100;
