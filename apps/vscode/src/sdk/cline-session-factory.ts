@@ -564,6 +564,18 @@ export async function buildSessionConfig(input: SessionConfigInput): Promise<Cor
 				baseUrl = sapProviderConfig.baseUrl
 			}
 
+			// Inject keypoollive vault credentials into process.env so the SDK vendor
+			// can load the encrypted vault at task start (it reads KEYPOOL_VAULT_URL
+			// and KEYPOOL_LIVE_SECRET directly from the environment).
+			if (providerId === "keypoollive") {
+				if (apiConfig.keypoolliveVaultUrl) {
+					process.env.KEYPOOL_VAULT_URL = apiConfig.keypoolliveVaultUrl
+				}
+				if (apiConfig.keypoolliveSecret) {
+					process.env.KEYPOOL_LIVE_SECRET = apiConfig.keypoolliveSecret
+				}
+			}
+
 			Logger.log(
 				`[SessionFactory] Resolved from StateManager: provider=${providerId}, model=${modelId}, hasApiKey=${!!apiKey}`,
 			)
@@ -599,7 +611,14 @@ export async function buildSessionConfig(input: SessionConfigInput): Promise<Cor
 	// Final defaults. Keep this aligned with the provider catalog so the UI and
 	// session factory share one source of truth for default models.
 	providerId = providerId ?? DEFAULT_PROVIDER_ID
-	modelId = modelId ?? getDefaultModelIdForProvider(providerId) ?? getDefaultModelIdForProvider(DEFAULT_PROVIDER_ID) ?? ""
+	// keypoollive uses vault-based model IDs (format: "providerName/modelId") selected
+	// by the user via KeypoolModelSelector. Do not fall back to the catalog default
+	// ("mistral/devstral-latest") — if no model is selected the vendor will throw a
+	// clear error instead of silently using the wrong model.
+	modelId =
+		providerId === "keypoollive"
+			? (modelId ?? "")
+			: (modelId ?? getDefaultModelIdForProvider(providerId) ?? getDefaultModelIdForProvider(DEFAULT_PROVIDER_ID) ?? "")
 	if (!apiKey && apiConfig) {
 		apiKey = resolveApiKey(providerId, apiConfig)
 	}

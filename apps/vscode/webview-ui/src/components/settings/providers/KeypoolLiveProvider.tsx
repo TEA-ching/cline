@@ -189,10 +189,18 @@ export const KeypoolLiveProvider = ({ isPopup: _isPopup, currentMode: _currentMo
 
 			{/* Model ID */}
 			<DebouncedTextField
-				initialValue={
-					(apiConfiguration?.actModeApiModelId !== undefined ? apiConfiguration?.actModeApiModelId : "") || ""
-				}
-				onChange={(value) => handleFieldChange("actModeApiModelId", value)}
+				initialValue={apiConfiguration?.actModeApiModelId || ""}
+				onChange={async (value) => {
+					// Skip firing when both the incoming value and the saved value are empty
+					// (e.g., the debounced mount-fire when no model has been selected yet).
+					if (!value && !apiConfiguration?.actModeApiModelId) return
+					await ModelsServiceClient.updateApiConfiguration(
+						UpdateApiConfigurationRequestNew.create({
+							updates: { options: { actModeApiModelId: value || undefined } },
+							updateMask: ["options.actModeApiModelId"],
+						}),
+					)
+				}}
 				placeholder="e.g. openai/gpt-4o or anthropic/claude-3-5-sonnet"
 				style={{ width: "100%" }}
 				type="text">

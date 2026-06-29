@@ -955,7 +955,9 @@ const OPENAI_COMPATIBLE_SPECS: BuiltinSpec[] = [
 		description: "Encrypted vault-backed key rotation provider",
 		family: "keypoollive",
 		capabilities: ["reasoning", "prompt-cache", "tools"],
-		defaultModelId: "mistral/devstral-latest",
+		// No defaultModelId: vault model IDs are dynamic (format: "providerName/modelId")
+		// and are selected via KeypoolModelSelector. A static default would silently
+		// override the user's vault selection.
 		apiKeyEnv: ["KEYPOOL_VAULT_URL", "KEYPOOL_LIVE_SECRET"],
 	},
 	{
