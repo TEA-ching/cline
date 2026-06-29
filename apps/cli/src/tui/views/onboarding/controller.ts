@@ -174,6 +174,7 @@ export function useOnboardingController(props: OnboardingControllerProps) {
 		useState(0);
 	const [clinePassSubscriptionOpenStatus, setClinePassSubscriptionOpenStatus] =
 		useState("");
+	const clinePassSubscriptionUrl = useMemo(() => getCliSubscriptionUrl(), []);
 
 	const modelItems: SearchableItem[] = useMemo(
 		() =>
@@ -457,9 +458,8 @@ export function useOnboardingController(props: OnboardingControllerProps) {
 	}, [transitionToModelPicker]);
 
 	const openClinePassSubscriptionPage = useCallback(() => {
-		const subscriptionUrl = getCliSubscriptionUrl();
 		setClinePassSubscriptionOpenStatus("Opening subscription page...");
-		void open(subscriptionUrl, { wait: false })
+		void open(clinePassSubscriptionUrl, { wait: false })
 			.then(() => {
 				setClinePassSubscriptionOpenStatus(
 					"Opened subscription page in your browser.",
@@ -467,10 +467,10 @@ export function useOnboardingController(props: OnboardingControllerProps) {
 			})
 			.catch(() => {
 				setClinePassSubscriptionOpenStatus(
-					`Could not open browser automatically. Open ${subscriptionUrl}`,
+					`Could not open browser automatically. Open ${clinePassSubscriptionUrl}`,
 				);
 			});
-	}, []);
+	}, [clinePassSubscriptionUrl]);
 
 	useEffect(() => {
 		if (
@@ -827,6 +827,7 @@ export function useOnboardingController(props: OnboardingControllerProps) {
 		clinePassSubscriptionOptions: CLINE_PASS_SUBSCRIPTION_OPTIONS,
 		clinePassSubscriptionSelected,
 		clinePassSubscriptionStatus,
+		clinePassSubscriptionUrl,
 		deviceError,
 		deviceStatus,
 		deviceUserCode,
