@@ -20,8 +20,11 @@ import {
 	TrackedRobot,
 	type useMouseTracker,
 } from "../../components/tracked-robot";
-import { useTerminalBackground } from "../../hooks/use-terminal-background";
-import { getDefaultForeground, palette } from "../../palette";
+import {
+	useTerminalBackground,
+	useTerminalTheme,
+} from "../../hooks/use-terminal-background";
+import { getDefaultForeground, getModeAccent, palette } from "../../palette";
 import { FIELD_ORDER } from "./fields";
 import {
 	type ClinePassSubscriptionOption,
@@ -493,6 +496,8 @@ export function OnboardingClinePassSubscriptionScreen(props: {
 	status: ClinePassSubscriptionStatus;
 }) {
 	const defaultFg = useDefaultFg();
+	const terminalTheme = useTerminalTheme();
+	const planAccent = getModeAccent("plan", terminalTheme);
 	const scrollRef = useRef<ScrollBoxRenderable | null>(null);
 	const isLoading = props.status === "loading";
 	const isSubscribed = props.status === "subscribed";
@@ -524,7 +529,7 @@ export function OnboardingClinePassSubscriptionScreen(props: {
 				flexDirection="column"
 				border
 				borderStyle="rounded"
-				borderColor={isSubscribed ? palette.success : "yellow"}
+				borderColor={isSubscribed ? palette.success : planAccent}
 				paddingX={1}
 				paddingY={1}
 				height={bodyHeight}
@@ -540,7 +545,10 @@ export function OnboardingClinePassSubscriptionScreen(props: {
 					contentOptions={{ flexDirection: "column" }}
 				>
 					<box flexDirection="column" width="100%" flexShrink={0}>
-						<text fg={isSubscribed ? palette.success : "yellow"} flexShrink={0}>
+						<text
+							fg={isSubscribed ? palette.success : planAccent}
+							flexShrink={0}
+						>
 							{isSubscribed
 								? "ClinePass subscription active"
 								: "ClinePass subscription required"}
