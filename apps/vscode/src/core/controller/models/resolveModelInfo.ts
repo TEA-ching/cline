@@ -136,7 +136,7 @@ export async function resolveModelInfo(
 							id: requestedModelId,
 							contextWindow: rawModel.contextWindow,
 							maxTokens: rawModel.maxOutputTokens,
-							...(supportsImages ? { capabilities: ["images" as const] } : {}),
+							supportsImages,
 							supportsPromptCache: rawModel.supportsPromptCache ?? false,
 						}
 						return ResolveModelInfoResponse.create({

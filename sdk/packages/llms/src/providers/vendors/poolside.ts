@@ -15,7 +15,11 @@ export async function createPoolsideProviderModule(
 		fetch: patchPoolsideUsageFetch(config.fetch ?? globalThis.fetch),
 	});
 	return {
-		model: (modelId) => provider(modelId),
+		// poolside.ai requires the "poolside/" namespace prefix in the model ID
+		// (e.g. "poolside/laguna-m.1"). When invoked via keypoollive, the composite
+		// vault ID is parsed into providerName + bare modelId before reaching this
+		// vendor, so the prefix has been stripped. Re-add it if absent.
+		model: (modelId) => provider(modelId.startsWith("poolside/") ? modelId : `poolside/${modelId}`),
 	};
 }
 

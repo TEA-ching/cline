@@ -169,7 +169,11 @@ function transformAiConfigToVaultConfig(aiConfig: AiConfig): AiVaultConfig {
 				contextWindow: m.contextWindow,
 				maxOutputTokens: m.maxOutputTokens,
 				usage: m.usage,
-				supportsImages: m.supportsImages,
+				// Normalize supportsImages from inputModalities for vault providers (e.g. Mistral)
+				// that use the modalities array instead of an explicit boolean field.
+				supportsImages: m.supportsImages ??
+					(Array.isArray((m as unknown as Record<string, unknown>).inputModalities) &&
+						((m as unknown as Record<string, unknown>).inputModalities as string[]).includes("image")),
 				supportsPromptCache: m.supportsPromptCache,
 				supportsTools: m.supportsTools,
 				inputPrice: m.inputPrice,
