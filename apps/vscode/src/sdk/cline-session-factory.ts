@@ -255,6 +255,8 @@ const PROVIDER_API_KEY_MAP: Record<string, keyof ApiConfiguration> = {
 	wandb: "wandbApiKey",
 	"qwen-code": "qwenApiKey",
 	oca: "ocaApiKey",
+	cohere: "cohereApiKey",
+	poolside: "poolsideApiKey",
 }
 
 /**
@@ -523,6 +525,10 @@ export async function buildSessionConfig(input: SessionConfigInput): Promise<Cor
 	let apiKey: string | undefined
 	let baseUrl: string | undefined
 	let apiConfig: ApiConfiguration | undefined
+	// Vault model metadata for keypoollive — injected into providerConfig so the
+	// session knows contextWindow and maxOutputTokens before the first API call.
+	let keypooliveContextWindow: number | undefined
+	let keypoolliveMaxOutputTokens: number | undefined
 	// Cloud-provider structured options. The core runtime reads these from
 	// CoreSessionConfig.providerConfig; without them the SDK gateway never receives
 	// region/project/auth fields for inference calls.
@@ -573,6 +579,28 @@ export async function buildSessionConfig(input: SessionConfigInput): Promise<Cor
 				}
 				if (apiConfig.keypoolliveSecret) {
 					process.env.KEYPOOL_LIVE_SECRET = apiConfig.keypoolliveSecret
+				}
+
+				// Resolve contextWindow and maxOutputTokens from vault model metadata
+				// so the session can manage context truncation correctly from the start.
+				// The vault uses "providerName/modelId" composite IDs; parse accordingly.
+				if (apiConfig.keypoolliveVaultUrl && modelId) {
+					try {
+						const { loadAiVault } = await import("@/core/keypoollive/AiVault")
+						const vault = await loadAiVault(apiConfig.keypoolliveVaultUrl)
+						const slashIdx = modelId.indexOf("/")
+						if (slashIdx > 0) {
+							const vaultProviderName = modelId.slice(0, slashIdx)
+							const vaultModelId = modelId.slice(slashIdx + 1)
+							const chatModels = (vault.providers[vaultProviderName]?.models ?? [])
+								.filter((m: { usage?: string }) => !m.usage || m.usage === "chat")
+							const vaultModel = chatModels.find((m: { id: string }) => m.id === vaultModelId) ?? chatModels[0]
+							keypooliveContextWindow = vaultModel?.contextWindow
+							keypoolliveMaxOutputTokens = vaultModel?.maxOutputTokens
+						}
+					} catch (vaultErr) {
+						Logger.warn("[SessionFactory] Failed to resolve keypoollive vault model metadata:", vaultErr)
+					}
 				}
 			}
 
@@ -694,6 +722,8 @@ export async function buildSessionConfig(input: SessionConfigInput): Promise<Cor
 		modelId,
 		...(apiKey ? { apiKey } : {}),
 		...(baseUrl !== undefined ? { baseUrl } : {}),
+		...(keypooliveContextWindow !== undefined ? { contextWindow: keypooliveContextWindow } : {}),
+		...(keypoolliveMaxOutputTokens !== undefined ? { maxTokens: keypoolliveMaxOutputTokens } : {}),
 		fetch,
 	}
 

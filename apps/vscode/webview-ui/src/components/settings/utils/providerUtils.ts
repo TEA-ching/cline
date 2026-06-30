@@ -399,7 +399,9 @@ export function normalizeApiConfiguration(
 		case "keypoollive": {
 			const kplCached = modelId ? getKplModelInfo(modelId) : undefined
 			const kplModelInfo: ModelInfo = {
-				contextWindow: Number(kplCached?.contextWindow ?? 128000),
+				// Use vault data when available; omit contextWindow if unknown rather than
+				// showing an incorrect hardcoded 128k for every vault model.
+				...(kplCached?.contextWindow ? { contextWindow: Number(kplCached.contextWindow) } : {}),
 				maxTokens: kplCached?.maxOutputTokens
 					? Number(kplCached.maxOutputTokens)
 					: kplCached?.contextWindow

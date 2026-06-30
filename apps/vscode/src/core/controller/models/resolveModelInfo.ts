@@ -3,6 +3,7 @@ import { providerAllowsCustomModelIds } from "@/sdk/model-catalog/custom-model-i
 import { ResolveModelInfoRequest, ResolveModelInfoResponse } from "@/shared/proto/cline/models"
 import { toProtobufModelInfo } from "@/shared/proto-conversions/models/typeConversion"
 import { type ProviderCatalogController, parseProviderIdRequest } from "./providerCatalogShared"
+import { Logger } from "@/shared/services/Logger"
 
 /**
  * Resolve a single (provider, model) pair for the webview's status /
@@ -97,6 +98,58 @@ export async function resolveModelInfo(
 				modelInfo: toProtobufModelInfo(hit.modelInfo),
 				source: hit.matchedRequested ? "sdk-known-models" : "sdk-default",
 			})
+		}
+	}
+
+	// Step 4 (keypoollive only): vault fallback — the SDK catalog has no static model list
+	// for keypoollive (models are dynamically defined per-vault). When the env vars are
+	// available (set by buildSessionConfig or keypoolInjectEnvConfig), load the vault to
+	// extract the model's contextWindow and capabilities for the UI.
+	if (providerId === "keypoollive" && requestedModelId) {
+		const vaultUrl = process.env.KEYPOOL_VAULT_URL
+		const secret = process.env.KEYPOOL_LIVE_SECRET
+		if (vaultUrl && secret) {
+			try {
+				const { loadAiVault } = await import("@/core/keypoollive/AiVault")
+				const vault = await loadAiVault(vaultUrl)
+				const slashIdx = requestedModelId.indexOf("/")
+				if (slashIdx > 0) {
+					const vaultProviderName = requestedModelId.slice(0, slashIdx)
+					const vaultModelId = requestedModelId.slice(slashIdx + 1)
+					const chatModels = (vault.providers[vaultProviderName]?.models ?? []).filter(
+						(m: { usage?: string }) => !m.usage || m.usage === "chat",
+					)
+					const vaultModel = chatModels.find((m: { id: string }) => m.id === vaultModelId)
+					if (vaultModel) {
+						const rawModel = vaultModel as {
+							id: string
+							contextWindow?: number
+							maxOutputTokens?: number
+							supportsImages?: boolean
+							inputModalities?: string[]
+							supportsPromptCache?: boolean
+						}
+						const supportsImages =
+							rawModel.supportsImages ??
+							(Array.isArray(rawModel.inputModalities) && rawModel.inputModalities.includes("image"))
+						const modelInfo = {
+							id: requestedModelId,
+							contextWindow: rawModel.contextWindow,
+							maxTokens: rawModel.maxOutputTokens,
+							...(supportsImages ? { capabilities: ["images" as const] } : {}),
+							supportsPromptCache: rawModel.supportsPromptCache ?? false,
+						}
+						return ResolveModelInfoResponse.create({
+							providerId,
+							modelId: requestedModelId,
+							modelInfo: toProtobufModelInfo(modelInfo),
+							source: "sdk-known-models",
+						})
+					}
+				}
+			} catch (err) {
+				Logger.warn("[resolveModelInfo] keypoollive vault fallback failed:", err)
+			}
 		}
 	}
 

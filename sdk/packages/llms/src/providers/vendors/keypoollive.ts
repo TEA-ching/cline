@@ -1144,6 +1144,18 @@ function resolveNextApiConfig(
 	const key = selectNextKey(providerName, provider.keys, statsMap);
 	if (!key) return null;
 
+	// Normalize supportsImages from inputModalities for vault providers that use
+	// the modalities array instead of an explicit boolean (e.g. Mistral). Without
+	// this, images capability is deleted for every model that lacks supportsImages.
+	const rawModel = model as VaultModel & { inputModalities?: string[] };
+	const normalizedModel: VaultModel = {
+		...model,
+		supportsImages:
+			model.supportsImages ??
+			(Array.isArray(rawModel.inputModalities) &&
+				rawModel.inputModalities.includes("image")),
+	};
+
 	// Return complete resolved configuration
 	return {
 		providerName,
@@ -1152,7 +1164,7 @@ function resolveNextApiConfig(
 		userAgent: provider.userAgent,
 		apiKey: key.key,
 		keyOwner: key.owner,
-		model,
+		model: normalizedModel,
 	};
 }
 
@@ -1825,8 +1837,17 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 			? await readProviderUsageStats24hMerged(providerName)
 			: new Map<string, KeyStats24h>();
 
-		// Maximum number of key rotation attempts before giving up
-		const MAX_KEY_ATTEMPTS = 5;
+		// Maximum number of key rotation attempts before giving up.
+		// Scale with the vault key pool so all available keys are tried instead
+		// of a hardcoded ceiling that silently ignores most of them.
+		let MAX_KEY_ATTEMPTS = 5;
+		if (isAuto) {
+			try {
+				const _preVault = await loadAiVault(getRequiredVaultUrl());
+				const _poolKeys = _preVault.providers[providerName]?.keys;
+				if (_poolKeys?.length) MAX_KEY_ATTEMPTS = _poolKeys.length;
+			} catch { /* keep default */ }
+		}
 		let lastError: unknown;
 
 		/**
