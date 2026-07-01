@@ -92,3 +92,4 @@ apps/chatbot/chatbot.md
 apps/chatbot/llm.md
 apps/chatbot/llm.txt
 apps/chatbot/chatbot.md
+agent-debug-*.json

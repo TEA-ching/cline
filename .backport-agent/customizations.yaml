@@ -6,79 +6,98 @@
 # Rôle : guider l'agent de backport pour détecter les conflits sensibles,
 # choisir un niveau de validation approprié et éviter d'écraser silencieusement
 # une fonctionnalité du fork.
+#
+# NOTE STRUCTURELLE (migration 4.0.0) :
+#   L'upstream 4.0.0 a restructuré le layer provider : les vendors LLM ont migré de
+#   apps/vscode/src/core/api/providers/ vers sdk/packages/llms/src/providers/vendors/.
+#   Le pont entre l'extension VSCode et le SDK est apps/vscode/src/sdk/cline-session-factory.ts.
+#   Les anciennes paths apps/vscode/src/core/api/providers/*.ts sont supprimées en upstream
+#   mais leur logique vit désormais dans le SDK. Les customizations de ce fork ont été
+#   adaptées en conséquence lors de la migration (commit post-4.0.0).
 
 customizations:
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 1. Fournisseur Cohere
+  # 1. Fournisseur Cohere (vendor SDK + pont session-factory)
   # ──────────────────────────────────────────────────────────────────────────
   - id: cohere-provider
     description: >
       Ajoute le fournisseur Cohere pour l'accès aux modèles de langage Cohere.
-      Le fournisseur est intégré dans la chaîne complète : shared/api.ts → proto/cline/models.proto
-      → api-configuration-conversion.ts → provider-keys.ts → providers.json → ApiOptions.tsx → core/api/index.ts.
-      Il prend en charge la gestion des modèles Cohere, la configuration du raisonnement pour les modèles
-      command-a* (mode thinking), la compatibilité des outils avec strict_tools, et la correction des rapports
-      d'utilisation des tokens via un wrapper fetch personnalisé.
+      Avant la migration 4.0.0, le provider résidait dans apps/vscode/src/core/api/providers/cohere.ts.
+      Depuis 4.0.0, la logique vendor est dans sdk/packages/llms/src/providers/vendors/cohere.ts.
+      Le pont de la clé API entre l'extension VSCode et le SDK passe par PROVIDER_API_KEY_MAP
+      dans cline-session-factory.ts — l'entrée 'cohere: "cohereApiKey"' est critique.
+      Le fournisseur prend en charge la gestion des modèles Cohere, la configuration du raisonnement
+      pour les modèles command-a* (mode thinking), la compatibilité des outils avec strict_tools,
+      et la correction des rapports d'utilisation des tokens via un wrapper fetch personnalisé.
     paths:
-      - "apps/vscode/src/core/api/providers/cohere.ts"
+      - "apps/vscode/src/core/api/providers/cohere.ts"         # legacy (supprimé en upstream post-4.0)
       - "apps/vscode/src/core/api/providers/__tests__/cohere.test.ts"
+      - "sdk/packages/llms/src/providers/vendors/cohere.ts"    # vendor SDK (post-4.0.0)
     related_files:
-      # Fichiers upstream partagés qui contiennent des entrées cohere
-      - "apps/vscode/src/shared/api.ts"                                    # union ApiProvider
-      - "apps/vscode/proto/cline/models.proto"                             # enum ApiProvider
+      - "apps/vscode/src/shared/api.ts"
+      - "apps/vscode/proto/cline/models.proto"
       - "apps/vscode/src/shared/proto-conversions/models/api-configuration-conversion.ts"
-      - "apps/vscode/src/shared/storage/provider-keys.ts"                  # clés de stockage sécurisé
-      - "apps/vscode/src/shared/providers/providers.json"                  # registry fournisseur
-      - "apps/vscode/src/core/api/index.ts"                                # routage buildApiHandler
+      - "apps/vscode/src/shared/storage/provider-keys.ts"
+      - "apps/vscode/src/shared/providers/providers.json"
+      - "apps/vscode/src/core/api/index.ts"
+      - "apps/vscode/src/sdk/cline-session-factory.ts"         # PROVIDER_API_KEY_MAP
       - "apps/vscode/webview-ui/src/components/settings/utils/providerUtils.ts"
       - "apps/vscode/webview-ui/src/components/settings/ApiOptions.tsx"
     invariants:
       - "L'id de fournisseur 'cohere' doit rester dans l'union ApiProvider de shared/api.ts."
       - "L'enum ApiProvider du proto doit contenir COHERE avec sa valeur numérique stable."
       - "convertApiProviderToProto() et convertProtoToApiProvider() doivent être symétriques pour 'cohere'."
-      - "Les clés cohereSecret doivent rester dans provider-keys.ts."
+      - "Les clés cohereApiKey doivent rester dans provider-keys.ts."
       - "providers.json doit contenir l'entrée cohere (value, label, website)."
-      - "buildApiHandler() dans core/api/index.ts doit router le cas 'cohere' vers CohereHandler."
-      - "Les champs proto cohere_* (secret, base_url) doivent rester dans state.proto / models.proto."
-      - "Le wrapper fetch pour la correction des tokens doit rester fonctionnel."
+      - "PROVIDER_API_KEY_MAP dans cline-session-factory.ts doit contenir l'entrée 'cohere: \"cohereApiKey\"' pour que la clé API soit transmise au SDK."
+      - "Le wrapper fetch pour la correction des tokens doit rester fonctionnel dans le vendor SDK."
     tests:
-      - "cd apps/vscode && npm run test:unit -- --timeout 10000 --grep 'Cohere|cohere'"
+      - "cd apps/vscode && bun run test:unit -- --timeout 10000 --grep 'Cohere|cohere'"
+      - "grep -q 'cohere.*cohereApiKey\\|cohereApiKey.*cohere' apps/vscode/src/sdk/cline-session-factory.ts"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 2. Fournisseur Poolside
+  # 2. Fournisseur Poolside (vendor SDK + pont session-factory)
   # ──────────────────────────────────────────────────────────────────────────
   - id: poolside-provider
     description: >
       Ajoute le fournisseur Poolside pour l'accès aux modèles de langage Poolside.
-      Le fournisseur est intégré dans la chaîne complète : shared/api.ts → proto/cline/models.proto
-      → api-configuration-conversion.ts → provider-keys.ts → providers.json → ApiOptions.tsx → core/api/index.ts.
-      Il prend en charge la gestion des modèles Poolside, la compatibilité des outils avec strict_tools,
-      et utilise l'API OpenAI compatible de Poolside via createOpenAI.
+      Avant la migration 4.0.0, le provider résidait dans apps/vscode/src/core/api/providers/poolside.ts.
+      Depuis 4.0.0, la logique vendor est dans sdk/packages/llms/src/providers/vendors/poolside.ts.
+      SPÉCIFICITÉ CRITIQUE : l'API https://inference.poolside.ai requiert que le model ID
+      inclue le préfixe "poolside/" (ex: "poolside/laguna-m.1"). Quand poolside est appelé
+      en tant que sous-fournisseur via keypoollive, le composite ID "poolside/laguna-m.1" est
+      parsé et le bare ID "laguna-m.1" est transmis — le vendor doit re-ajouter le préfixe.
+      Le pont de la clé API passe par PROVIDER_API_KEY_MAP dans cline-session-factory.ts.
     paths:
-      - "apps/vscode/src/core/api/providers/poolside.ts"
+      - "apps/vscode/src/core/api/providers/poolside.ts"         # legacy (supprimé en upstream post-4.0)
       - "apps/vscode/src/core/api/providers/__tests__/poolside.test.ts"
+      - "sdk/packages/llms/src/providers/vendors/poolside.ts"    # vendor SDK (post-4.0.0)
     related_files:
-      # Fichiers upstream partagés qui contiennent des entrées poolside
-      - "apps/vscode/src/shared/api.ts"                                    # union ApiProvider
-      - "apps/vscode/proto/cline/models.proto"                             # enum ApiProvider
+      - "apps/vscode/src/shared/api.ts"
+      - "apps/vscode/proto/cline/models.proto"
       - "apps/vscode/src/shared/proto-conversions/models/api-configuration-conversion.ts"
-      - "apps/vscode/src/shared/storage/provider-keys.ts"                  # clés de stockage sécurisé
-      - "apps/vscode/src/shared/providers/providers.json"                  # registry fournisseur
-      - "apps/vscode/src/core/api/index.ts"                                # routage buildApiHandler
+      - "apps/vscode/src/shared/storage/provider-keys.ts"
+      - "apps/vscode/src/shared/providers/providers.json"
+      - "apps/vscode/src/core/api/index.ts"
+      - "apps/vscode/src/sdk/cline-session-factory.ts"           # PROVIDER_API_KEY_MAP
+      - "sdk/packages/llms/src/providers/builtins.ts"            # model IDs avec préfixe poolside/
       - "apps/vscode/webview-ui/src/components/settings/utils/providerUtils.ts"
       - "apps/vscode/webview-ui/src/components/settings/ApiOptions.tsx"
     invariants:
       - "L'id de fournisseur 'poolside' doit rester dans l'union ApiProvider de shared/api.ts."
       - "L'enum ApiProvider du proto doit contenir POOLSIDE avec sa valeur numérique stable."
       - "convertApiProviderToProto() et convertProtoToApiProvider() doivent être symétriques pour 'poolside'."
-      - "Les clés poolsideSecret doivent rester dans provider-keys.ts."
+      - "Les clés poolsideApiKey doivent rester dans provider-keys.ts."
       - "providers.json doit contenir l'entrée poolside (value, label, website)."
-      - "buildApiHandler() dans core/api/index.ts doit router le cas 'poolside' vers PoolsideHandler."
-      - "Les champs proto poolside_* (secret, base_url) doivent rester dans state.proto / models.proto."
-      - "L'URL par défaut 'https://inference.poolside.ai/v1' doit rester configurée."
+      - "PROVIDER_API_KEY_MAP dans cline-session-factory.ts doit contenir l'entrée 'poolside: \"poolsideApiKey\"' pour que la clé API soit transmise au SDK."
+      - "L'URL par défaut 'https://inference.poolside.ai/v1' doit rester configurée dans builtins.ts."
+      - "Le vendor poolside.ts doit normaliser le model ID en ajoutant le préfixe 'poolside/' si absent : l'API inference.poolside.ai requiert ce préfixe même quand le bare ID est passé via keypoollive."
+      - "Les IDs de modèles dans builtins.ts doivent inclure le préfixe 'poolside/' (ex: 'poolside/laguna-m.1')."
     tests:
-      - "cd apps/vscode && npm run test:unit -- --timeout 10000 --grep 'Poolside|poolside'"
+      - "cd apps/vscode && bun run test:unit -- --timeout 10000 --grep 'Poolside|poolside'"
+      - "grep -q 'poolside.*poolsideApiKey\\|poolsideApiKey.*poolside' apps/vscode/src/sdk/cline-session-factory.ts"
+      - "grep -q 'startsWith.*poolside' sdk/packages/llms/src/providers/vendors/poolside.ts"
 
   # ──────────────────────────────────────────────────────────────────────────
   # 3. Fournisseur KeypoolLive (cœur métier du fork)
@@ -92,8 +111,27 @@ customizations:
       shared/api.ts → proto/cline/models.proto → api-configuration-conversion.ts
       → provider-keys.ts → providers.json → ApiOptions.tsx → core/api/index.ts.
       Il expose en plus quatre RPC gRPC dédiés (keypoolGetVaultModels,
-      keypoolRotateKey, keypoolGetUsageStats, keypoolGetErrorStats) et une gestion
-      native du context window.
+      keypoolRotateKey, keypoolGetUsageStats, keypoolGetErrorStats).
+
+      FIXES POST-MIGRATION 4.0.0 appliqués dans le SDK vendor (keypoollive.ts) :
+      - MAX_KEY_ATTEMPTS est désormais dynamique (= nombre de clés dans le vault)
+        et non hardcodé à 5. Sans ce fix, seules 5 clés sur N sont tentées lors
+        d'une rotation.
+      - supportsImages est normalisé depuis inputModalities dans resolveNextApiConfig :
+        certains fournisseurs vault (ex: Mistral) utilisent inputModalities: ["text","image"]
+        au lieu d'un booléen supportsImages explicite.
+
+      FIXES dans la couche VSCode :
+      - AiVault.ts normalise également supportsImages depuis inputModalities lors de
+        la transformation vault → AiModel (pour que la UI affiche le bon état).
+      - buildSessionConfig injecte KEYPOOL_VAULT_URL et KEYPOOL_LIVE_SECRET dans
+        process.env ET injecte les métadonnées vault (contextWindow, maxTokens) dans
+        CoreSessionConfig.knownModels pour le modèle sélectionné.
+      - resolveModelInfo inclut un step 4 de fallback vault pour keypoollive : quand
+        le catalog SDK retourne 'unknown' (car keypoollive n'a pas de modèles statiques),
+        le vault est chargé directement pour récupérer contextWindow et supportsImages.
+      - providerUtils.ts keypoollive ne hardcode plus 128000 comme contextWindow par
+        défaut — la valeur réelle du vault est utilisée si disponible.
     paths:
       - "apps/vscode/src/core/keypoollive/**"
       - "apps/vscode/src/core/api/providers/keypoollive.ts"
@@ -102,24 +140,26 @@ customizations:
       - "apps/vscode/src/core/controller/models/keypoolRotateKey.ts"
       - "apps/vscode/src/core/controller/models/keypoolGetUsageStats.ts"
       - "apps/vscode/src/core/controller/models/keypoolGetErrorStats.ts"
+      - "apps/vscode/src/core/controller/models/resolveModelInfo.ts"       # step 4 vault fallback
       - "apps/vscode/src/test/core/keypoollive/**"
+      - "apps/vscode/src/sdk/cline-session-factory.ts"                     # env injection + knownModels
       - "sdk/packages/llms/src/providers/vendors/keypoollive.ts"
       - "sdk/packages/llms/src/providers/ids.ts"
       - "sdk/packages/llms/src/providers/builtins.ts"
       - "sdk/packages/llms/src/providers/builtins-runtime.ts"
     related_files:
-      # Fichiers upstream partagés qui contiennent des entrées keypoollive —
-      # toute modification upstream sur ces fichiers doit être intégrée avec soin.
-      - "apps/vscode/src/shared/api.ts"                                    # union ApiProvider
-      - "apps/vscode/proto/cline/models.proto"                             # enum ApiProvider + RPCs + champs state
+      - "apps/vscode/src/shared/api.ts"
+      - "apps/vscode/proto/cline/models.proto"
       - "apps/vscode/src/shared/proto-conversions/models/api-configuration-conversion.ts"
-      - "apps/vscode/src/shared/storage/provider-keys.ts"                  # clés de stockage sécurisé
-      - "apps/vscode/src/shared/providers/providers.json"                  # registry fournisseur
-      - "apps/vscode/src/core/api/index.ts"                                # routage buildApiHandler
+      - "apps/vscode/src/shared/storage/provider-keys.ts"
+      - "apps/vscode/src/shared/storage/state-keys.ts"                     # keypoollive* fields
+      - "apps/vscode/src/shared/providers/providers.json"
+      - "apps/vscode/src/core/api/index.ts"
       - "apps/vscode/webview-ui/src/components/settings/providers/KeypoolLiveProvider.tsx"
       - "apps/vscode/webview-ui/src/components/settings/utils/providerUtils.ts"
       - "apps/vscode/webview-ui/src/utils/validate.ts"
       - "apps/vscode/webview-ui/src/components/settings/ApiOptions.tsx"
+      - "apps/vscode/src/sdk/vscode-session-host.ts"                       # keypoolEventHandler
     invariants:
       - "L'id de fournisseur 'keypoollive' doit rester dans l'union ApiProvider de shared/api.ts."
       - "L'enum ApiProvider du proto doit contenir KEYPOOLLIVE avec sa valeur numérique stable."
@@ -129,10 +169,22 @@ customizations:
       - "buildApiHandler() dans core/api/index.ts doit router le cas 'keypoollive' vers KeypoolLiveHandler."
       - "Les quatre RPCs gRPC keypool* doivent rester déclarés dans models.proto et leurs handlers câblés."
       - "Les champs proto keypoollive_* (secret, gateway_secret, vault_url, use_gateway, gateway_id, gateway_cache_skip) doivent rester dans state.proto / models.proto."
-      - "Le context window doit être calculé dynamiquement depuis le vault (ne pas hardcoder une valeur par défaut upstream)."
+      - "MAX_KEY_ATTEMPTS dans keypoollive.ts (SDK vendor) doit être dynamique (nombre de clés dans le vault) et non hardcodé à 5 — vérifier l'absence de 'const MAX_KEY_ATTEMPTS = 5'."
+      - "resolveNextApiConfig dans keypoollive.ts doit normaliser supportsImages depuis inputModalities (patch pour Mistral et autres fournisseurs vault sans champ supportsImages explicite)."
+      - "AiVault.ts doit normaliser supportsImages depuis inputModalities dans la transformation vault → AiModel (pour que la UI affiche correctement le support images)."
+      - "buildSessionConfig dans cline-session-factory.ts doit injecter KEYPOOL_VAULT_URL et KEYPOOL_LIVE_SECRET dans process.env avant de créer la session SDK."
+      - "buildSessionConfig doit peupler CoreSessionConfig.knownModels avec les métadonnées vault (contextWindow, maxTokens) pour le modèle keypoollive sélectionné — ne pas laisser le SDK retourner un contextWindow undefined pour les modèles vault non enregistrés."
+      - "resolveModelInfo doit inclure un step de fallback vault (étape 4) pour keypoollive quand le catalog SDK retourne 'unknown' — ce fallback lit KEYPOOL_VAULT_URL/KEYPOOL_LIVE_SECRET depuis process.env."
+      - "providerUtils.ts keypoollive case ne doit pas hardcoder 128000 comme contextWindow par défaut — utiliser undefined si le vault n'a pas de donnée (évite d'afficher une valeur incorrecte pour les grands modèles comme Mistral 262k)."
       - "KeypoolUsageDb doit persister dans le globalStorageFsPath de l'extension, pas en mémoire."
+      - "Le context window doit être calculé dynamiquement depuis le vault, jamais hardcodé."
+      - "keypoolEventHandler doit être câblé dans vscode-session-host.ts pour les événements key-rotated et key-exhausted."
     tests:
-      - "cd apps/vscode && npm run test:unit -- --timeout 10000 --grep 'KeypoolLive|keypool|Keypool'"
+      - "cd apps/vscode && bun run test:unit -- --timeout 10000 --grep 'KeypoolLive|keypool|Keypool'"
+      - "grep -v 'const MAX_KEY_ATTEMPTS = 5' sdk/packages/llms/src/providers/vendors/keypoollive.ts && echo 'MAX_KEY_ATTEMPTS not hardcoded'"
+      - "grep -q 'KEYPOOL_VAULT_URL\\|KEYPOOL_LIVE_SECRET' apps/vscode/src/sdk/cline-session-factory.ts"
+      - "grep -q 'keypooliveContextWindow\\|knownModels' apps/vscode/src/sdk/cline-session-factory.ts"
+      - "grep -q 'vault fallback\\|loadAiVault' apps/vscode/src/core/controller/models/resolveModelInfo.ts"
 
   # ──────────────────────────────────────────────────────────────────────────
   # 5. Intégration Smart Web Crawling
@@ -301,11 +353,11 @@ customizations:
       qui doivent être transmises à l'agent à chaque synchronisation.
     paths:
       - "evals/analysis/**"
-      - "customizations.yaml"
+      - ".backport-agent/customizations.yaml"
       - ".clinerules/general.md"
       - ".claude/settings.json"
     invariants:
-      - "customizations.yaml doit être maintenu à jour après chaque nouvelle personnalisation."
+      - ".backport-agent/customizations.yaml doit être maintenu à jour après chaque nouvelle personnalisation (sections cohere, poolside, keypoollive notamment)."
       - ".clinerules/general.md doit être inclus dans le contexte de l'agent lors d'un backport."
       - "Les patterns de détection dans evals/analysis/ ne doivent pas être supprimés lors d'un merge."
     tests:
