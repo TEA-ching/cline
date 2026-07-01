@@ -81,17 +81,40 @@ export function formatStatusBarUsageText(input: {
 	return `${tokens} ${costText}`;
 }
 
+// knownModels keys are bare IDs ("claude-sonnet-4-6") but config.modelId
+// may include a provider prefix ("anthropic/claude-sonnet-4-6"), so we
+// try the full ID first, then strip the prefix and retry.
+function lookupModelInfo(
+	modelId: string,
+	knownModels?: Record<string, unknown>,
+): { name?: string } | undefined {
+	if (!knownModels) return undefined;
+	const candidates = [modelId, modelId.split("/").pop()];
+	for (const key of candidates) {
+		if (!key) continue;
+		const hit = knownModels[key] as { name?: string } | undefined;
+		if (hit) return hit;
+	}
+	return undefined;
+}
+
 export function resolveModelDisplayName(config: {
+	providerId?: string;
 	modelId: string;
 	knownModels?: KnownModels;
 	thinking?: boolean;
 	reasoningEffort?: string;
 }): string {
-	const name = resolveKnownModelDisplayName(config.modelId, config.knownModels);
+	const info = lookupModelInfo(config.modelId, config.knownModels);
+	const modelIdTail = config.modelId.split("/").pop() ?? config.modelId;
+	const displayName =
+		config.providerId === "cline-pass"
+			? `ClinePass/${modelIdTail}`
+			: (info?.name ?? modelIdTail);
 	if (config.thinking && config.reasoningEffort) {
-		return `${name} (${config.reasoningEffort})`;
+		return `${displayName} (${config.reasoningEffort})`;
 	}
-	return name;
+	return displayName;
 }
 
 export function resolveModelMaxInputTokens(config: {
