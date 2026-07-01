@@ -51,6 +51,7 @@ export type ApiProvider =
 	| "xiaomi"
 	| "cohere"
 	| "keypoollive"
+	| "tencent-tokenhub"
 
 export const DEFAULT_API_PROVIDER = "openrouter" as ApiProvider
 
