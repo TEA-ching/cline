@@ -66,7 +66,7 @@
         "low": [
             "bun install && bun run build:sdk",
             "bun install && pushd apps/vscode && bun run check-types ; popd",
-            "bun install && bun run build:sdk ; popd"
+            "bun install && bun run build:sdk"
         ],
         "medium": [
             "bun install && bun run build:sdk",
