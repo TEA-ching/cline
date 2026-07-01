@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	createOpenAICompatibleProvider,
 	createOpenAIProvider,
+	createPoolsideProvider,
 	createSapAiCoreProvider,
 } from "./ai-sdk";
 import { BUILTIN_PROVIDER_REGISTRATIONS } from "./builtins-runtime";
@@ -128,7 +129,7 @@ describe("provider-ids", () => {
 			(item) => item.manifest.id === "poolside",
 		);
 		await expect(registration?.loadProvider?.()).resolves.toMatchObject({
-			createProvider: createOpenAICompatibleProvider,
+			createProvider: createPoolsideProvider,
 		});
 	});
 
@@ -199,10 +200,12 @@ describe("provider-ids", () => {
 	it("registers KeypoolLive as a built-in provider", async () => {
 		expect(BUILT_IN_PROVIDER_IDS).toContain("keypoollive");
 
+		// No static defaultModelId: vault model IDs are dynamic and selected via
+		// KeypoolModelSelector, so the manifest falls back to the synthetic "default" id.
 		await expect(getProvider("keypoollive")).resolves.toMatchObject({
 			id: "keypoollive",
 			name: "KeypoolLive",
-			defaultModelId: "mistral/devstral-latest",
+			defaultModelId: "default",
 			client: "openai-compatible",
 		});
 

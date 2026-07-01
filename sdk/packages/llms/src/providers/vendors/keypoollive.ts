@@ -1055,8 +1055,12 @@ function markKeyAsFailed(providerName: string, keyValue: string): void {
 
 /**
  * Selects the next key using 24h usage stats: min output tokens → min input tokens → min requests.
- * Falls back to round-robin when all keys are in cooldown, and to random selection when no usage
- * data is available yet.
+ * Falls back to round-robin when all keys are in cooldown, or when no usage data is available yet.
+ *
+ * Round-robin (rather than random) is used for the no-usage-data case so that
+ * repeated calls within the same process — including retries after a failure —
+ * deterministically cycle through the pool instead of risking an immediate
+ * re-selection of the key that just failed.
  *
  * @param providerName - Name of the vault provider
  * @param keys - Array of available keys from the vault
@@ -1081,10 +1085,13 @@ function selectNextKey(
 		return eligible[idx];
 	}
 
-	// If no key has any recorded usage, pick randomly
+	// If no key has any recorded usage, fall back to round-robin on usable keys
 	const keysWithUsage = usable.filter((k) => statsMap.has(keyMask(k.key)));
 	if (keysWithUsage.length === 0) {
-		return usable[Math.floor(Math.random() * usable.length)];
+		const idx = (roundRobinIndexes.get(providerName) ?? 0) % usable.length;
+		roundRobinIndexes.set(providerName, (idx + 1) % usable.length);
+		persistStateSoon();
+		return usable[idx];
 	}
 
 	// Sort: min output tokens → min input tokens → min request count
@@ -1933,6 +1940,18 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 						source: "config",
 					});
 				}
+				yield {
+					type: "reasoning-delta",
+					text: `[keypoollive] Using key for ${providerName}/${modelId}: ${maskedKey}`,
+					redacted: true,
+					metadata: {
+						providerId: "keypoollive",
+						event: "active-key",
+						providerName,
+						modelId,
+						key: maskedKey,
+					},
+				};
 			}
 
 			// Create sub-request with the actual (un-prefixed) model ID
