@@ -64,16 +64,19 @@
     },
     "validation": {
         "low": [
+            "bun install && bun run build:sdk",
             "bun install && pushd apps/vscode && bun run check-types ; popd",
             "bun install && bun run build:sdk ; popd"
         ],
         "medium": [
+            "bun install && bun run build:sdk",
             "bun install && pushd apps/vscode && bun run check-types ; popd",
             "bun install && pushd apps/vscode && bun run test:unit ; popd",
             "bun install && pushd sdk && bun run types ; popd",
-            "bun install && pushd sdk && bun run test:unit ; popd"
+            "bun install && bun run test:mine"
         ],
         "high": [
+            "bun install && bun run build:sdk",
             "bun install && pushd apps/vscode && bun run check-types ; popd",
             "bun install && pushd apps/vscode && bun run test:unit ; popd",
             "bun install && pushd apps/vscode && bun run compile ; popd",
@@ -81,13 +84,13 @@
         ],
         "final": [
             "bun install",
-            "bun run build:models",
             "bun run build:sdk",
-            "cd apps/vscode",
-            "cd apps/vscode && bun run build:webview",
-            "cd apps/vscode && bunx vsce package --no-dependencies",
-            "cd apps/cli && bun run build",
-            "cd apps/chatbot && bun run build",
+            "pushd apps/vscode && bun run build:webview ; popd",
+            "pushd apps/vscode && bunx vsce package --no-dependencies ; popd",
+            "pushd apps/cli && bun run build ; popd",
+            "pushd apps/chatbot && bun run build ; popd",
+            "bun install && bun run test:mine",
+            "bun install && pushd apps/vscode && bun run test:unit ; popd",
             "git checkout ."
         ]
     }
