@@ -432,7 +432,9 @@ jobs:
           npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
 
       - name: Build @sctg/cline-chatbot library
-        run: bun -F @sctg/cline-chatbot run build:lib
+        run: |
+          cd apps/chatbot
+          bun run build:lib
 
       - name: Publish @sctg/cline-chatbot
         env:
@@ -440,8 +442,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/chatbot-npm-pack"
           cd apps/chatbot
-          TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/chatbot-npm-pack" --quiet)
-          npm publish "$RUNNER_TEMP/chatbot-npm-pack/$(basename "$TARBALL")" --tag latest --access public
+          npm publish --provenance --tag latest --access public
 
       - name: Clean before
         run: |
