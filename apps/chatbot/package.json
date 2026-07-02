@@ -57,6 +57,7 @@
     "shiki": "^4.2.0",
     "sucrase": "^3.35.1",
     "tailwindcss": "^4.3.0",
+    "use-sync-external-store": "^1.6.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

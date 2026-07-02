@@ -107,12 +107,27 @@ export default defineConfig(() =>   {
       },
       rolldownOptions: {
         // @cline/agents|llms|shared are bundled from source (see resolve.alias
-        // above), not externalized — only the host app's own React is external.
+        // above), not externalized — only the host app's own React (and its
+        // transitive `use-sync-external-store` shim, see below) is external.
         external: [
           'react',
           'react/jsx-runtime',
           'react-dom',
           'react-dom/client',
+          // react-aria/react-stately (HeroUI's foundation) pull in this CJS-only
+          // package. When it's bundled into the lib output, rolldown wraps its
+          // `require("react")` call as a synthetic `__require("react")` runtime
+          // call instead of hoisting it to the external ESM `react` import —
+          // there is no global `require` in a browser, so this throws at
+          // runtime ("Calling `require` for react in an environment that
+          // doesn't expose the `require` function"). Externalizing the whole
+          // package sidesteps rolldown's CJS interop for it entirely: the
+          // specifier is resolved from the host app's own node_modules
+          // instead, where its bundler's standard dependency pre-bundling
+          // converts it to ESM correctly. Every consumer of react-aria (i.e.
+          // any HeroUI/React Aria/React Spectrum host, which this package
+          // requires) already has it installed transitively.
+          /^use-sync-external-store(\/.*)?$/,
         ],
         output: {
           // Force a single, predictable stylesheet name so package.json's
