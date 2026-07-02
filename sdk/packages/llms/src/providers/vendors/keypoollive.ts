@@ -303,6 +303,61 @@ interface RawAiConfig {
  */
 
 /**
+ * Options accepted through `GatewayProviderSettings.options` for the
+ * keypoollive provider.
+ *
+ * They make the provider usable in multi-tenant, env-less runtimes (e.g. a
+ * Cloudflare Worker serving several key groups): everything historically read
+ * from `process.env` can be supplied per gateway instance, and caches plus
+ * rotation state can be isolated per scope. Every field is optional; omitting
+ * them all preserves the historical env-driven behavior exactly.
+ */
+export interface KeypoolliveOptions {
+	/** URL or file:// path of the encrypted vault. Overrides KEYPOOL_VAULT_URL. */
+	vaultUrl?: string;
+	/** Vault decryption password. Overrides KEYPOOL_LIVE_SECRET. */
+	vaultSecret?: string;
+	/**
+	 * Direct loader returning the encrypted vault text (base64 OpenSSL blob).
+	 * Takes precedence over URL fetching — lets an embedding runtime read the
+	 * vault from KV or a database instead of HTTP.
+	 */
+	loadVaultText?: () => Promise<string> | string;
+	/**
+	 * Isolation scope for the vault cache and rotation state. Use one scope per
+	 * tenant/group so cooldowns, round-robin indexes and cached vaults never
+	 * leak across vaults. Defaults to the vault URL.
+	 */
+	scope?: string;
+	/**
+	 * Usage/error reporting override: an explicit remote worker config, or
+	 * `false` to disable reporting entirely (the embedder records usage itself,
+	 * e.g. from `usage-recorded` keypool events).
+	 */
+	remoteStorage?: KeypoolRemoteStorageConfig | false;
+	/** Set to false to skip filesystem persistence of rotation state. */
+	persistState?: boolean;
+	/**
+	 * Custom 24h usage-stats loader for cost-balanced key selection. The
+	 * returned map is keyed by keyHint (`***<suffix>` format). When omitted,
+	 * stats come from the remote worker or the local NDJSON file.
+	 */
+	loadUsageStats24h?: (
+		providerName: string,
+	) => Promise<Map<string, KeyStats24h>>;
+}
+
+/**
+ * Extracts the keypoollive options bag from a resolved provider config.
+ * The gateway passes `GatewayProviderSettings.options` through untouched.
+ */
+function parseKeypoolOptions(
+	config: GatewayResolvedProviderConfig,
+): KeypoolliveOptions {
+	return (config.options ?? {}) as KeypoolliveOptions;
+}
+
+/**
  * Cache structure for vault configurations to avoid repeated decryption.
  *
  * The cache stores the transformed config rather than the raw JSON because the
@@ -323,13 +378,15 @@ interface VaultCache {
 const VAULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
- * Current vault cache instance.
+ * Vault caches keyed by isolation scope (defaults to the vault URL).
  *
  * This is module-level state because the provider factory creates short-lived
- * provider objects per request. A single process-wide cache avoids decrypting
- * the same vault repeatedly while a task is running.
+ * provider objects per request. A process-wide cache avoids decrypting the
+ * same vault repeatedly while a task is running. Keying by scope keeps
+ * multi-tenant embedders (one vault per group) from ever reading another
+ * tenant's cached vault.
  */
-let vaultCache: VaultCache | null = null;
+const vaultCaches = new Map<string, VaultCache>();
 
 /**
  * Decrypts the AI vault configuration using AES-256-CBC encryption.
@@ -506,26 +563,35 @@ async function fetchVaultText(url: string): Promise<string> {
  * @returns Decrypted and transformed vault configuration
  * @throws Error if environment variables are missing or decryption fails
  */
-async function loadAiVault(vaultUrl: string): Promise<AiVaultConfig> {
+async function loadAiVault(
+	vaultUrl: string,
+	options?: KeypoolliveOptions,
+): Promise<AiVaultConfig> {
 	// Return cached config if still valid.
 	// The cache is intentionally process-local and time-based. Operators can
 	// force a refresh by calling `clearVaultCache`, which is done after key
 	// failures so vault updates become visible quickly.
-	if (vaultCache && Date.now() - vaultCache.fetchedAt < VAULT_CACHE_TTL_MS) {
-		return vaultCache.config;
+	const cacheKey = options?.scope ?? vaultUrl;
+	const cached = vaultCaches.get(cacheKey);
+	if (cached && Date.now() - cached.fetchedAt < VAULT_CACHE_TTL_MS) {
+		return cached.config;
 	}
 
-	// Validate required environment variable.
-	// `KEYPOOL_LIVE_SECRET` is the only secret read directly by this module.
-	const secret = process.env.KEYPOOL_LIVE_SECRET;
+	// Resolve the decryption secret: per-provider option first, then the
+	// historical `KEYPOOL_LIVE_SECRET` environment variable.
+	const secret = options?.vaultSecret ?? process.env.KEYPOOL_LIVE_SECRET;
 	if (!secret) {
-		throw new Error("KEYPOOL_LIVE_SECRET environment variable is not set");
+		throw new Error(
+			"KEYPOOL_LIVE_SECRET environment variable is not set (and no vaultSecret option provided)",
+		);
 	}
 
 	// Fetch, decrypt, and transform the vault.
 	// These steps are intentionally kept together so a failed fetch, bad
 	// password, or malformed vault fails fast before any provider key is used.
-	const ciphertext = await fetchVaultText(vaultUrl);
+	const ciphertext = options?.loadVaultText
+		? await options.loadVaultText()
+		: await fetchVaultText(vaultUrl);
 	const raw = await decryptAiConfig(ciphertext, secret);
 	const config = transformRawConfig(raw);
 
@@ -533,7 +599,7 @@ async function loadAiVault(vaultUrl: string): Promise<AiVaultConfig> {
 	// The timestamp is based on wall-clock time, which is sufficient for a
 	// local TTL. If the process clock changes dramatically, the cache may be
 	// refreshed earlier or later, but this does not expose key material.
-	vaultCache = { config, fetchedAt: Date.now() };
+	vaultCaches.set(cacheKey, { config, fetchedAt: Date.now() });
 	return config;
 }
 
@@ -544,9 +610,15 @@ async function loadAiVault(vaultUrl: string): Promise<AiVaultConfig> {
  * state; it only ensures that the next auto-mode request reads the latest vault
  * contents. The function is called after key-related failures because a vault
  * update may have already disabled or replaced the failing key.
+ *
+ * @param cacheKey - Isolation scope (or vault URL) to invalidate; omit to clear all
  */
-function clearVaultCache(): void {
-	vaultCache = null;
+function clearVaultCache(cacheKey?: string): void {
+	if (cacheKey !== undefined) {
+		vaultCaches.delete(cacheKey);
+	} else {
+		vaultCaches.clear();
+	}
 }
 
 // ─── KeyPool (round-robin + health tracking) ─────────────────────────────────
@@ -1065,22 +1137,25 @@ function markKeyAsFailed(providerName: string, keyValue: string): void {
  * @param providerName - Name of the vault provider
  * @param keys - Array of available keys from the vault
  * @param statsMap - 24h usage stats keyed by keyHint (keyMask format)
+ * @param stateKey - Namespace for health/round-robin state (defaults to providerName;
+ *                   scoped embedders pass `<scope>::<providerName>` for isolation)
  * @returns Next usable key, or null if no keys are available
  */
 function selectNextKey(
 	providerName: string,
 	keys: VaultKey[],
 	statsMap: Map<string, KeyStats24h>,
+	stateKey: string = providerName,
 ): VaultKey | null {
 	const eligible = keys.filter((k) => k.type !== "expired");
 	if (eligible.length === 0) return null;
 
-	const usable = eligible.filter((k) => isKeyUsable(providerName, k.key));
+	const usable = eligible.filter((k) => isKeyUsable(stateKey, k.key));
 
 	if (usable.length === 0) {
 		// All keys in cooldown — fall back to round-robin on eligible
-		const idx = (roundRobinIndexes.get(providerName) ?? 0) % eligible.length;
-		roundRobinIndexes.set(providerName, (idx + 1) % eligible.length);
+		const idx = (roundRobinIndexes.get(stateKey) ?? 0) % eligible.length;
+		roundRobinIndexes.set(stateKey, (idx + 1) % eligible.length);
 		persistStateSoon();
 		return eligible[idx];
 	}
@@ -1088,8 +1163,8 @@ function selectNextKey(
 	// If no key has any recorded usage, fall back to round-robin on usable keys
 	const keysWithUsage = usable.filter((k) => statsMap.has(keyMask(k.key)));
 	if (keysWithUsage.length === 0) {
-		const idx = (roundRobinIndexes.get(providerName) ?? 0) % usable.length;
-		roundRobinIndexes.set(providerName, (idx + 1) % usable.length);
+		const idx = (roundRobinIndexes.get(stateKey) ?? 0) % usable.length;
+		roundRobinIndexes.set(stateKey, (idx + 1) % usable.length);
 		persistStateSoon();
 		return usable[idx];
 	}
@@ -1131,6 +1206,7 @@ function resolveNextApiConfig(
 	providerName: string,
 	modelId?: string,
 	statsMap: Map<string, KeyStats24h> = new Map(),
+	stateKey: string = providerName,
 ): ResolvedApiConfig | null {
 	// Get provider from vault
 	const provider = vault.providers[providerName];
@@ -1148,7 +1224,7 @@ function resolveNextApiConfig(
 	if (!model) return null;
 
 	// Select the next key to use
-	const key = selectNextKey(providerName, provider.keys, statsMap);
+	const key = selectNextKey(providerName, provider.keys, statsMap, stateKey);
 	if (!key) return null;
 
 	// Normalize supportsImages from inputModalities for vault providers that use
@@ -1447,12 +1523,29 @@ async function getUsageDbDir(): Promise<string> {
 }
 
 /**
+ * Resolves the remote storage config honoring a per-provider override:
+ * `false` disables reporting entirely, an object takes precedence over
+ * env/global detection, `undefined` keeps the historical behavior.
+ */
+function resolveRemoteConfig(
+	override?: KeypoolRemoteStorageConfig | false,
+): KeypoolRemoteStorageConfig | null | false {
+	if (override === false) return false;
+	if (override) return override;
+	return getEffectiveRemoteConfig();
+}
+
+/**
  * Records usage to the remote worker or local NDJSON.
  */
 async function recordKeypoolUsage(
 	entry: Omit<NdjsonUsageEntry, "ts">,
+	remoteOverride?: KeypoolRemoteStorageConfig | false,
 ): Promise<void> {
-	const effectiveRemoteConfig = getEffectiveRemoteConfig();
+	const effectiveRemoteConfig = resolveRemoteConfig(remoteOverride);
+	if (effectiveRemoteConfig === false) {
+		return; // Reporting disabled by the embedder
+	}
 	if (effectiveRemoteConfig) {
 		// Remote mode: send to Cloudflare Worker
 		try {
@@ -1493,8 +1586,12 @@ async function recordKeypoolUsage(
  */
 async function recordKeypoolError(
 	entry: Omit<NdjsonErrorEntry, "ts">,
+	remoteOverride?: KeypoolRemoteStorageConfig | false,
 ): Promise<void> {
-	const effectiveRemoteConfig = getEffectiveRemoteConfig();
+	const effectiveRemoteConfig = resolveRemoteConfig(remoteOverride);
+	if (effectiveRemoteConfig === false) {
+		return; // Reporting disabled by the embedder
+	}
 	if (effectiveRemoteConfig) {
 		// Remote mode: send to Cloudflare Worker
 		try {
@@ -1578,8 +1675,14 @@ function addToSessionStats(
  * */
 async function readProviderUsageStats24h(
 	providerName: string,
+	remoteOverride?: KeypoolRemoteStorageConfig | false,
 ): Promise<Map<string, KeyStats24h>> {
-	const effectiveRemoteConfig = getEffectiveRemoteConfig();
+	const effectiveRemoteConfig = resolveRemoteConfig(remoteOverride);
+	if (effectiveRemoteConfig === false) {
+		// Reporting disabled: no persistent stats source, selection falls back
+		// to round-robin (or the loadUsageStats24h hook when provided).
+		return new Map();
+	}
 	if (effectiveRemoteConfig) {
 		try {
 			const response = await fetch(
@@ -1676,9 +1779,23 @@ async function readProviderUsageStats24h(
  */
 async function readProviderUsageStats24hMerged(
 	providerName: string,
+	sessionKey: string = providerName,
+	remoteOverride?: KeypoolRemoteStorageConfig | false,
 ): Promise<Map<string, KeyStats24h>> {
-	const base = await readProviderUsageStats24h(providerName);
-	const session = sessionStatsAccumulator.get(providerName);
+	const base = await readProviderUsageStats24h(providerName, remoteOverride);
+	return mergeWithSessionStats(sessionKey, base);
+}
+
+/**
+ * Overlays the in-process session accumulator onto a persistent stats map.
+ * Extracted so custom `loadUsageStats24h` hooks also benefit from the
+ * immediate visibility of tokens spent earlier in this process.
+ */
+function mergeWithSessionStats(
+	sessionKey: string,
+	base: Map<string, KeyStats24h>,
+): Map<string, KeyStats24h> {
+	const session = sessionStatsAccumulator.get(sessionKey);
 	if (!session || session.size === 0) return base;
 
 	const merged = new Map(base);
@@ -1809,7 +1926,13 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 		request: GatewayStreamRequest,
 		context: GatewayProviderContext,
 	): AsyncIterable<AgentModelEvent> {
-		await loadPersistentStateOnce();
+		// Per-provider options: vault source, secret, scope isolation, usage
+		// reporting — all overridable without process.env (multi-tenant safe).
+		const opts = parseKeypoolOptions(config);
+
+		if (opts.persistState !== false) {
+			await loadPersistentStateOnce();
+		}
 
 		// Parse the composite modelId to extract provider name and actual model ID
 		const { providerName, modelId } = parseModelId(request.modelId);
@@ -1818,13 +1941,17 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 		const apiKeyValue = config.apiKey?.trim();
 		const isAuto = !apiKeyValue || apiKeyValue === "auto";
 
-		// Validate vault URL if in auto mode
+		// Validate vault source if in auto mode
 		let vaultUrl: string | undefined;
 		if (isAuto) {
-			vaultUrl = process.env.KEYPOOL_VAULT_URL;
+			vaultUrl = opts.vaultUrl ?? process.env.KEYPOOL_VAULT_URL;
+			if (!vaultUrl && opts.loadVaultText) {
+				// Custom loader without URL: synthesize a stable cache identifier
+				vaultUrl = `keypool-custom:${opts.scope ?? "default"}`;
+			}
 			if (!vaultUrl) {
 				throw new Error(
-					"[keypoollive] KEYPOOL_VAULT_URL environment variable is not set (required when apiKey is 'auto')",
+					"[keypoollive] KEYPOOL_VAULT_URL environment variable is not set (required when apiKey is 'auto' and no vaultUrl/loadVaultText option is provided)",
 				);
 			}
 		}
@@ -1832,16 +1959,25 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 		const getRequiredVaultUrl = () => {
 			if (!vaultUrl) {
 				throw new Error(
-					"[keypoollive] KEYPOOL_VAULT_URL environment variable is not set (required when apiKey is 'auto')",
+					"[keypoollive] KEYPOOL_VAULT_URL environment variable is not set (required when apiKey is 'auto' and no vaultUrl/loadVaultText option is provided)",
 				);
 			}
 			return vaultUrl;
 		};
 
+		// Namespace for health/round-robin state: scoped per tenant when the
+		// embedder provides a scope, otherwise the historical provider-name key.
+		const stateKey = opts.scope
+			? `${opts.scope}::${providerName}`
+			: providerName;
+		const vaultCacheKey = isAuto ? (opts.scope ?? getRequiredVaultUrl()) : undefined;
+
 		// Read 24h usage stats merged with the in-process session accumulator so
 		// tokens spent earlier in this run are visible even before remote writes land.
 		const statsMap = isAuto
-			? await readProviderUsageStats24hMerged(providerName)
+			? opts.loadUsageStats24h
+				? mergeWithSessionStats(stateKey, await opts.loadUsageStats24h(providerName))
+				: await readProviderUsageStats24hMerged(providerName, stateKey, opts.remoteStorage)
 			: new Map<string, KeyStats24h>();
 
 		// Maximum number of key rotation attempts before giving up.
@@ -1850,7 +1986,7 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 		let MAX_KEY_ATTEMPTS = 5;
 		if (isAuto) {
 			try {
-				const _preVault = await loadAiVault(getRequiredVaultUrl());
+				const _preVault = await loadAiVault(getRequiredVaultUrl(), opts);
 				const _poolKeys = _preVault.providers[providerName]?.keys;
 				if (_poolKeys?.length) MAX_KEY_ATTEMPTS = _poolKeys.length;
 			} catch { /* keep default */ }
@@ -1893,8 +2029,8 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 				resolvedProtocol = "openai";
 			} else {
 				// Auto mode: load vault and resolve next API configuration
-				const vault = await loadAiVault(getRequiredVaultUrl());
-				const resolved = resolveNextApiConfig(vault, providerName, modelId, statsMap);
+				const vault = await loadAiVault(getRequiredVaultUrl(), opts);
+				const resolved = resolveNextApiConfig(vault, providerName, modelId, statsMap, stateKey);
 				if (!resolved) {
 					throw new Error(
 						`[keypoollive] No usable key found for provider "${providerName}" model "${modelId}"`,
@@ -2046,7 +2182,7 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 					}
 				}
 
-				markKeyAsHealthy(providerName, resolvedApiKey);
+				markKeyAsHealthy(stateKey, resolvedApiKey);
 				context.logger?.log("KeypoolLive request succeeded", {
 					providerId: "keypoollive",
 					severity: "info",
@@ -2068,7 +2204,7 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 					// Update session accumulator synchronously so the next key
 					// selection in this process reflects these tokens immediately,
 					// without waiting for the remote/file write to complete.
-					addToSessionStats(providerName, maskedKey, inputTokens, outputTokens);
+					addToSessionStats(stateKey, maskedKey, inputTokens, outputTokens);
 					context.keypoolEventHandler?.({
 						type: "usage-recorded",
 						providerName,
@@ -2081,14 +2217,17 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 						cacheWriteTokens,
 					});
 					// Persist to shared storage (fire-and-forget; failures are non-fatal)
-					void recordKeypoolUsage({
-						provider: providerName,
-						modelId,
-						keyOwner: resolvedKeyOwner ?? "unknown",
-						keyHint: maskedKey,
-						promptTokens: inputTokens,
-						completionTokens: outputTokens,
-					}).catch(() => {});
+					void recordKeypoolUsage(
+						{
+							provider: providerName,
+							modelId,
+							keyOwner: resolvedKeyOwner ?? "unknown",
+							keyHint: maskedKey,
+							promptTokens: inputTokens,
+							completionTokens: outputTokens,
+						},
+						opts.remoteStorage,
+					).catch(() => {});
 				}
 				return; // Success - exit the retry loop
 			} catch (err) {
@@ -2100,8 +2239,8 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 				}
 
 				// Key error detected - mark key as failed and rotate
-				markKeyAsFailed(providerName, resolvedApiKey);
-				clearVaultCache(); // Force vault reload in case it was updated
+				markKeyAsFailed(stateKey, resolvedApiKey);
+				clearVaultCache(vaultCacheKey); // Force vault reload in case it was updated
 				const errorMessage = err instanceof Error ? err.message : String(err);
 				context.logger?.log("KeypoolLive rotating key after provider error", {
 					providerId: "keypoollive",
@@ -2114,13 +2253,16 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 				});
 
 				// Persist error to shared storage (fire-and-forget)
-				void recordKeypoolError({
-					provider: providerName,
-					modelId,
-					keyOwner: resolvedKeyOwner ?? "unknown",
-					keyHint: maskedKey,
-					errorCode: extractHttpStatus(err),
-				}).catch(() => {});
+				void recordKeypoolError(
+					{
+						provider: providerName,
+						modelId,
+						keyOwner: resolvedKeyOwner ?? "unknown",
+						keyHint: maskedKey,
+						errorCode: extractHttpStatus(err),
+					},
+					opts.remoteStorage,
+				).catch(() => {});
 
 				context.keypoolEventHandler?.({
 					type: "key-rotated",

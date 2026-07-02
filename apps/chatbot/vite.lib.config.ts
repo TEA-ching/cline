@@ -17,13 +17,13 @@ import { resolve } from 'node:path'
 //   deps resolved from the consumer's own node_modules), not bundled from source.
 // - No import.meta.env.KEYPOOL_VAULT_URL-style baked defaults: the <Chatbot> props
 //   are the runtime source of truth (see src/hooks/useVault.tsx).
-export default defineConfig(() => {
+export default defineConfig(() =>   {
   let sdkVersion = '0.0.0'
   try {
     const sdkPackagePath = resolve(__dirname, '../../sdk/packages/sdk/package.json')
     sdkVersion = JSON.parse(readFileSync(sdkPackagePath, 'utf-8')).version
   } catch (error) {
-    console.warn('Impossible de lire la version du SDK:', error)
+    console.warn('Unable to read SDK version:', error)
   }
 
   return {
@@ -86,9 +86,9 @@ export default defineConfig(() => {
       ],
     },
 
-    worker: {
-      format: 'es',
-    },
+    // worker: {
+    //   format: 'es',
+    // },
 
     build: {
       outDir: 'dist-lib',
@@ -105,7 +105,7 @@ export default defineConfig(() => {
         formats: ['es'],
         fileName: () => 'index.js',
       },
-      rollupOptions: {
+      rolldownOptions: {
         // @cline/agents|llms|shared are bundled from source (see resolve.alias
         // above), not externalized — only the host app's own React is external.
         external: [
@@ -119,6 +119,7 @@ export default defineConfig(() => {
           // "./style.css" export always resolves regardless of Vite's default
           // asset-naming scheme.
           assetFileNames: 'style.css',
+          format: 'es',
         },
       },
     },

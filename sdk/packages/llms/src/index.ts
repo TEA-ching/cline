@@ -92,3 +92,4 @@ export {
 	createKeypoolCrawlerResolver,
 	markCrawlerKeyAsFailed,
 } from "./providers/vendors/keypoollive";
+export type { KeypoolliveOptions } from "./providers/vendors/keypoollive";

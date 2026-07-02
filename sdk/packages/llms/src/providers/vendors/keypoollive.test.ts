@@ -419,6 +419,139 @@ describe("keypoollive provider", () => {
 		});
 	});
 
+	describe("per-provider options (env-less runtimes)", () => {
+		it("streams from a loadVaultText/vaultSecret config without any KEYPOOL_* env", async () => {
+			// No env at all: everything comes from provider options.
+			delete process.env.KEYPOOL_VAULT_URL;
+			delete process.env.KEYPOOL_LIVE_SECRET;
+			delete process.env.KEYPOOL_USAGE_DB_DIR;
+
+			const ciphertext = makeSaltedCiphertextBase64();
+			const fetchMock = vi.fn();
+			vi.stubGlobal("fetch", fetchMock);
+			vi.stubGlobal("atob", (input: string) =>
+				Buffer.from(input, "base64").toString("binary"),
+			);
+			vi.stubGlobal("crypto", {
+				subtle: {
+					importKey: vi.fn(async () => ({})),
+					deriveBits: vi.fn(async () => new Uint8Array(48).buffer),
+					decrypt: vi.fn(
+						async () =>
+							new TextEncoder()
+								.encode(JSON.stringify(vaultConfig(["k_opt_1"])))
+								.buffer,
+					),
+				},
+			} as unknown as Crypto);
+
+			const usedKeys: string[] = [];
+			createOpenAICompatibleProviderMock.mockImplementation(
+				(cfg: GatewayResolvedProviderConfig) => ({
+					async *stream(): AsyncIterable<AgentModelEvent> {
+						usedKeys.push(String(cfg.apiKey));
+						yield { type: "text-delta", text: "ok" };
+						yield { type: "usage", usage: { inputTokens: 3, outputTokens: 2 } };
+						yield { type: "finish", reason: "stop" };
+					},
+				}),
+			);
+
+			const { createKeypoolliveProvider } = await importFreshKeypoollive();
+			const provider = createKeypoolliveProvider(
+				baseConfig({
+					options: {
+						loadVaultText: () => ciphertext,
+						vaultSecret: "opt-secret",
+						scope: "group-a",
+						remoteStorage: false,
+						persistState: false,
+					},
+				}),
+			);
+
+			const events = await collectEvents(provider, baseRequest(), baseContext());
+
+			expect(usedKeys).toEqual(["k_opt_1"]);
+			expect(events.some((e) => e.type === "text-delta")).toBe(true);
+			// The vault came from loadVaultText and usage reporting is disabled,
+			// so no HTTP request must ever be issued.
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			expect(fetchMock).not.toHaveBeenCalled();
+		});
+
+		it("isolates vault caches and rotation state between scopes", async () => {
+			delete process.env.KEYPOOL_VAULT_URL;
+			delete process.env.KEYPOOL_LIVE_SECRET;
+
+			// Two tenants with different vaults: decrypt() selects the config by
+			// ciphertext payload length (4 bytes → tenant A, 8 bytes → tenant B).
+			const header = Buffer.from("Salted__", "ascii");
+			const salt = Buffer.alloc(8, 1);
+			const ciphertextA = Buffer.concat([header, salt, Buffer.alloc(4, 2)]).toString("base64");
+			const ciphertextB = Buffer.concat([header, salt, Buffer.alloc(8, 3)]).toString("base64");
+
+			vi.stubGlobal("fetch", vi.fn());
+			vi.stubGlobal("atob", (input: string) =>
+				Buffer.from(input, "base64").toString("binary"),
+			);
+			vi.stubGlobal("crypto", {
+				subtle: {
+					importKey: vi.fn(async () => ({})),
+					deriveBits: vi.fn(async () => new Uint8Array(48).buffer),
+					decrypt: vi.fn(async (_alg: unknown, _key: unknown, data: ArrayBuffer) => {
+						const cfg =
+							data.byteLength === 4
+								? vaultConfig(["ka_1"])
+								: vaultConfig(["kb_1"]);
+						return new TextEncoder().encode(JSON.stringify(cfg)).buffer;
+					}),
+				},
+			} as unknown as Crypto);
+
+			const usedKeys: string[] = [];
+			createOpenAICompatibleProviderMock.mockImplementation(
+				(cfg: GatewayResolvedProviderConfig) => ({
+					async *stream(): AsyncIterable<AgentModelEvent> {
+						usedKeys.push(String(cfg.apiKey));
+						yield { type: "finish", reason: "stop" };
+					},
+				}),
+			);
+
+			const { createKeypoolliveProvider } = await importFreshKeypoollive();
+			const providerA = createKeypoolliveProvider(
+				baseConfig({
+					options: {
+						loadVaultText: () => ciphertextA,
+						vaultSecret: "secret-a",
+						scope: "tenant-a",
+						remoteStorage: false,
+						persistState: false,
+					},
+				}),
+			);
+			const providerB = createKeypoolliveProvider(
+				baseConfig({
+					options: {
+						loadVaultText: () => ciphertextB,
+						vaultSecret: "secret-b",
+						scope: "tenant-b",
+						remoteStorage: false,
+						persistState: false,
+					},
+				}),
+			);
+
+			await collectEvents(providerA, baseRequest(), baseContext());
+			// With the historical single-entry vault cache, tenant B would reuse
+			// tenant A's decrypted vault here and stream with ka_1.
+			await collectEvents(providerB, baseRequest(), baseContext());
+
+			expect(usedKeys).toEqual(["ka_1", "kb_1"]);
+		});
+	});
+
 	describe("remote storage configuration", () => {
 		it("is disabled by default with no env var or explicit config", async () => {
 			const { isKeypoolRemoteStorageEnabled } = await importFreshKeypoollive();
