@@ -16,6 +16,7 @@
 	"types": "./dist/index.d.ts",
 	"exports": {
 		".": {
+			"workerd": "./dist/index.js",
 			"browser": "./dist/index.browser.js",
 			"react-server": "./dist/index.browser.js",
 			"import": "./dist/index.js",
@@ -24,6 +25,10 @@
 		"./browser": {
 			"import": "./dist/index.browser.js",
 			"types": "./dist/index.browser.d.ts"
+		},
+		"./worker": {
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
 		}
 	},
 	"files": [
