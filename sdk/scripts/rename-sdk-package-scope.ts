@@ -29,6 +29,7 @@ const root: string = process.cwd()
 const sdkDir: string = path.join(root, 'sdk')
 const docsDir: string = path.join(root, 'docs')
 const agentsDir: string = path.join(root, '.agents')
+const chatbotDir: string = path.join(root, 'apps', 'chatbot')
 const ignoredDirs: Set<string> = new Set([
   'node_modules',
   '.git',
@@ -217,6 +218,8 @@ void (async (): Promise<void> => {
     // apps/{cli,cline-hub,examples} were moved from sdk/apps/ to apps/ at root.
     // They must be scanned for @cline/ refs just like sdk/ was before.
     // apps/vscode/ is intentionally excluded: the extension source keeps @cline/* as-is.
+    // apps/chatbot is included: it's published as @sctg/cline-chatbot and its source
+    // imports @cline/agents|llms|shared, which must become @sctg/cline-* at publish time.
     const appsCliDir = path.join(root, 'apps/cli')
     const appsClineHubDir = path.join(root, 'apps/cline-hub')
     const appsExamplesDir = path.join(root, 'apps/examples')
@@ -226,7 +229,8 @@ void (async (): Promise<void> => {
       ...findFilesByExtension(sdkDir, 'README.md'),
       ...(fs.existsSync(appsCliDir) ? findFilesByExtension(appsCliDir, 'README.md') : []),
       ...(fs.existsSync(appsClineHubDir) ? findFilesByExtension(appsClineHubDir, 'README.md') : []),
-      ...(fs.existsSync(appsExamplesDir) ? findFilesByExtension(appsExamplesDir, 'README.md') : [])
+      ...(fs.existsSync(appsExamplesDir) ? findFilesByExtension(appsExamplesDir, 'README.md') : []),
+      ...(fs.existsSync(chatbotDir) ? findFilesByExtension(chatbotDir, 'README.md') : [])
     ]
 
     for (const readmePath of readmeFiles) {
@@ -251,7 +255,8 @@ void (async (): Promise<void> => {
       ...findAllFiles(agentsDir),
       ...(fs.existsSync(appsCliDir) ? findAllFiles(appsCliDir) : []),
       ...(fs.existsSync(appsClineHubDir) ? findAllFiles(appsClineHubDir) : []),
-      ...(fs.existsSync(appsExamplesDir) ? findAllFiles(appsExamplesDir) : [])
+      ...(fs.existsSync(appsExamplesDir) ? findAllFiles(appsExamplesDir) : []),
+      ...(fs.existsSync(chatbotDir) ? findAllFiles(chatbotDir) : [])
     ]
 
     for (const filePath of allFiles) {

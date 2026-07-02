@@ -4,8 +4,16 @@ import type { AiConfig } from '@/types/ai-config'
 import { decryptAiConfig } from './crypto'
 import { parseAiConfig } from './ai-config-schema'
 
-const VAULT_URL = import.meta.env.KEYPOOL_VAULT_URL as string
+// Defaults to the standalone app's build-time env var; overridden at runtime via
+// setVaultBaseUrl() so the <Chatbot> component can be configured by prop instead
+// (a downstream consumer's bundler won't have KEYPOOL_VAULT_URL defined).
+let VAULT_URL = (import.meta.env.KEYPOOL_VAULT_URL as string | undefined) ?? ''
 const SESSION_KEY = 'ai_vault_token'
+
+/** Sets the vault base URL at runtime — called by VaultProvider from its `vaultUrl` prop. */
+export function setVaultBaseUrl(url: string): void {
+  VAULT_URL = url
+}
 
 /**
  * GET vault URL from environment variable KEYPOOL_VAULT_URL

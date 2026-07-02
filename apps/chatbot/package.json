@@ -1,19 +1,39 @@
 {
   "name": "@sctg/cline-chatbot",
-  "private": true,
   "version": "0.2.0",
+  "description": "Reusable KeypoolLive chatbot React component (<Chatbot />) built on @cline/agents, @cline/llms and @cline/shared",
   "type": "module",
+  "main": "./dist-lib/index.js",
+  "module": "./dist-lib/index.js",
+  "types": "./dist-lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist-lib/index.d.ts",
+      "import": "./dist-lib/index.js"
+    },
+    "./style.css": "./dist-lib/style.css",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist-lib",
+    "README.md"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:lib": "tsc --noEmit && vite build --config vite.lib.config.ts",
     "preview": "vite preview",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "typecheck": "tsc --noEmit"
   },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
   "dependencies": {
-    "@cline/agents": "workspace:*",
-    "@cline/llms": "workspace:*",
-    "@cline/shared": "workspace:*",
     "@heroui/react": "3.1.0",
     "@heroui/styles": "3.1.0",
     "@jitl/quickjs-singlefile-browser-release-asyncify": "^0.32.0",
@@ -34,14 +54,15 @@
     "pdfjs-dist": "^6.0.227",
     "pyodide": "^314.0.0",
     "quickjs-emscripten": "^0.32.0",
-    "react": "19.2.7",
-    "react-dom": "19.2.7",
     "shiki": "^4.2.0",
     "sucrase": "^3.35.1",
     "tailwindcss": "^4.3.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@cline/agents": "workspace:*",
+    "@cline/llms": "workspace:*",
+    "@cline/shared": "workspace:*",
     "@eslint/js": "^10.0.1",
     "@types/node": "^20.14.11",
     "@types/react": "^19.2.17",
@@ -53,7 +74,10 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
     "terser": "^5.48.0",
+    "vite-plugin-dts": "^4.5.4",
     "vite-plugin-static-copy": "^4.1.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.61.1",

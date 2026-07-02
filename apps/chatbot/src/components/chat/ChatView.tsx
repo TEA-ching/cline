@@ -112,7 +112,7 @@ function uid() {
 interface Props { vaultConfig: AiConfig }
 
 export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
-  const { firecrawlKeys, mode: vaultMode } = useVault()
+  const { firecrawlKeys, mode: vaultMode, vaultUrl, githubClientId } = useVault()
 
   const { selectedProviderId, selectedModelId, handleModelChange } = useModelSelection(vaultConfig)
   const [showSettings, setShowSettings] = useState(false)
@@ -139,7 +139,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     cancelDeviceFlow,
     logout: githubLogout,
   } = useGitHubAuth({
-    corsProxyUrl: vaultMode === 'vault' ? `${new URL(import.meta.env.KEYPOOL_VAULT_URL).origin}/v1/keypool/corsproxy` : undefined,
+    corsProxyUrl: vaultMode === 'vault' && vaultUrl ? `${new URL(vaultUrl).origin}/v1/keypool/corsproxy` : undefined,
     vaultToken: vaultMode === 'vault' ? (VaultApi.getToken() ?? undefined) : undefined,
   })
 
@@ -238,7 +238,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
         return selectedModel ? meta.filter(selectedModel, selectedProviderId) : false
       }),
       vaultToken: vaultMode === 'vault' ? (VaultApi.getToken() ?? undefined) : undefined,
-      corsProxyUrl: vaultMode === 'vault' ? `${new URL(import.meta.env.KEYPOOL_VAULT_URL).origin}/v1/keypool/corsproxy` : undefined,
+      corsProxyUrl: vaultMode === 'vault' && vaultUrl ? `${new URL(vaultUrl).origin}/v1/keypool/corsproxy` : undefined,
       weatherApiKeys: vaultConfig.weatherApi?.keys?.map(k => ({
         key: k.key,
         sharedSecret: k.sharedSecret,
@@ -760,7 +760,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     <>
       <Toast.Provider placement="bottom end" />
       <DropZone onDrop={vfs.uploadFiles}>
-        <div className="flex h-screen overflow-hidden bg-background">
+        <div className="flex h-full overflow-hidden bg-background">
 
           {/* File sidebar */}
           {showFiles && (
@@ -1054,7 +1054,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
           {/* GitHub OAuth Device Flow modal */}
           {(showGitHubAuth || deviceFlow !== null) && (
             <GitHubAuthModal
-              clientId={import.meta.env.GITHUB_CLIENT_ID as string | undefined}
+              clientId={githubClientId}
               deviceFlow={deviceFlow}
               isPolling={ghIsPolling}
               justAuthorized={justAuthorized}

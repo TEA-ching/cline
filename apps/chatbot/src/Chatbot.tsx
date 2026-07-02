@@ -21,16 +21,30 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import React from 'react'
-import { createRoot } from 'react-dom/client'
-import { VaultProvider } from '@/hooks/useVault'
-import App from './App'
-import './styles/global.css'
-import './styles/app-shell.css'
 
-const rootElement = document.getElementById('root')!
-createRoot(rootElement).render(
-  <VaultProvider>
-    <App />
-  </VaultProvider>,
-)
+import React from 'react'
+import { VaultProvider, type VaultProviderProps } from '@/hooks/useVault'
+import App from './App'
+
+export interface ChatbotProps extends Omit<VaultProviderProps, 'children'> {
+  /** Applied to the wrapping element. The chatbot fills its container's height (`h-full`). */
+  className?: string
+}
+
+/**
+ * Reusable KeypoolLive chatbot for React 19 host apps.
+ *
+ * Requires the host app to import '@sctg/cline-chatbot/style.css' once, and to size
+ * the wrapping element (the chatbot fills 100% width/height of its container).
+ */
+export const Chatbot: React.FC<ChatbotProps> = ({ vaultUrl, usageDbUrl, githubClientId, className }) => {
+  return (
+    <VaultProvider vaultUrl={vaultUrl} usageDbUrl={usageDbUrl} githubClientId={githubClientId}>
+      <div className={className ? `h-full ${className}` : 'h-full'}>
+        <App />
+      </div>
+    </VaultProvider>
+  )
+}
+
+export default Chatbot

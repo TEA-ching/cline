@@ -2,7 +2,8 @@
 // Copyright (c) 2024-2026 Ronan Le Meillat - SCTG Development
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import type { AiConfig } from '@/types/ai-config'
-import { VaultApi } from '@/lib/vault-api'
+import { VaultApi, setVaultBaseUrl } from '@/lib/vault-api'
+import { setUsageDbBaseUrl } from '@/lib/keypool-usage'
 import { getFirecrawlKeys } from '@/lib/model-utils'
 import { parseAiConfig } from '@/lib/ai-config-schema'
 
@@ -15,6 +16,8 @@ interface VaultContextType {
   isAuthenticated: boolean
   mode: VaultMode
   firecrawlKeys: string[]
+  vaultUrl: string
+  githubClientId: string | undefined
   login: (token: string) => Promise<void>
   logout: () => void
   refresh: () => Promise<void>
@@ -23,7 +26,35 @@ interface VaultContextType {
 
 const VaultContext = createContext<VaultContextType | undefined>(undefined)
 
-export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export interface VaultProviderProps {
+  children: React.ReactNode
+  /**
+   * Base URL of the KeypoolLive vault (encrypted AI config endpoint).
+   * Defaults to the standalone app's build-time KEYPOOL_VAULT_URL define.
+   * Pass this explicitly when embedding <Chatbot> in a host app/bundler
+   * that doesn't define import.meta.env.KEYPOOL_VAULT_URL.
+   */
+  vaultUrl?: string
+  /** Base URL of the KeypoolLive usage-tracking worker. Same rationale as `vaultUrl`. */
+  usageDbUrl?: string
+  /** GitHub OAuth app client id used for the "Sign in with GitHub" vault login flow. */
+  githubClientId?: string
+}
+
+export const VaultProvider: React.FC<VaultProviderProps> = ({
+  children,
+  vaultUrl = (import.meta.env.KEYPOOL_VAULT_URL as string | undefined) ?? '',
+  usageDbUrl = (import.meta.env.KEYPOOL_USAGE_DB as string | undefined) ?? '',
+  githubClientId = import.meta.env.GITHUB_CLIENT_ID as string | undefined,
+}) => {
+  useEffect(() => {
+    setVaultBaseUrl(vaultUrl)
+  }, [vaultUrl])
+
+  useEffect(() => {
+    setUsageDbBaseUrl(usageDbUrl)
+  }, [usageDbUrl])
+
   const [config, setConfig] = useState<AiConfig | null>(() => {
     const stored = localStorage.getItem('byok_config')
     if (!stored) return null
@@ -105,7 +136,9 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const firecrawlKeys = config ? getFirecrawlKeys(config) : []
 
   return (
-    <VaultContext.Provider value={{ config, loading, error, isAuthenticated, mode, firecrawlKeys, login, logout, refresh, switchToBYOK }}>
+    <VaultContext.Provider
+      value={{ config, loading, error, isAuthenticated, mode, firecrawlKeys, vaultUrl, githubClientId, login, logout, refresh, switchToBYOK }}
+    >
       {children}
     </VaultContext.Provider>
   )

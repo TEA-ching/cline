@@ -38,14 +38,14 @@ const App: React.FC = () => {
   if (!config) {
     if (loading) {
       return (
-        <div className="flex h-screen items-center justify-center text-default-500 text-sm">
+        <div className="flex h-full items-center justify-center text-default-500 text-sm">
           Loading vault…
         </div>
       )
     }
     if (error) {
       return (
-        <div className="flex h-screen items-center justify-center">
+        <div className="flex h-full items-center justify-center">
           <div className="max-w-md text-center space-y-4 p-6">
             <p className="text-lg font-semibold text-danger-600">Vault error</p>
             <p className="text-sm text-default-600 bg-default-100 rounded-md px-4 py-3 font-mono text-left break-all">
@@ -73,7 +73,7 @@ const App: React.FC = () => {
     }
     // Authenticated but no config yet (initial mount before effect fires)
     return (
-      <div className="flex h-screen items-center justify-center text-default-500 text-sm">
+      <div className="flex h-full items-center justify-center text-default-500 text-sm">
         Loading vault…
       </div>
     )

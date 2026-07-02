@@ -21,16 +21,12 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import React from 'react'
-import { createRoot } from 'react-dom/client'
-import { VaultProvider } from '@/hooks/useVault'
-import App from './App'
-import './styles/global.css'
-import './styles/app-shell.css'
 
-const rootElement = document.getElementById('root')!
-createRoot(rootElement).render(
-  <VaultProvider>
-    <App />
-  </VaultProvider>,
-)
+// Library entry point for @sctg/cline-chatbot.
+// Host apps also need the compiled stylesheet:
+//   import '@sctg/cline-chatbot/style.css'
+import './styles/global.css'
+
+export { Chatbot, default } from './Chatbot'
+export type { ChatbotProps } from './Chatbot'
+export type { VaultProviderProps } from './hooks/useVault'

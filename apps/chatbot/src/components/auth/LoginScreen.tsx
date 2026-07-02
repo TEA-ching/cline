@@ -172,7 +172,7 @@ export const LoginScreen: React.FC = () => {
   const configSummary = getConfigSummary()
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-default-50 p-4">
+    <div className="flex min-h-full items-center justify-center bg-default-50 p-4">
       <Card className="w-full max-w-md p-6">
         <Card.Header className="flex flex-col gap-1 text-center">
           <Card.Title className="text-2xl font-bold">SCTG Chatbot</Card.Title>

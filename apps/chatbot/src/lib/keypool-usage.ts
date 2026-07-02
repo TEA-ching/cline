@@ -7,7 +7,14 @@
 // If KEYPOOL_USAGE_DB starts with http:// or https://, remote mode is used.
 // Otherwise (or if unset), recording is a no-op (no local FS in browser).
 
-const KEYPOOL_DB_RAW = (import.meta.env.KEYPOOL_USAGE_DB as string | undefined) ?? ''
+// Defaults to the standalone app's build-time env var; overridden at runtime via
+// setUsageDbBaseUrl() so the <Chatbot> component can be configured by prop instead.
+let KEYPOOL_DB_RAW = (import.meta.env.KEYPOOL_USAGE_DB as string | undefined) ?? ''
+
+/** Sets the usage-db worker base URL at runtime — called by VaultProvider from its `usageDbUrl` prop. */
+export function setUsageDbBaseUrl(url: string): void {
+  KEYPOOL_DB_RAW = url
+}
 
 const SESSION_KEY = 'ai_vault_token'
 
