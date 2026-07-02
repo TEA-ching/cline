@@ -62,7 +62,7 @@ describe("keypoollive provider", () => {
 		await rm(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
 	});
 
-	it("round-robin auto-rotates keys and emits active-key notice", async () => {
+	it("round-robin auto-rotates keys and logs the active key to the output channel (not the model stream)", async () => {
 		mockVaultEnvironment(vaultConfig(["k_live_1", "k_live_2"]));
 		const usedKeys: string[] = [];
 
@@ -78,16 +78,28 @@ describe("keypoollive provider", () => {
 
 		const { createKeypoolliveProvider } = await importFreshKeypoollive();
 		const provider = createKeypoolliveProvider(baseConfig());
+		const context = baseContext();
 
-		const run1 = await collectEvents(provider, baseRequest(), baseContext());
-		const run2 = await collectEvents(provider, baseRequest(), baseContext());
+		const run1 = await collectEvents(provider, baseRequest(), context);
+		const run2 = await collectEvents(provider, baseRequest(), context);
 
 		expect(usedKeys).toEqual(["k_live_1", "k_live_2"]);
-		expect(findNotice(run1, "active-key")?.key).toBe("***k_live_1");
-		expect(findNotice(run2, "active-key")?.key).toBe("***k_live_2");
+		// Key selection must never leak into the model-visible stream (it would
+		// otherwise get concatenated into the chat's "Thinking" panel) — only
+		// the output-channel logger should see it.
+		expect(run1.some((event) => event.type === "reasoning-delta")).toBe(false);
+		expect(run2.some((event) => event.type === "reasoning-delta")).toBe(false);
+		expect(context.logger?.log).toHaveBeenCalledWith(
+			"KeypoolLive active key",
+			expect.objectContaining({ key: "***k_live_1" }),
+		);
+		expect(context.logger?.log).toHaveBeenCalledWith(
+			"KeypoolLive active key",
+			expect.objectContaining({ key: "***k_live_2" }),
+		);
 	});
 
-	it("rotates key on resource exhausted and emits key-rotated notice", async () => {
+	it("rotates key on resource exhausted and logs the rotation to the output channel (not the model stream)", async () => {
 		mockVaultEnvironment(vaultConfig(["k_live_a", "k_live_b"]));
 		let attempts = 0;
 		const usedKeys: string[] = [];
@@ -108,13 +120,21 @@ describe("keypoollive provider", () => {
 
 		const { createKeypoolliveProvider } = await importFreshKeypoollive();
 		const provider = createKeypoolliveProvider(baseConfig());
-		const events = await collectEvents(provider, baseRequest(), baseContext());
+		const context = baseContext();
+		const events = await collectEvents(provider, baseRequest(), context);
 
 		expect(usedKeys).toEqual(["k_live_a", "k_live_b"]);
-		expect(findNotice(events, "active-key")?.key).toBe("***k_live_a");
-		expect(findNotice(events, "key-rotated")?.key).toBe("***k_live_a");
-		expect(findNotice(events, "key-rotated")?.error).toContain(
-			"Resource has been exhausted",
+		expect(events.some((event) => event.type === "reasoning-delta")).toBe(false);
+		expect(context.logger?.log).toHaveBeenCalledWith(
+			"KeypoolLive active key",
+			expect.objectContaining({ key: "***k_live_a" }),
+		);
+		expect(context.logger?.log).toHaveBeenCalledWith(
+			"KeypoolLive rotating key after provider error",
+			expect.objectContaining({
+				key: "***k_live_a",
+				error: expect.stringContaining("Resource has been exhausted"),
+			}),
 		);
 	});
 
@@ -160,12 +180,9 @@ describe("keypoollive provider", () => {
 
 		const { createKeypoolliveProvider } = await importFreshKeypoollive();
 		const provider = createKeypoolliveProvider(baseConfig());
+		const context = baseContext();
 
-		const result = await collectEventsUntilError(
-			provider,
-			baseRequest(),
-			baseContext(),
-		);
+		const result = await collectEventsUntilError(provider, baseRequest(), context);
 
 		expect(result.error).toBeInstanceOf(Error);
 		expect((result.error as Error).message).toContain(
@@ -175,23 +192,17 @@ describe("keypoollive provider", () => {
 		// so each key is tried exactly once before rotation gives up.
 		expect(usedKeys).toEqual(["k_live_p", "k_live_q"]);
 
-		const activeNotices = result.events.filter(
-			(event) =>
-				event.type === "reasoning-delta" &&
-				typeof event.metadata === "object" &&
-				event.metadata !== null &&
-				(event.metadata as Record<string, unknown>).event === "active-key",
-		);
-		const rotatedNotices = result.events.filter(
-			(event) =>
-				event.type === "reasoning-delta" &&
-				typeof event.metadata === "object" &&
-				event.metadata !== null &&
-				(event.metadata as Record<string, unknown>).event === "key-rotated",
+		// None of this diagnostic info should reach the model-visible stream.
+		expect(result.events.some((event) => event.type === "reasoning-delta")).toBe(false);
+
+		const logCalls = vi.mocked(context.logger?.log as (...args: unknown[]) => void).mock.calls;
+		const activeKeyLogs = logCalls.filter(([message]) => message === "KeypoolLive active key");
+		const rotatedLogs = logCalls.filter(
+			([message]) => message === "KeypoolLive rotating key after provider error",
 		);
 
-		expect(activeNotices).toHaveLength(1);
-		expect(rotatedNotices).toHaveLength(2);
+		expect(activeKeyLogs).toHaveLength(1);
+		expect(rotatedLogs).toHaveLength(2);
 	});
 
 	it("rejects a modelId that is not in \"providerName/modelId\" format", async () => {
@@ -578,22 +589,6 @@ async function collectEventsUntilError(
 async function importFreshKeypoollive() {
 	vi.resetModules();
 	return import("./keypoollive");
-}
-
-function findNotice(events: AgentModelEvent[], expectedEvent: string) {
-	for (const event of events) {
-		if (event.type !== "reasoning-delta") {
-			continue;
-		}
-		if (!event.metadata || typeof event.metadata !== "object") {
-			continue;
-		}
-		const metadata = event.metadata as Record<string, unknown>;
-		if (metadata.event === expectedEvent) {
-			return metadata;
-		}
-	}
-	return undefined;
 }
 
 async function waitForStateFile(filePath: string): Promise<void> {

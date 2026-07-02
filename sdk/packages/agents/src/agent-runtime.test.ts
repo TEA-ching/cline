@@ -11,6 +11,12 @@ import { AGENT_UNEXPECTED_REASONING_TOKENS_EVENT } from "@cline/shared";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "./index";
 
+const createGatewayMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@cline/llms", () => ({
+	createGateway: createGatewayMock,
+}));
+
 class ScriptedModel implements AgentModel {
 	public readonly requests: AgentModelRequest[] = [];
 
@@ -1722,6 +1728,32 @@ describe("AgentRuntime", () => {
 		expect(events).toContain("run-failed");
 		expect(logger.error).toHaveBeenCalled();
 		expect(telemetry.capture).toHaveBeenCalled();
+	});
+
+	it("forwards the configured logger to createGateway when resolving a provider-based config", () => {
+		// Provider/model configs (as opposed to a prebuilt `model`) build their
+		// own gateway via createGateway() — telemetry was already threaded
+		// through here, but logger was silently dropped, leaving
+		// context.logger undefined for every provider's stream() (e.g.
+		// keypoollive's active-key/key-rotation diagnostics never reached the
+		// host's logger).
+		const logger = { debug: vi.fn(), log: vi.fn(), error: vi.fn() };
+		const telemetry = { capture: vi.fn() } as unknown as ITelemetryService;
+		createGatewayMock.mockReturnValue({
+			createAgentModel: vi.fn(() => new ScriptedModel([])),
+		});
+
+		new AgentRuntime({
+			providerId: "anthropic",
+			modelId: "claude-sonnet-4-6",
+			apiKey: "test-key",
+			logger,
+			telemetry,
+		});
+
+		expect(createGatewayMock).toHaveBeenCalledWith(
+			expect.objectContaining({ logger, telemetry }),
+		);
 	});
 
 	it("propagates agent identity including role through snapshots and plugin setup", async () => {

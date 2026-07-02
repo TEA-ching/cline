@@ -105,6 +105,7 @@ function resolveRuntimeConfig(
 	const gateway = createGateway({
 		providerConfigs: [{ providerId, apiKey, baseUrl, headers, options }],
 		telemetry: rest.telemetry,
+		logger: rest.logger,
 		keypoolEventHandler,
 	});
 	const model = gateway.createAgentModel({ providerId, modelId });

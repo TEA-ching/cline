@@ -1940,18 +1940,6 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 						source: "config",
 					});
 				}
-				yield {
-					type: "reasoning-delta",
-					text: `[keypoollive] Using key for ${providerName}/${modelId}: ${maskedKey}`,
-					redacted: true,
-					metadata: {
-						providerId: "keypoollive",
-						event: "active-key",
-						providerName,
-						modelId,
-						key: maskedKey,
-					},
-				};
 			}
 
 			// Create sub-request with the actual (un-prefixed) model ID
@@ -2142,20 +2130,6 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 					attempt,
 					error: errorMessage,
 				});
-
-				yield {
-					type: "reasoning-delta",
-					text: `[keypoollive] Key rotation triggered for ${providerName}/${modelId}: ${maskedKey}`,
-					redacted: true,
-					metadata: {
-						providerId: "keypoollive",
-						event: "key-rotated",
-						providerName,
-						modelId,
-						key: maskedKey,
-						error: errorMessage,
-					},
-				};
 
 				// If this was the last attempt, throw a comprehensive error
 				if (attempt === MAX_KEY_ATTEMPTS - 1) {
