@@ -86,9 +86,9 @@ export default defineConfig(() =>   {
       ],
     },
 
-    // worker: {
-    //   format: 'es',
-    // },
+    worker: {
+      format: 'es' as const,
+    },
 
     build: {
       outDir: 'dist-lib',
@@ -134,7 +134,7 @@ export default defineConfig(() =>   {
           // "./style.css" export always resolves regardless of Vite's default
           // asset-naming scheme.
           assetFileNames: 'style.css',
-          format: 'es',
+          format: 'es' as const,
         },
       },
     },
