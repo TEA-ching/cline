@@ -894,6 +894,7 @@ async function* emitAiSdkEvents(
 	capturedRetryAfter?: { current: number | null },
 ): AsyncIterable<AgentModelEvent> {
 	let sawToolCalls = false;
+	let sawTextDelta = false;
 	const emittedToolCallIds = new Set<string>();
 	let finishReason: unknown;
 	let streamError: string | undefined;
@@ -909,6 +910,7 @@ async function* emitAiSdkEvents(
 						(part.text as string | undefined) ??
 						(part.delta as string | undefined);
 					if (text) {
+						sawTextDelta = true;
 						yield { type: "text-delta", text };
 					}
 					continue;
@@ -1027,6 +1029,23 @@ async function* emitAiSdkEvents(
 		// Capture retry-after from raw error if not already captured via onError
 		if (capturedRetryAfter && capturedRetryAfter.current === null) {
 			capturedRetryAfter.current = extractRetryAfterSeconds(error);
+		}
+	}
+
+	// Some providers (observed with Poolside's Responses API models) skip
+	// incremental `response.output_text.delta` chunks and emit the full text
+	// only in the terminal `response.completed` event. The AI SDK's fullStream
+	// then yields zero "text-delta" parts, even though `stream.text` — which the
+	// SDK assembles from the final response — has the complete text. Without this
+	// fallback the agent turn finishes with empty content and nothing renders.
+	if (stream.fullStream && !sawTextDelta && !streamError && stream.text) {
+		try {
+			const finalText = await stream.text;
+			if (finalText) {
+				yield { type: "text-delta", text: finalText };
+			}
+		} catch {
+			// Ignore — usage/finish handling below still runs regardless.
 		}
 	}
 
