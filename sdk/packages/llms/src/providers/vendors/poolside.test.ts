@@ -650,6 +650,81 @@ describe("createPoolsideProviderModule", () => {
 		});
 	});
 
+	describe("Responses API text-delta synthesis (missing incremental deltas)", () => {
+		function responseCompletedLine(text: string): string {
+			return `data: ${JSON.stringify({
+				type: "response.completed",
+				response: {
+					output: [
+						{
+							type: "message",
+							id: "msg_test123",
+							role: "assistant",
+							status: "completed",
+							content: [{ type: "output_text", annotations: [], logprobs: [], text }],
+						},
+					],
+				},
+			})}`;
+		}
+
+		it("synthesizes output_item.added/output_text.delta/output_item.done before a response.completed with no prior deltas", async () => {
+			const line = responseCompletedLine("Hello! How can I assist you today?");
+			const baseFetch = vi.fn(async () => sseResponse([line]));
+			const patchedFetch = await capturePatchedFetch({ fetch: baseFetch });
+
+			const response = await patchedFetch("https://inference.poolside.ai/v1/responses", {
+				method: "POST",
+			});
+			const text = await readAllText(response);
+			const events = text
+				.split("\n")
+				.filter((l) => l.startsWith("data: "))
+				.map((l) => JSON.parse(l.slice(6)));
+
+			expect(events.map((e) => e.type)).toEqual([
+				"response.output_item.added",
+				"response.output_text.delta",
+				"response.output_item.done",
+				"response.completed",
+			]);
+			expect(events[0].item).toEqual({ type: "message", id: "msg_test123" });
+			expect(events[1]).toMatchObject({ item_id: "msg_test123", delta: "Hello! How can I assist you today?" });
+			expect(events[2].item).toEqual({ type: "message", id: "msg_test123" });
+		});
+
+		it("does not synthesize when response.output_text.delta events already streamed the text", async () => {
+			const deltaLine = `data: ${JSON.stringify({ type: "response.output_text.delta", item_id: "msg_test123", delta: "Hi" })}`;
+			const completedLine = responseCompletedLine("Hi");
+			const baseFetch = vi.fn(async () => sseResponse([deltaLine, completedLine]));
+			const patchedFetch = await capturePatchedFetch({ fetch: baseFetch });
+
+			const response = await patchedFetch("https://inference.poolside.ai/v1/responses", {
+				method: "POST",
+			});
+			const text = await readAllText(response);
+			const events = text
+				.split("\n")
+				.filter((l) => l.startsWith("data: "))
+				.map((l) => JSON.parse(l.slice(6)));
+
+			expect(events.map((e) => e.type)).toEqual(["response.output_text.delta", "response.completed"]);
+		});
+
+		it("leaves a response.completed with no message output untouched", async () => {
+			const line = `data: ${JSON.stringify({ type: "response.completed", response: { output: [] } })}`;
+			const baseFetch = vi.fn(async () => sseResponse([line]));
+			const patchedFetch = await capturePatchedFetch({ fetch: baseFetch });
+
+			const response = await patchedFetch("https://inference.poolside.ai/v1/responses", {
+				method: "POST",
+			});
+			const text = await readAllText(response);
+
+			expect(text.trim()).toBe(line);
+		});
+	});
+
 	describe("debug fetch logging", () => {
 		it("does not write a debug log file by default", async () => {
 			delete process.env.POOLSIDE_DEBUG_FETCH_LOG;

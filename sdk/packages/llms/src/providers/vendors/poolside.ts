@@ -176,6 +176,60 @@ function patchMessageEndLine(line: string): string {
 	}
 }
 
+interface PoolsideResponsesStreamState {
+	sawTextDelta: boolean
+}
+
+/**
+ * Some Poolside models (observed with poolside/laguna-xs.2) skip incremental
+ * `response.output_text.delta` events on the Responses API (/v1/responses) stream
+ * entirely and emit the full text only in the terminal `response.completed` event.
+ * @ai-sdk/openai's Responses stream parser builds text exclusively from
+ * `response.output_text.delta` chunks — it never reads the completed event's
+ * embedded `response.output[].content[].text` — so without synthesizing the
+ * missing delta, no text ever reaches the AI SDK's stream (and thus the UI),
+ * even though the full answer is present in the payload.
+ */
+function synthesizeMissingResponseTextDeltas(line: string, state: PoolsideResponsesStreamState): string {
+	if (!line.startsWith("data: ")) return line
+	let event: any
+	try {
+		event = JSON.parse(line.slice(6))
+	} catch {
+		return line
+	}
+
+	if (event.type === "response.output_text.delta") {
+		state.sawTextDelta = true
+		return line
+	}
+
+	if (state.sawTextDelta || (event.type !== "response.completed" && event.type !== "response.incomplete")) {
+		return line
+	}
+
+	const output = event.response?.output as Array<Record<string, unknown>> | undefined
+	const message = output?.find((item) => item.type === "message")
+	const textPart = (message?.content as Array<Record<string, unknown>> | undefined)?.find(
+		(part) => part.type === "output_text",
+	)
+	const text = textPart?.text as string | undefined
+	if (!message || typeof text !== "string" || text.length === 0) {
+		return line
+	}
+
+	state.sawTextDelta = true
+	const itemId = message.id as string
+	const synthetic = [
+		{ type: "response.output_item.added", output_index: 0, item: { type: "message", id: itemId } },
+		{ type: "response.output_text.delta", item_id: itemId, delta: text },
+		{ type: "response.output_item.done", output_index: 0, item: { type: "message", id: itemId } },
+	]
+		.map((e) => `data: ${JSON.stringify(e)}\n\n`)
+		.join("")
+	return `${synthetic}${line}`
+}
+
 /**
  * Generates TypeScript code for a fetch request based on the provided parameters.
  * Used for logging API requests to Poolside.
@@ -336,6 +390,9 @@ function patchPoolsideUsageFetch(baseFetch: typeof fetch): typeof fetch {
 		const decoder = new TextDecoder()
 		const encoder = new TextEncoder()
 		let buffer = ""
+		const responsesStreamState: PoolsideResponsesStreamState = { sawTextDelta: false }
+		const patchLine = (line: string) =>
+			synthesizeMissingResponseTextDeltas(patchMessageEndLine(line), responsesStreamState)
 		const patched = response.body.pipeThrough(
 			new TransformStream<Uint8Array, Uint8Array>({
 				transform(chunk, controller) {
@@ -343,11 +400,11 @@ function patchPoolsideUsageFetch(baseFetch: typeof fetch): typeof fetch {
 					const lines = buffer.split("\n")
 					buffer = lines.pop() ?? ""
 					for (const line of lines) {
-						controller.enqueue(encoder.encode(patchMessageEndLine(line) + "\n"))
+						controller.enqueue(encoder.encode(patchLine(line) + "\n"))
 					}
 				},
 				flush(controller) {
-					if (buffer) controller.enqueue(encoder.encode(patchMessageEndLine(buffer)))
+					if (buffer) controller.enqueue(encoder.encode(patchLine(buffer)))
 				},
 			}),
 		)
