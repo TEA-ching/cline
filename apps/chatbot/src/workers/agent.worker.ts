@@ -157,45 +157,20 @@ function indexIfText(path: string, content: string): void {
 // Bridge helpers: communicate back to main thread
 // ---------------------------------------------------------------------------
 
-/**
- * postMessage() throws synchronously (DataCloneError) if the payload contains
- * anything non structured-cloneable (a class instance with methods, a function,
- * a Proxy, etc.). Bundled code is more likely to trip this than dev/workspace
- * code because tree-shaking/bundling can change which concrete class ends up
- * inside an event's data — see the "responses aren't displayed" investigation.
- * Wrapping every postMessage() call surfaces that failure loudly instead of
- * letting it silently abort the agent.subscribe() listener mid-stream.
- */
-function safePostMessage(payload: unknown, label: string): void {
-  try {
-    self.postMessage(payload)
-  } catch (err) {
-    console.error(`[agent.worker] postMessage failed for "${label}":`, err)
-    try {
-      const keys = payload && typeof payload === 'object' ? Object.keys(payload) : []
-      console.error(`[agent.worker] "${label}" payload keys:`, keys)
-    } catch {
-      // ignore — best-effort diagnostics only
-    }
-  }
-}
-
 function postEvent(event: AgentRuntimeEvent): void {
-  safePostMessage({ type: 'event', event }, `event:${event.type}`)
+  self.postMessage({ type: 'event', event })
 }
 
 function postTurnComplete(messages: readonly AgentMessage[], usage?: AgentUsage): void {
-  console.log('[agent.worker] postTurnComplete, messages:', messages.length, 'usage:', usage)
-  safePostMessage({ type: 'turn_complete', messages, usage }, 'turn_complete')
+  self.postMessage({ type: 'turn_complete', messages, usage })
 }
 
 function postTurnError(error: string): void {
-  console.log('[agent.worker] postTurnError:', error)
-  safePostMessage({ type: 'turn_error', error }, 'turn_error')
+  self.postMessage({ type: 'turn_error', error })
 }
 
 function postKeyError(error: string): void {
-  safePostMessage({ type: 'key_error', error }, 'key_error')
+  self.postMessage({ type: 'key_error', error })
 }
 
 function postRateLimited(
@@ -204,20 +179,19 @@ function postRateLimited(
   maxRetries: number,
   snapshot: readonly AgentMessage[],
 ): void {
-  safePostMessage({ type: 'rate_limited', retryAfterSeconds, attempt, maxRetries, snapshot }, 'rate_limited')
+  self.postMessage({ type: 'rate_limited', retryAfterSeconds, attempt, maxRetries, snapshot })
 }
 
 function postFileCreated(path: string, content: string): void {
-  safePostMessage({ type: 'file_created', path, content }, 'file_created')
+  self.postMessage({ type: 'file_created', path, content })
 }
 
 function postImageGenerated(url: string, vfsPath: string): void {
-  safePostMessage({ type: 'image_generated', url, vfsPath }, 'image_generated')
+  self.postMessage({ type: 'image_generated', url, vfsPath })
 }
 
 function postWorkerError(error: string): void {
-  console.error('[agent.worker] postWorkerError:', error)
-  safePostMessage({ type: 'worker_error', error }, 'worker_error')
+  self.postMessage({ type: 'worker_error', error })
 }
 
 // ---------------------------------------------------------------------------
@@ -333,12 +307,13 @@ async function handleInit(msg: InitMessage): Promise<void> {
       }),
     ]
 
-    console.log('[agent.worker] Agent config:', {
-      providerId: msg.providerId,
-      modelId: msg.modelId,
-      apiKeyLength: msg.apiKey?.length ?? 0,
-      baseUrl: msg.baseUrl,
-    })
+    // console.log('[agent.worker] Agent config:', {
+    //   providerId: msg.providerId,
+    //   modelId: msg.modelId,
+    //   apiKeyLength: msg.apiKey?.length ?? 0,
+    //   apiKeyPrefix: msg.apiKey?.slice(0, 8) + '...',
+    //   baseUrl: msg.baseUrl,
+    // })
 
     agent = new Agent({
       providerId: msg.providerId,
@@ -358,16 +333,13 @@ async function handleInit(msg: InitMessage): Promise<void> {
         console.error('[agent.worker] run-failed error:', err?.message ?? err, '\nstack:', err?.stack)
         // Relay error to main thread immediately so user sees it
         postWorkerError(`run-failed: ${err?.message ?? String(err)}`)
-      } else if (event.type === 'assistant-text-delta') {
-        const text = (event as any).text as string | undefined
-        console.log('[agent.worker] event →', event.type, 'len:', text?.length ?? 0, 'preview:', JSON.stringify(text?.slice(0, 40)))
       } else {
-        console.log('[agent.worker] event →', event.type)
+        // console.log('[agent.worker] event →', event.type)
       }
       postEvent(event)
     })
 
-    safePostMessage({ type: 'worker_ready' }, 'worker_ready')
+    self.postMessage({ type: 'worker_ready' })
   } catch (err) {
     const message = err instanceof Error
       ? `${err.message}\n${err.stack ?? ''}`
@@ -423,19 +395,8 @@ async function executeWithRetry(
       return
     }
 
-    {
-      const lastAssistant = [...result.messages].reverse().find((m) => m.role === 'assistant')
-      const textParts = lastAssistant?.content?.filter((p: any) => p.type === 'text') ?? []
-      const textLength = textParts.reduce((sum: number, p: any) => sum + (p.text?.length ?? 0), 0)
-      console.log(
-        '[agent.worker] run result — status:', result.status,
-        'messages:', result.messages.length,
-        'lastAssistantTextLength:', textLength,
-        'lastAssistantContentTypes:', lastAssistant?.content?.map((p: any) => p.type),
-      )
-    }
-
     if (result.status !== 'failed') {
+      // console.log('[agent.worker] completed, messages:', result.messages.length)
       postTurnComplete(result.messages, result.usage)
       return
     }

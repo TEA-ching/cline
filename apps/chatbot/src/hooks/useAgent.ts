@@ -272,7 +272,7 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
 
     worker.onmessage = (ev: MessageEvent<WorkerOutgoingMessage>) => {
       const msg = ev.data
-      console.log('[useAgent] onmessage ←', msg.type, msg.type === 'event' ? (msg as any).event?.type : undefined)
+      // console.log('[useAgent] onmessage ←', msg.type)
 
       switch (msg.type) {
         case 'event': {
@@ -289,18 +289,15 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
             // never touching the ref inside the updater keeps the updater pure and
             // deterministic regardless of batching order.
             const streamingId = streamingMsgIdRef.current
-            console.log('[useAgent] assistant-text-delta, len:', text?.length ?? 0, 'streamingMsgId:', streamingId)
             setStreamedTokens(prev => prev + estimateTokens(text, config.modelId))
             if (streamingId) {
-              setMessages((prev) => {
-                const next = prev.map((m) =>
+              setMessages((prev) =>
+                prev.map((m) =>
                   m.id === streamingId
                     ? { ...m, content: m.content + text, isStreaming: true }
                     : m,
-                )
-                console.log('[useAgent] appended to existing streaming message, new content length:', next.find(m => m.id === streamingId)?.content.length)
-                return next
-              })
+                ),
+              )
             } else {
               const newMsg: ChatMessage = {
                 id: uid(),
@@ -310,7 +307,6 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
                 timestamp: Date.now(),
               }
               streamingMsgIdRef.current = newMsg.id
-              console.log('[useAgent] created new streaming message, id:', newMsg.id)
               setMessages((prev) => [...prev, newMsg])
             }
           } else if (event.type === 'tool-started') {
@@ -383,21 +379,15 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
         }
 
         case 'turn_complete': {
-          console.log(
-            '[useAgent] turn_complete — worker messages:', msg.messages.length,
-            'streamingMsgId was:', streamingMsgIdRef.current,
-          )
           setIsRunning(false)
           setTurnStartedAt(null)
           setRateLimitRetryAt(null)
           streamingMsgIdRef.current = null
           if (msg.usage) setLastTurnUsage(msg.usage)
           lastAgentMessagesRef.current = msg.messages
-          setMessages((prev) => {
-            const next = prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m))
-            console.log('[useAgent] turn_complete — final displayed messages:', next.map(m => ({ role: m.role, contentLength: m.content?.length ?? 0 })))
-            return next
-          })
+          setMessages((prev) =>
+            prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
+          )
           break
         }
 
@@ -415,7 +405,6 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
         }
 
         case 'turn_error': {
-          console.error('[useAgent] turn_error:', msg.error)
           setIsRunning(false)
           setTurnStartedAt(null)
           setRateLimitRetryAt(null)

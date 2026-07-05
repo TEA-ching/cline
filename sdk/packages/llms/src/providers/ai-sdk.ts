@@ -901,22 +901,9 @@ async function* emitAiSdkEvents(
 	let finishUsage: unknown;
 	let finishProviderMetadata: unknown;
 
-	// Temporary instrumentation for the "LLM responses not displayed" investigation —
-	// this traces whether streamText()'s result even yields fullStream parts, and
-	// which part types arrive, so we can tell whether a break is upstream (AI SDK /
-	// provider) or downstream (worker->main-thread relay / React state) of this point.
-	console.log("[ai-sdk] emitAiSdkEvents start", {
-		providerId: request.providerId,
-		modelId: request.modelId,
-		hasFullStream: typeof stream.fullStream !== "undefined",
-		hasTextStream: typeof stream.textStream !== "undefined",
-		hasText: typeof stream.text !== "undefined",
-	});
-
 	try {
 		if (stream.fullStream) {
 			for await (const part of stream.fullStream) {
-				console.log("[ai-sdk] fullStream part:", part.type);
 				if (part.type === "text-delta") {
 					const text =
 						(part.textDelta as string | undefined) ??
@@ -1051,16 +1038,13 @@ async function* emitAiSdkEvents(
 	// then yields zero "text-delta" parts, even though `stream.text` — which the
 	// SDK assembles from the final response — has the complete text. Without this
 	// fallback the agent turn finishes with empty content and nothing renders.
-	console.log("[ai-sdk] loop finished", { sawTextDelta, sawToolCalls, streamError });
 	if (stream.fullStream && !sawTextDelta && !streamError && stream.text) {
 		try {
 			const finalText = await stream.text;
-			console.log("[ai-sdk] fallback stream.text length:", finalText?.length ?? 0);
 			if (finalText) {
 				yield { type: "text-delta", text: finalText };
 			}
-		} catch (err) {
-			console.log("[ai-sdk] fallback stream.text threw:", err);
+		} catch {
 			// Ignore — usage/finish handling below still runs regardless.
 		}
 	}
