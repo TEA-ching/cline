@@ -21,40 +21,27 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import {
-	Globe,
-	GraduationCap,
-	MessageSquare,
-	Newspaper,
-	Video,
-} from "lucide-react";
-import React from "react";
-
+// This module is imported from `tools/index.ts` and `deep-research-tool.ts`,
+// both reachable from the agent Worker's dynamic `import('@/tools/index')` —
+// see agent.worker.ts. It must stay free of `react`/`lucide-react` imports:
+// those pull a bundled copy of React (with its unguarded `process.env.NODE_ENV`
+// dev/prod switch) into the Worker's chunk graph, which throws
+// "process is not defined" at Worker init since Workers have no `process` global.
+// UI-facing icons/labels live in `focus-modes-ui.tsx` instead.
 export type FocusMode = "web" | "academic" | "news" | "video" | "social";
 
 export interface FocusConfig {
 	label: string;
-	icon: React.ReactNode;
 	includeDomains?: string[];
 	excludeDomains  ?: string[];
-}
-
-// Helper function to create icon components
-function createIcon(
-	IconComponent: React.ComponentType<{ className?: string }>,
-	className: string = "h-3 w-3",
-): React.ReactNode {
-	return React.createElement(IconComponent, { className });
 }
 
 export const FOCUS_MODES: Record<FocusMode, FocusConfig> = {
 	web: {
 		label: "Web",
-		icon: createIcon(Globe),
 	},
 	academic: {
 		label: "Academic",
-		icon: createIcon(GraduationCap),
 		includeDomains: [
 			// Prépublications et archives
 			"arxiv.org",
@@ -143,7 +130,6 @@ export const FOCUS_MODES: Record<FocusMode, FocusConfig> = {
 	},
 	news: {
 		label: "News",
-		icon: createIcon(Newspaper),
 		includeDomains: [
 			// International - Général
 			"bbc.com",
@@ -273,12 +259,10 @@ export const FOCUS_MODES: Record<FocusMode, FocusConfig> = {
 	},
 	video: {
 		label: "Video",
-		icon: createIcon(Video),
 		includeDomains: ["youtube.com", "vimeo.com", "dailymotion.com", "ina.fr"],
 	},
 	social: {
 		label: "Social",
-		icon: createIcon(MessageSquare),
 		includeDomains: [
 			"reddit.com",
 			"dev.to",

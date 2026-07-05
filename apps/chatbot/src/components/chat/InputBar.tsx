@@ -31,7 +31,7 @@ import {
   fetchGitHubDirectory
 } from '../../utils/github'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
-import { FOCUS_MODES } from '@/tools/focus-modes'
+import { FOCUS_MODES } from '@/tools/focus-modes-ui'
 import type { FocusMode } from '@/tools/focus-modes'
 
 export interface SlashCommand {
