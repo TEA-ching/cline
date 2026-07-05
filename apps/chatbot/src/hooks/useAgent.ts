@@ -279,11 +279,20 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
           const event = msg.event
           if (event.type === 'assistant-text-delta') {
             const text = (event as any).text as string
-            console.log('[useAgent] assistant-text-delta, len:', text?.length ?? 0, 'streamingMsgId:', streamingMsgIdRef.current)
+            // streamingMsgIdRef must be read AND written here, synchronously and
+            // outside the setMessages updater — not inside it. React may batch/defer
+            // when it actually invokes a queued updater relative to other synchronous
+            // code (e.g. a same-tick 'turn_complete' message that resets this ref to
+            // null), so an updater that reads the ref itself can observe a stale value
+            // and silently start a brand-new message instead of appending to the
+            // in-flight one. Capturing the id here — before any setMessages call — and
+            // never touching the ref inside the updater keeps the updater pure and
+            // deterministic regardless of batching order.
+            const streamingId = streamingMsgIdRef.current
+            console.log('[useAgent] assistant-text-delta, len:', text?.length ?? 0, 'streamingMsgId:', streamingId)
             setStreamedTokens(prev => prev + estimateTokens(text, config.modelId))
-            setMessages((prev) => {
-              const streamingId = streamingMsgIdRef.current
-              if (streamingId) {
+            if (streamingId) {
+              setMessages((prev) => {
                 const next = prev.map((m) =>
                   m.id === streamingId
                     ? { ...m, content: m.content + text, isStreaming: true }
@@ -291,7 +300,8 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
                 )
                 console.log('[useAgent] appended to existing streaming message, new content length:', next.find(m => m.id === streamingId)?.content.length)
                 return next
-              }
+              })
+            } else {
               const newMsg: ChatMessage = {
                 id: uid(),
                 role: 'assistant',
@@ -301,8 +311,8 @@ export function useAgent(config: AgentConfig | null): UseAgentReturn {
               }
               streamingMsgIdRef.current = newMsg.id
               console.log('[useAgent] created new streaming message, id:', newMsg.id)
-              return [...prev, newMsg]
-            })
+              setMessages((prev) => [...prev, newMsg])
+            }
           } else if (event.type === 'tool-started') {
             const toolCall = event.toolCall
             // Capture reasoning step
