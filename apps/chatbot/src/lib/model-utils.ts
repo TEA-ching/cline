@@ -31,9 +31,10 @@ export function modelSupportsTools(model: AiModel): boolean {
   return model.supportsTools !== false
 }
 
-/** Returns all chat-capable models across all providers, sorted by priority. */
+/** Returns all chat-capable models across providers that have at least one API key, sorted by priority. */
 export function listChatModels(config: AiConfig): Array<{ providerId: string; model: AiModel }> {
   return Object.entries(config.providers)
+    .filter(([, provider]) => provider.keys.length > 0)
     .flatMap(([providerId, provider]) =>
       provider.models
         .filter(m => m.usage === 'chat')
