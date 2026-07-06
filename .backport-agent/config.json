@@ -21,7 +21,7 @@
     },
     "workingDir": "../tea-ching-cline",
     "sync": {
-        "maxCommitsPerRun": 5,
+        "maxCommitsPerRun": 10,
         "initialFetchDepth": 200,
         "maxFetchDepth": 2000,
         "batchSize": 3,
