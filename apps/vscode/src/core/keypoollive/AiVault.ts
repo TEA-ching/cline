@@ -128,10 +128,20 @@ export async function decryptAiConfig(
  * Fetches the encrypted vault content from a remote URL.
  *
  * @param url - The URL of the encrypted vault file.
+ * @param bearerToken - Sent as `Authorization: Bearer <token>`. Multi-tenant
+ *   vault backends (e.g. an ai-proxy Cloudflare Worker with per-group vaults)
+ *   use this to identify the caller and serve/re-encrypt their specific
+ *   vault. Without it, the backend cannot tell the caller apart from an
+ *   anonymous request and falls back to a default vault encrypted with a
+ *   different password, which then fails to decrypt below with an opaque
+ *   WebCrypto "OperationError".
  * @returns The raw ciphertext as a string.
  */
-async function fetchEncryptedVault(url: string): Promise<string> {
-	const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+async function fetchEncryptedVault(url: string, bearerToken?: string): Promise<string> {
+	const response = await fetch(url, {
+		signal: AbortSignal.timeout(10_000),
+		...(bearerToken ? { headers: { Authorization: `Bearer ${bearerToken}` } } : {}),
+	});
 	if (!response.ok) {
 		throw new Error(
 			`Failed to fetch vault from ${url}: HTTP ${response.status}`,
@@ -222,8 +232,9 @@ export async function loadAiVault(vaultUrl: string): Promise<AiVaultConfig> {
 		throw new Error("KEYPOOL_LIVE_SECRET environment variable is not set");
 	}
 
-	// Step 3: Fetch the encrypted vault from the remote server.
-	const base64Ciphertext = await fetchEncryptedVault(vaultUrl);
+	// Step 3: Fetch the encrypted vault from the remote server. The secret
+	// doubles as the Bearer token — see fetchEncryptedVault's doc comment.
+	const base64Ciphertext = await fetchEncryptedVault(vaultUrl, secret);
 
 	// Step 4: Decrypt the vault using AES-256-CBC.
 	const aiConfig = await decryptAiConfig(base64Ciphertext, secret);
