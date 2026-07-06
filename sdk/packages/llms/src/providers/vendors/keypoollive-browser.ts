@@ -126,8 +126,13 @@ async function loadAiVault(vaultUrl: string): Promise<any> {
 		throw new Error("KEYPOOL_LIVE_SECRET environment variable is not set");
 	}
 
-	// Fetch vault content
-	const ciphertext = await fetchVaultText(vaultUrl);
+	// Fetch vault content. The secret doubles as the Bearer token: multi-tenant
+	// backends (e.g. an ai-proxy Cloudflare Worker with per-group vaults) use it
+	// to identify the caller and serve/re-encrypt their specific vault. Without
+	// it, the backend cannot tell this caller apart from an anonymous request
+	// and may fall back to a default vault encrypted with a different
+	// password, which then fails to decrypt below.
+	const ciphertext = await fetchVaultText(vaultUrl, secret);
 
 	// Decrypt and transform the vault
 	const raw = await decryptAiConfig(ciphertext, secret);
@@ -138,7 +143,7 @@ async function loadAiVault(vaultUrl: string): Promise<any> {
 	return config;
 }
 
-async function fetchVaultText(url: string): Promise<string> {
+async function fetchVaultText(url: string, bearerToken?: string): Promise<string> {
 	// Support file:// for local development (not applicable in browser)
 	if (url.startsWith("file://")) {
 		throw new Error("file:// protocol not supported in browser environment");
@@ -146,6 +151,7 @@ async function fetchVaultText(url: string): Promise<string> {
 
 	const res = await globalThis.fetch(url, {
 		signal: AbortSignal.timeout(10_000),
+		...(bearerToken ? { headers: { Authorization: `Bearer ${bearerToken}` } } : {}),
 	});
 
 	if (!res.ok) {

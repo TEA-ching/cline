@@ -419,6 +419,32 @@ describe("keypoollive provider", () => {
 		});
 	});
 
+	it("sends the vault secret as a Bearer token when fetching a remote vault", async () => {
+		// Multi-tenant vault backends (e.g. ai-proxy-cloudflare's per-group
+		// vaults) need the caller's token to know which vault to serve and
+		// re-encrypt. A prior regression fetched the vault unauthenticated,
+		// silently falling back to a default vault encrypted with a different
+		// password — which then failed downstream with a generic WebCrypto
+		// "OperationError" instead of a clear auth error.
+		mockVaultEnvironment(vaultConfig(["k_live_1"]));
+		createOpenAICompatibleProviderMock.mockImplementation(() => ({
+			async *stream(): AsyncIterable<AgentModelEvent> {
+				yield { type: "finish", reason: "stop" };
+			},
+		}));
+
+		const { createKeypoolliveProvider } = await importFreshKeypoollive();
+		const provider = createKeypoolliveProvider(baseConfig());
+		await collectEvents(provider, baseRequest(), baseContext());
+
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			process.env.KEYPOOL_VAULT_URL,
+			expect.objectContaining({
+				headers: { Authorization: `Bearer ${process.env.KEYPOOL_LIVE_SECRET}` },
+			}),
+		);
+	});
+
 	describe("per-provider options (env-less runtimes)", () => {
 		it("streams from a loadVaultText/vaultSecret config without any KEYPOOL_* env", async () => {
 			// No env at all: everything comes from provider options.

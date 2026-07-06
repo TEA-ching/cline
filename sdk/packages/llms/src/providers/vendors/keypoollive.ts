@@ -531,10 +531,18 @@ function transformRawConfig(raw: RawAiConfig): AiVaultConfig {
  * Fetches vault content from a URL or local file.
  *
  * @param url - URL or file:// path to the vault
+ * @param bearerToken - Sent as `Authorization: Bearer <token>` on http(s)
+ *   fetches. Multi-tenant vault backends (e.g. a shared ai-proxy Cloudflare
+ *   Worker) use this to identify the caller and serve/re-encrypt the vault
+ *   for their specific group instead of falling back to an unauthenticated
+ *   default vault. Pass the same value as the decryption `secret` — on
+ *   backends where the personal API key doubles as the vault password, an
+ *   unauthenticated request cannot be re-encrypted with that same key and
+ *   decryption fails downstream with a generic OperationError.
  * @returns Vault content as string
  * @throws Error if fetch fails or response is not OK
  */
-async function fetchVaultText(url: string): Promise<string> {
+async function fetchVaultText(url: string, bearerToken?: string): Promise<string> {
 	// Support file:// for local development and offline deployments.
 	// This lets operators store the encrypted vault next to their config or on
 	// a mounted volume without exposing it over HTTP.
@@ -548,6 +556,7 @@ async function fetchVaultText(url: string): Promise<string> {
 	// are managed centrally and need to be rotated without updating each host.
 	const res = await globalThis.fetch(url, {
 		signal: AbortSignal.timeout(10_000),
+		...(bearerToken ? { headers: { Authorization: `Bearer ${bearerToken}` } } : {}),
 	});
 	if (!res.ok) {
 		throw new Error(`Failed to fetch vault from ${url}: HTTP ${res.status}`);
@@ -589,9 +598,14 @@ async function loadAiVault(
 	// Fetch, decrypt, and transform the vault.
 	// These steps are intentionally kept together so a failed fetch, bad
 	// password, or malformed vault fails fast before any provider key is used.
+	// The secret doubles as the Bearer token: on multi-tenant backends (e.g. an
+	// ai-proxy Cloudflare Worker with per-group vaults) it identifies which
+	// vault to serve. Without it, the backend cannot tell this caller apart
+	// from an anonymous request and may fall back to a default vault encrypted
+	// with a different password, which then fails to decrypt below.
 	const ciphertext = options?.loadVaultText
 		? await options.loadVaultText()
-		: await fetchVaultText(vaultUrl);
+		: await fetchVaultText(vaultUrl, secret);
 	const raw = await decryptAiConfig(ciphertext, secret);
 	const config = transformRawConfig(raw);
 
