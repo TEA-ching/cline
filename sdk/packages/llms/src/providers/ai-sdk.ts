@@ -17,7 +17,6 @@ import {
 } from "@cline/shared";
 import { jsonSchema, NoSuchToolError, streamText } from "ai";
 import { nanoid } from "nanoid";
-import { z } from "zod";
 import { extractErrorMessage } from "./format";
 import {
 	isAnthropicCompatibleModel,
