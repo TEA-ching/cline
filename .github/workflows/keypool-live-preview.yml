@@ -348,6 +348,25 @@ jobs:
           jq --arg v "$SDK_VERSION" '.version = $v' apps/chatbot/package.json > apps/chatbot/package.json.tmp
           mv apps/chatbot/package.json.tmp apps/chatbot/package.json
 
+      - name: Add date to apps/cli/src/commands/help.ts version command
+        run: |
+          # Modify the getCliBuildInfo function to include build datetime in version
+          # Create a Python script to do the replacement
+          python3 << 'EOF'
+          # Read the file
+          with open('apps/cli/src/utils/common.ts', 'r') as f:
+              content = f.read()
+          
+          # Find the position of the version field in the getCliBuildInfo function
+          # We look for the pattern where version is followed by platform
+          import re
+          pattern = r'(version,\s*\n\s*platform:)'
+          new_content = re.sub(pattern, r'version + " " + "${{ needs.setup.outputs.datetime_safe }}",\n\t\tplatform:', content)
+          
+          with open('apps/cli/src/utils/common.ts', 'w') as f:
+              f.write(new_content)
+          EOF
+         
       - name: Refresh Bun workspace lockfile after package renaming
         working-directory: sdk
         run: bun install
