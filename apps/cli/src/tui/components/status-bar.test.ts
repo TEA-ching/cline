@@ -59,17 +59,27 @@ describe("formatStatusBarUsageText", () => {
 				totalCost: 0.123,
 				providerId: "cline",
 			}),
-		).toBe("(12,345 tokens) $0.12");
+		).toBe("(12,345) $0.12");
 	});
 
-	it("displays subscription message when the provider is a subscription provider", () => {
+	it("rounds cost to two decimals even when tiny", () => {
+		expect(
+			formatStatusBarUsageText({
+				totalTokens: 12_345,
+				totalCost: 0.0004,
+				providerId: "cline",
+			}),
+		).toBe("(12,345) $0.00");
+	});
+
+	it("hides cost entirely for subscription providers", () => {
 		expect(
 			formatStatusBarUsageText({
 				totalTokens: 12_345,
 				totalCost: 0.123,
 				providerId: "cline-pass",
 			}),
-		).toBe("(12,345 tokens) $0.00 (included with your subscription)");
+		).toBe("(12,345)");
 	});
 });
 
@@ -100,7 +110,7 @@ describe("model display helpers", () => {
 		).toBe(262_144);
 	});
 
-	it("keeps ClinePass visible when model ids have provider prefixes", () => {
+	it("uses the friendly model name with a ClinePass prefix", () => {
 		expect(
 			resolveModelDisplayName({
 				providerId: "cline-pass",
@@ -109,7 +119,30 @@ describe("model display helpers", () => {
 					"zai/glm-5.2": { name: "GLM 5.2" },
 				},
 			}),
-		).toBe("ClinePass/glm-5.2");
+		).toBe("ClinePass: GLM 5.2");
+	});
+
+	it("falls back to the bare model id with a ClinePass prefix when unknown", () => {
+		expect(
+			resolveModelDisplayName({
+				providerId: "cline-pass",
+				modelId: "zai/glm-5.2",
+			}),
+		).toBe("ClinePass: glm-5.2");
+	});
+
+	it("keeps the reasoning effort next to the model name", () => {
+		expect(
+			resolveModelDisplayName({
+				providerId: "cline-pass",
+				modelId: "zai/glm-5.2",
+				knownModels: {
+					"zai/glm-5.2": { name: "GLM 5.2" },
+				},
+				thinking: true,
+				reasoningEffort: "high",
+			}),
+		).toBe("ClinePass: GLM 5.2 (high)");
 	});
 
 	it("uses the friendly model name for non-ClinePass providers", () => {
