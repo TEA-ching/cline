@@ -181,6 +181,24 @@ interface PoolsideResponsesStreamState {
 }
 
 /**
+ * Splits a (possibly already-expanded, multi-line) patched SSE line into the
+ * synthetic content prepended by earlier passes and the trailing original
+ * data line, so multiple synthesis passes can each prepend their own
+ * synthetic events without stepping on what a previous pass already added.
+ */
+function splitSyntheticTail(line: string): { prefix: string; tail: string; event: any } {
+	const lastNewline = line.lastIndexOf("\n")
+	const prefix = lastNewline === -1 ? "" : line.slice(0, lastNewline + 1)
+	const tail = lastNewline === -1 ? line : line.slice(lastNewline + 1)
+	if (!tail.startsWith("data: ")) return { prefix, tail, event: null }
+	try {
+		return { prefix, tail, event: JSON.parse(tail.slice(6)) }
+	} catch {
+		return { prefix, tail, event: null }
+	}
+}
+
+/**
  * Some Poolside models (observed with poolside/laguna-xs.2) skip incremental
  * `response.output_text.delta` events on the Responses API (/v1/responses) stream
  * entirely and emit the full text only in the terminal `response.completed` event.
@@ -191,13 +209,8 @@ interface PoolsideResponsesStreamState {
  * even though the full answer is present in the payload.
  */
 function synthesizeMissingResponseTextDeltas(line: string, state: PoolsideResponsesStreamState): string {
-	if (!line.startsWith("data: ")) return line
-	let event: any
-	try {
-		event = JSON.parse(line.slice(6))
-	} catch {
-		return line
-	}
+	const { prefix, tail, event } = splitSyntheticTail(line)
+	if (!event) return line
 
 	if (event.type === "response.output_text.delta") {
 		state.sawTextDelta = true
@@ -227,7 +240,70 @@ function synthesizeMissingResponseTextDeltas(line: string, state: PoolsideRespon
 	]
 		.map((e) => `data: ${JSON.stringify(e)}\n\n`)
 		.join("")
-	return `${synthetic}${line}`
+	return `${prefix}${synthetic}${tail}`
+}
+
+interface PoolsideHeldFunctionCall {
+	argumentsDoneEvent?: any
+	itemDoneEvent?: any
+}
+
+interface PoolsideFunctionCallFixState {
+	held: Map<string, PoolsideHeldFunctionCall>
+}
+
+/**
+ * Some Poolside models emit `response.function_call_arguments.done` and the
+ * paired `response.output_item.done` for a function_call BEFORE the real
+ * argument deltas have finished streaming — both with `arguments: ""` — then
+ * continue sending `response.function_call_arguments.delta` events afterward.
+ * @ai-sdk/openai's Responses stream parser finalizes the tool call from the
+ * (premature, empty) `output_item.done` and clears its ongoing-call tracking
+ * at that point, so the correct deltas that follow are silently dropped and
+ * the tool call reaches Cline with empty arguments. Hold the premature
+ * done/args-done pair and resynthesize them from the authoritative
+ * `response.completed` output once the response finishes.
+ */
+function fixPrematureFunctionCallArgumentsDone(line: string, state: PoolsideFunctionCallFixState): string {
+	const { prefix, tail, event } = splitSyntheticTail(line)
+	if (!event) return line
+
+	if (event.type === "response.function_call_arguments.done" && event.arguments === "") {
+		const held = state.held.get(event.item_id) ?? {}
+		held.argumentsDoneEvent = event
+		state.held.set(event.item_id, held)
+		return ""
+	}
+
+	if (event.type === "response.output_item.done" && event.item?.type === "function_call" && event.item?.arguments === "") {
+		const held = state.held.get(event.item.id) ?? {}
+		held.itemDoneEvent = event
+		state.held.set(event.item.id, held)
+		return ""
+	}
+
+	if (event.type !== "response.completed" && event.type !== "response.incomplete") return line
+	if (state.held.size === 0) return line
+
+	const output = (event.response?.output as Array<Record<string, unknown>> | undefined) ?? []
+	const synthetic: string[] = []
+	for (const [itemId, held] of state.held) {
+		const finalItem = output.find((item) => item.id === itemId && item.type === "function_call")
+		const correctedArguments = (finalItem?.arguments as string | undefined) ?? ""
+		if (held.argumentsDoneEvent) {
+			synthetic.push(`data: ${JSON.stringify({ ...held.argumentsDoneEvent, arguments: correctedArguments })}\n\n`)
+		}
+		if (held.itemDoneEvent) {
+			synthetic.push(
+				`data: ${JSON.stringify({
+					...held.itemDoneEvent,
+					item: { ...held.itemDoneEvent.item, arguments: correctedArguments },
+				})}\n\n`,
+			)
+		}
+	}
+	state.held.clear()
+	return `${prefix}${synthetic.join("")}${tail}`
 }
 
 /**
@@ -391,8 +467,12 @@ function patchPoolsideUsageFetch(baseFetch: typeof fetch): typeof fetch {
 		const encoder = new TextEncoder()
 		let buffer = ""
 		const responsesStreamState: PoolsideResponsesStreamState = { sawTextDelta: false }
+		const functionCallFixState: PoolsideFunctionCallFixState = { held: new Map() }
 		const patchLine = (line: string) =>
-			synthesizeMissingResponseTextDeltas(patchMessageEndLine(line), responsesStreamState)
+			fixPrematureFunctionCallArgumentsDone(
+				synthesizeMissingResponseTextDeltas(patchMessageEndLine(line), responsesStreamState),
+				functionCallFixState,
+			)
 		const patched = response.body.pipeThrough(
 			new TransformStream<Uint8Array, Uint8Array>({
 				transform(chunk, controller) {
@@ -405,6 +485,18 @@ function patchPoolsideUsageFetch(baseFetch: typeof fetch): typeof fetch {
 				},
 				flush(controller) {
 					if (buffer) controller.enqueue(encoder.encode(patchLine(buffer)))
+					// Defensive: if the stream ended without a response.completed/incomplete
+					// event to resynthesize from (abnormal termination), still emit the
+					// premature (empty-arguments) events rather than silently dropping the
+					// tool call entirely.
+					for (const held of functionCallFixState.held.values()) {
+						if (held.argumentsDoneEvent) {
+							controller.enqueue(encoder.encode(`data: ${JSON.stringify(held.argumentsDoneEvent)}\n\n`))
+						}
+						if (held.itemDoneEvent) {
+							controller.enqueue(encoder.encode(`data: ${JSON.stringify(held.itemDoneEvent)}\n\n`))
+						}
+					}
 				},
 			}),
 		)

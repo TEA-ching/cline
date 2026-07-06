@@ -725,6 +725,236 @@ describe("createPoolsideProviderModule", () => {
 		});
 	});
 
+	describe("function_call arguments fix (premature empty done before real deltas)", () => {
+		// Exact event sequence captured from a live call to
+		// https://inference.poolside.ai/v1/responses with poolside/laguna-xs-2.1:
+		// the empty function_call_arguments.done/output_item.done fire BEFORE the
+		// real argument deltas, which arrive right before response.completed.
+		function realPoolsideFunctionCallSequence(finalArguments: string): string[] {
+			return [
+				`data: ${JSON.stringify({
+					type: "response.output_item.added",
+					output_index: 0,
+					item: {
+						type: "function_call",
+						arguments: "",
+						call_id: "chatcmpl-tool-88a7ef0b9b108a24",
+						name: "read_files",
+						id: "fc_test123",
+						status: "in_progress",
+					},
+				})}`,
+				`data: ${JSON.stringify({
+					type: "response.function_call_arguments.delta",
+					item_id: "fc_test123",
+					output_index: 0,
+					delta: "",
+				})}`,
+				`data: ${JSON.stringify({
+					type: "response.function_call_arguments.done",
+					name: "read_files",
+					item_id: "fc_test123",
+					output_index: 0,
+					arguments: "",
+				})}`,
+				`data: ${JSON.stringify({
+					type: "response.output_item.done",
+					output_index: 0,
+					item: {
+						type: "function_call",
+						arguments: "",
+						call_id: "chatcmpl-tool-88a7ef0b9b108a24",
+						name: "read_files",
+						id: "fc_test123",
+						status: "completed",
+					},
+				})}`,
+				`data: ${JSON.stringify({
+					type: "response.function_call_arguments.delta",
+					item_id: "fc_test123",
+					output_index: 0,
+					delta: finalArguments,
+				})}`,
+				`data: ${JSON.stringify({
+					type: "response.completed",
+					response: {
+						output: [
+							{
+								type: "function_call",
+								arguments: finalArguments,
+								call_id: "chatcmpl-tool-88a7ef0b9b108a24",
+								name: "read_files",
+								id: "fc_test123",
+								status: "completed",
+							},
+						],
+					},
+				})}`,
+			]
+		}
+
+		it("resynthesizes the premature empty done/args-done pair with the real arguments from response.completed", async () => {
+			const finalArguments = '{"files": [{"path": "/etc/hosts"}]}'
+			const lines = realPoolsideFunctionCallSequence(finalArguments)
+			const baseFetch = vi.fn(async () => sseResponse(lines))
+			const patchedFetch = await capturePatchedFetch({ fetch: baseFetch })
+
+			const response = await patchedFetch("https://inference.poolside.ai/v1/responses", { method: "POST" })
+			const text = await readAllText(response)
+			const events = text
+				.split("\n")
+				.filter((l) => l.startsWith("data: "))
+				.map((l) => JSON.parse(l.slice(6)))
+
+			expect(events.map((e) => e.type)).toEqual([
+				"response.output_item.added",
+				"response.function_call_arguments.delta",
+				"response.function_call_arguments.delta",
+				"response.function_call_arguments.done",
+				"response.output_item.done",
+				"response.completed",
+			])
+			expect(events[3].arguments).toBe(finalArguments)
+			expect(events[4].item.arguments).toBe(finalArguments)
+			expect(events[4].item.status).toBe("completed")
+		})
+
+		it("does not touch a function_call whose done event already carries non-empty arguments", async () => {
+			const finalArguments = '{"files": [{"path": "/etc/hosts"}]}'
+			const lines = [
+				`data: ${JSON.stringify({
+					type: "response.output_item.added",
+					output_index: 0,
+					item: { type: "function_call", arguments: "", call_id: "c1", name: "read_files", id: "fc_ok", status: "in_progress" },
+				})}`,
+				`data: ${JSON.stringify({ type: "response.function_call_arguments.delta", item_id: "fc_ok", output_index: 0, delta: finalArguments })}`,
+				`data: ${JSON.stringify({ type: "response.function_call_arguments.done", name: "read_files", item_id: "fc_ok", output_index: 0, arguments: finalArguments })}`,
+				`data: ${JSON.stringify({
+					type: "response.output_item.done",
+					output_index: 0,
+					item: { type: "function_call", arguments: finalArguments, call_id: "c1", name: "read_files", id: "fc_ok", status: "completed" },
+				})}`,
+				`data: ${JSON.stringify({ type: "response.completed", response: { output: [] } })}`,
+			]
+			const baseFetch = vi.fn(async () => sseResponse(lines))
+			const patchedFetch = await capturePatchedFetch({ fetch: baseFetch })
+
+			const response = await patchedFetch("https://inference.poolside.ai/v1/responses", { method: "POST" })
+			const text = await readAllText(response)
+			const events = text
+				.split("\n")
+				.filter((l) => l.startsWith("data: "))
+				.map((l) => JSON.parse(l.slice(6)))
+
+			expect(events.map((e) => e.type)).toEqual([
+				"response.output_item.added",
+				"response.function_call_arguments.delta",
+				"response.function_call_arguments.done",
+				"response.output_item.done",
+				"response.completed",
+			])
+			expect(events[2].arguments).toBe(finalArguments)
+			expect(events[3].item.arguments).toBe(finalArguments)
+		})
+
+		it("resolves correctly for two parallel function calls held at once", async () => {
+			const args1 = '{"files":[{"path":"/a"}]}'
+			const args2 = '{"files":[{"path":"/b"}]}'
+			const lines = [
+				`data: ${JSON.stringify({ type: "response.output_item.added", output_index: 0, item: { type: "function_call", arguments: "", call_id: "c1", name: "read_files", id: "fc_1", status: "in_progress" } })}`,
+				`data: ${JSON.stringify({ type: "response.output_item.added", output_index: 1, item: { type: "function_call", arguments: "", call_id: "c2", name: "read_files", id: "fc_2", status: "in_progress" } })}`,
+				`data: ${JSON.stringify({ type: "response.function_call_arguments.done", name: "read_files", item_id: "fc_1", output_index: 0, arguments: "" })}`,
+				`data: ${JSON.stringify({ type: "response.output_item.done", output_index: 0, item: { type: "function_call", arguments: "", call_id: "c1", name: "read_files", id: "fc_1", status: "completed" } })}`,
+				`data: ${JSON.stringify({ type: "response.function_call_arguments.done", name: "read_files", item_id: "fc_2", output_index: 1, arguments: "" })}`,
+				`data: ${JSON.stringify({ type: "response.output_item.done", output_index: 1, item: { type: "function_call", arguments: "", call_id: "c2", name: "read_files", id: "fc_2", status: "completed" } })}`,
+				`data: ${JSON.stringify({
+					type: "response.completed",
+					response: {
+						output: [
+							{ type: "function_call", arguments: args1, call_id: "c1", name: "read_files", id: "fc_1", status: "completed" },
+							{ type: "function_call", arguments: args2, call_id: "c2", name: "read_files", id: "fc_2", status: "completed" },
+						],
+					},
+				})}`,
+			]
+			const baseFetch = vi.fn(async () => sseResponse(lines))
+			const patchedFetch = await capturePatchedFetch({ fetch: baseFetch })
+
+			const response = await patchedFetch("https://inference.poolside.ai/v1/responses", { method: "POST" })
+			const text = await readAllText(response)
+			const events = text
+				.split("\n")
+				.filter((l) => l.startsWith("data: "))
+				.map((l) => JSON.parse(l.slice(6)))
+
+			const doneEvents = events.filter((e) => e.type === "response.output_item.done")
+			expect(doneEvents.find((e) => e.item.id === "fc_1")?.item.arguments).toBe(args1)
+			expect(doneEvents.find((e) => e.item.id === "fc_2")?.item.arguments).toBe(args2)
+		})
+
+		it("falls back to empty arguments when response.completed has no matching output item", async () => {
+			const lines = [
+				`data: ${JSON.stringify({ type: "response.output_item.added", output_index: 0, item: { type: "function_call", arguments: "", call_id: "c1", name: "read_files", id: "fc_missing", status: "in_progress" } })}`,
+				`data: ${JSON.stringify({ type: "response.function_call_arguments.done", name: "read_files", item_id: "fc_missing", output_index: 0, arguments: "" })}`,
+				`data: ${JSON.stringify({ type: "response.output_item.done", output_index: 0, item: { type: "function_call", arguments: "", call_id: "c1", name: "read_files", id: "fc_missing", status: "completed" } })}`,
+				`data: ${JSON.stringify({ type: "response.completed", response: { output: [] } })}`,
+			]
+			const baseFetch = vi.fn(async () => sseResponse(lines))
+			const patchedFetch = await capturePatchedFetch({ fetch: baseFetch })
+
+			const response = await patchedFetch("https://inference.poolside.ai/v1/responses", { method: "POST" })
+			const text = await readAllText(response)
+			const events = text
+				.split("\n")
+				.filter((l) => l.startsWith("data: "))
+				.map((l) => JSON.parse(l.slice(6)))
+
+			const doneEvent = events.find((e) => e.type === "response.output_item.done")
+			expect(doneEvent?.item.arguments).toBe("")
+		})
+
+		it("composes with the text-delta synthesis fix on the same response.completed event", async () => {
+			const finalArguments = '{"files":[{"path":"/etc/hosts"}]}'
+			const lines = [
+				`data: ${JSON.stringify({ type: "response.output_item.added", output_index: 0, item: { type: "function_call", arguments: "", call_id: "c1", name: "read_files", id: "fc_combo", status: "in_progress" } })}`,
+				`data: ${JSON.stringify({ type: "response.function_call_arguments.done", name: "read_files", item_id: "fc_combo", output_index: 0, arguments: "" })}`,
+				`data: ${JSON.stringify({ type: "response.output_item.done", output_index: 0, item: { type: "function_call", arguments: "", call_id: "c1", name: "read_files", id: "fc_combo", status: "completed" } })}`,
+				`data: ${JSON.stringify({
+					type: "response.completed",
+					response: {
+						output: [
+							{ type: "message", id: "msg_combo", role: "assistant", status: "completed", content: [{ type: "output_text", annotations: [], logprobs: [], text: "Reading now" }] },
+							{ type: "function_call", arguments: finalArguments, call_id: "c1", name: "read_files", id: "fc_combo", status: "completed" },
+						],
+					},
+				})}`,
+			]
+			const baseFetch = vi.fn(async () => sseResponse(lines))
+			const patchedFetch = await capturePatchedFetch({ fetch: baseFetch })
+
+			const response = await patchedFetch("https://inference.poolside.ai/v1/responses", { method: "POST" })
+			const text = await readAllText(response)
+			const events = text
+				.split("\n")
+				.filter((l) => l.startsWith("data: "))
+				.map((l) => JSON.parse(l.slice(6)))
+
+			expect(events.map((e) => e.type)).toEqual([
+				"response.output_item.added",
+				"response.output_item.added",
+				"response.output_text.delta",
+				"response.output_item.done",
+				"response.function_call_arguments.done",
+				"response.output_item.done",
+				"response.completed",
+			])
+			const textDelta = events.find((e) => e.type === "response.output_text.delta")
+			expect(textDelta?.delta).toBe("Reading now")
+			const fnDone = events.find((e) => e.type === "response.output_item.done" && e.item.type === "function_call")
+			expect(fnDone?.item.arguments).toBe(finalArguments)
+		})
+	})
+
 	describe("debug fetch logging", () => {
 		it("does not write a debug log file by default", async () => {
 			delete process.env.POOLSIDE_DEBUG_FETCH_LOG;
