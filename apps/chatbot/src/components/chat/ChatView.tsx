@@ -645,7 +645,7 @@ export const ChatView: React.FC<Props> = ({ vaultConfig }) => {
     const sysMsg: ChatMessage = {
       id: uid(),
       role: 'system',
-      content: `Chatbot version: ${packageJson.version}\nSdk version: ${import.meta.env.___SDK_VERSION___}\n\nVault mode: ${vaultMode}\n\nModel: ${selectedModelId ?? 'N/A'}\nProvider: ${selectedProviderId ?? 'N/A'}`,
+      content: `Chatbot version: ${packageJson.version}\nSdk version: ${import.meta.env.___SDK_VERSION_DATETIME___}\n\nVault mode: ${vaultMode}\n\nModel: ${selectedModelId ?? 'N/A'}\nProvider: ${selectedProviderId ?? 'N/A'}`,
       timestamp: Date.now(),
     }
     loadMessages([...messages, sysMsg])

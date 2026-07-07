@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type LibraryFormats } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import dts from 'vite-plugin-dts'
@@ -104,7 +104,7 @@ export default defineConfig(() =>   {
       cssCodeSplit: false,
       lib: {
         entry: resolve(__dirname, 'src/index.ts'),
-        formats: ['es'],
+        formats: ['es'] as LibraryFormats[],
         fileName: () => 'index.js',
       },
       rolldownOptions: {
