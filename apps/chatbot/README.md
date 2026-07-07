@@ -133,30 +133,9 @@ Besides the standalone app in this folder, `<Chatbot />` is published as [`@sctg
 bun add @sctg/cline-chatbot
 ```
 
-Peer dependencies: `react@^19`, `react-dom@^19`. `vite` is only needed for the worker plugin below and is an **optional** peer dependency.
+Peer dependencies: `react@^19`, `react-dom@^19`. No extra Vite configuration is needed: the chatbot's agent Web Worker is referenced as a standard `new URL('...', import.meta.url)` asset, which Vite (dev and build) resolves, copies, and base-prefixes on its own — the same way it already handles your app's own assets.
 
-### 2. Serve the agent's Web Worker (Vite plugin)
-
-The chatbot runs its agent in a standalone Web Worker bundled with a hardcoded absolute URL (e.g. `/assets/agent.worker-<hash>.js`) that your app must serve as-is — it can't be re-bundled by your own Vite build. Register the package's Vite plugin in your host app's `vite.config.ts`:
-
-```ts
-// vite.config.ts
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import { sctgChatbotWorkerAssets } from '@sctg/cline-chatbot/vite-plugin'
-
-export default defineConfig({
-  plugins: [react(), sctgChatbotWorkerAssets()],
-})
-```
-
-This plugin:
-- in **dev**, serves `/assets/*` requests straight from the package's `dist-lib/assets/`, so the worker's hardcoded URL resolves;
-- on **build**, copies those assets into your own output directory (e.g. `dist/assets/`), so the hash always matches the installed package version.
-
-It's exposed from the `@sctg/cline-chatbot/vite-plugin` subpath rather than the main entry point because it only ever runs inside Vite's Node process — keeping it as a separate entry means its Node-only code never reaches the browser bundle.
-
-### 3. Render `<Chatbot />`
+### 2. Render `<Chatbot />`
 
 ```tsx
 import { Chatbot } from '@sctg/cline-chatbot'

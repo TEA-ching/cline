@@ -51,7 +51,7 @@ export default defineConfig(() =>   {
       tailwindcss(),
       dts({
         entryRoot: 'src',
-        include: ['src/index.ts', 'src/Chatbot.tsx', 'src/hooks/useVault.tsx', 'src/vitePlugin/index.ts'],
+        include: ['src/index.ts', 'src/Chatbot.tsx', 'src/hooks/useVault.tsx'],
         rollupTypes: true,
         insertTypesEntry: true,
       }),
@@ -92,6 +92,29 @@ export default defineConfig(() =>   {
       format: 'es' as const,
     },
 
+    experimental: {
+      // Vite's `?worker` transform bakes the agent worker's URL as a
+      // domain-root-absolute string (e.g. "/assets/agent.worker-<hash>.js")
+      // in library mode, since it has no host `base` to anchor to at this
+      // package's own build time. That breaks once a host app deploys under
+      // a non-root base (e.g. GitHub Pages project sites): the browser
+      // resolves the leading "/" against the origin, not the host's base,
+      // 404ing the worker script.
+      // Rewriting it to `new URL(relativePath, import.meta.url)` instead
+      // defers URL resolution to the host's own build: Vite's static-asset
+      // analysis recognizes that pattern in ANY module it processes
+      // (including this package's compiled dist-lib/index.js inside the
+      // host's node_modules), copies dist-lib/assets/agent.worker-*.js into
+      // the host's own output with the correct base prefix, and rewrites the
+      // reference accordingly — exactly like the host's own first-party
+      // assets already work.
+      renderBuiltUrl(filename, { type }) {
+        if (type === 'asset' && filename.endsWith('.js')) {
+          return { runtime: `new URL(${JSON.stringify(`./${filename}`)}, import.meta.url).href` }
+        }
+      },
+    },
+
     build: {
       outDir: 'dist-lib',
       emptyOutDir: true,
@@ -103,20 +126,9 @@ export default defineConfig(() =>   {
       target: 'esnext',
       cssCodeSplit: false,
       lib: {
-        // Two independent entries: the browser-facing <Chatbot /> component
-        // (index) and the Node-only Vite plugin (vitePlugin/index) that host
-        // apps need in their own vite.config.ts to serve the agent Web Worker
-        // asset (see src/vitePlugin/index.ts for why it's needed). They share
-        // this one rolldown build for convenience, but there is no import
-        // between them — src/index.ts never references src/vitePlugin — so
-        // the Node-only plugin code (node:fs/node:path/node:url, externalized
-        // below) never reaches the browser output chunk.
-        entry: {
-          index: resolve(__dirname, 'src/index.ts'),
-          'vitePlugin/index': resolve(__dirname, 'src/vitePlugin/index.ts'),
-        },
+        entry: resolve(__dirname, 'src/index.ts'),
         formats: ['es'] as LibraryFormats[],
-        fileName: (_format, entryName) => `${entryName}.js`,
+        fileName: () => 'index.js',
       },
       rolldownOptions: {
         // @cline/agents|llms|shared are bundled from source (see resolve.alias
@@ -141,13 +153,6 @@ export default defineConfig(() =>   {
           // any HeroUI/React Aria/React Spectrum host, which this package
           // requires) already has it installed transitively.
           /^use-sync-external-store(\/.*)?$/,
-          // vitePlugin/index.ts only runs inside the host's `vite` process
-          // (Node), never in the browser bundle — externalize its Node/Vite
-          // imports instead of bundling them.
-          'vite',
-          'node:fs',
-          'node:path',
-          'node:url',
         ],
         output: {
           // Force a single, predictable stylesheet name so package.json's
