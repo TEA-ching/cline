@@ -22,6 +22,7 @@ on:
       - keypool-live
     paths:
       - apps/chatbot/**
+      - sdk/**
       - .github/workflows/deploy-chatbot-cloudflare-pages.yaml
 
   workflow_dispatch:
