@@ -35,7 +35,23 @@ permissions:
   attestations: write
 
 jobs:
+  datetime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Compute version and datetime
+        id: meta
+        run: |
+          SDK_VERSION=$(node -p "require('./sdk/packages/sdk/package.json').version")
+          DATETIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          DATETIME_SAFE=$(echo "$DATETIME" | tr ':' '-')
+          echo "sdk_version=$SDK_VERSION"     >> "$GITHUB_OUTPUT"
+          echo "datetime=$DATETIME"           >> "$GITHUB_OUTPUT"
+          echo "datetime_safe=$DATETIME_SAFE" >> "$GITHUB_OUTPUT"
+          echo "sdk_version_datetime=$SDK_VERSION-$DATETIME_SAFE" >> "$GITHUB_OUTPUT"
   build:
+    needs: datetime
     runs-on: ubuntu-latest
 
     steps:
@@ -63,6 +79,8 @@ jobs:
           export KEYPOOL_USAGE_DB_DIR=${{ secrets.KEYPOOL_USAGE_DB_DIR }} 
           export GITHUB_CLIENT_ID=${{ secrets._GITHUB_CLIENT_ID }} 
           export _GITHUB_CLIENT_ID=${{ secrets._GITHUB_CLIENT_ID }}
+          export SDK_VERSION=${{ steps.meta.outputs.sdk_version }}
+          export SDK_VERSION_DATETIME=${{ steps.meta.outputs.sdk_version_datetime }}
           bun run build
 
       - name: Deploy

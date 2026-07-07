@@ -22,8 +22,10 @@ export default defineConfig(({ mode }) => {
       "import.meta.env.KEYPOOL_VAULT_URL": JSON.stringify(process.env.KEYPOOL_VAULT_URL ?? 'https://vault.exemple.com'),
       "import.meta.env.KEYPOOL_USAGE_DB": JSON.stringify(process.env.KEYPOOL_USAGE_DB_DIR ?? 'https://usage-db.exemple.com/v1/keypool/usage'),
       "import.meta.env.GITHUB_CLIENT_ID": JSON.stringify(process.env.GITHUB_CLIENT_ID ?? (process.env._GITHUB_CLIENT_ID ?? '')),
-      // La version du SDK exposée globalement
+      // Global constant for SDK version, injected at build time.
       "import.meta.env.___SDK_VERSION___": JSON.stringify(sdkVersion),
+      "import.meta.env.___SDK_VERSION_DATETIME___": JSON.stringify(process.env.SDK_VERSION_DATETIME ?? `${sdkVersion}-1974-05-26T13:00:00Z`),
+      "import.meta.env.___BUILD_DATETIME___": new Date(process.env.DATETIME ?? '1974-05-26T13:00:00Z'),
       // Polyfill Node.js `process` for browser/Worker builds.
       // isBrowserEnvironment() checks window.document — false in a Worker —
       // so vendor files fall through to process.env / process.listeners etc.

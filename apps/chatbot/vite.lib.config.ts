@@ -32,6 +32,8 @@ export default defineConfig(() =>   {
       'import.meta.env.KEYPOOL_USAGE_DB': JSON.stringify(''),
       'import.meta.env.GITHUB_CLIENT_ID': JSON.stringify(''),
       'import.meta.env.___SDK_VERSION___': JSON.stringify(sdkVersion),
+      'import.meta.env.___SDK_VERSION_DATETIME___': JSON.stringify(process.env.SDK_VERSION_DATETIME ?? `${sdkVersion}-1974-05-26T13:00:00Z`),
+      'import.meta.env.___BUILD_DATETIME___': new Date(process.env.DATETIME ?? '1974-05-26T13:00:00Z'),
       // Polyfill Node.js `process` for browser/Worker builds — see vite.config.ts.
       'process.env': '{}',
       'process.pid': '0',

@@ -362,6 +362,8 @@ jobs:
       - name: Version @sctg/cline-chatbot package (preview semver)
         env:
           SDK_VERSION: ${{ steps.sdk-version.outputs.version }}
+          SDK_VERSION_DATETIME: ${{ needs.setup.outputs.version }}-${{ needs.setup.outputs.datetime_safe }}
+          DATETIME: ${{ needs.setup.outputs.datetime }}
         run: |
           echo "@sctg/cline-chatbot preview version: $SDK_VERSION"
           jq --arg v "$SDK_VERSION" '.version = $v' apps/chatbot/package.json > apps/chatbot/package.json.tmp
@@ -451,6 +453,10 @@ jobs:
           npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
 
       - name: Build @sctg/cline-chatbot library
+        env:
+          SDK_VERSION: ${{ steps.sdk-version.outputs.version }}
+          SDK_VERSION_DATETIME: ${{ needs.setup.outputs.version }}-${{ needs.setup.outputs.datetime_safe }}
+          DATETIME: ${{ needs.setup.outputs.datetime }}
         run: |
           cd apps/chatbot
           bun run build:lib
