@@ -123,6 +123,63 @@ bun run build
 
 ---
 
+## 🧩 Use as a React Component
+
+Besides the standalone app in this folder, `<Chatbot />` is published as [`@sctg/cline-chatbot`](https://www.npmjs.com/package/@sctg/cline-chatbot) so any React 19 host app can embed it directly. This is how [ai-proxy-cloudflare/ui](https://github.com/sctg-development/ai-proxy-cloudflare) uses it.
+
+### 1. Install
+
+```bash
+bun add @sctg/cline-chatbot
+```
+
+Peer dependencies: `react@^19`, `react-dom@^19`. `vite` is only needed for the worker plugin below and is an **optional** peer dependency.
+
+### 2. Serve the agent's Web Worker (Vite plugin)
+
+The chatbot runs its agent in a standalone Web Worker bundled with a hardcoded absolute URL (e.g. `/assets/agent.worker-<hash>.js`) that your app must serve as-is — it can't be re-bundled by your own Vite build. Register the package's Vite plugin in your host app's `vite.config.ts`:
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import { sctgChatbotWorkerAssets } from '@sctg/cline-chatbot/vite-plugin'
+
+export default defineConfig({
+  plugins: [react(), sctgChatbotWorkerAssets()],
+})
+```
+
+This plugin:
+- in **dev**, serves `/assets/*` requests straight from the package's `dist-lib/assets/`, so the worker's hardcoded URL resolves;
+- on **build**, copies those assets into your own output directory (e.g. `dist/assets/`), so the hash always matches the installed package version.
+
+It's exposed from the `@sctg/cline-chatbot/vite-plugin` subpath rather than the main entry point because it only ever runs inside Vite's Node process — keeping it as a separate entry means its Node-only code never reaches the browser bundle.
+
+### 3. Render `<Chatbot />`
+
+```tsx
+import { Chatbot } from '@sctg/cline-chatbot'
+import '@sctg/cline-chatbot/style.css'
+
+export function ChatbotPanel() {
+  return (
+    <div className="h-150">
+      <Chatbot
+        vaultUrl="https://your-vault.example.com"
+        usageDbUrl="https://your-usage-worker.example.com/v1/keypool/usage"
+        githubClientId="your-github-oauth-client-id"
+        className="rounded-lg border"
+      />
+    </div>
+  )
+}
+```
+
+`<Chatbot />` fills 100% of its container's height (`h-full`) — size the wrapping element. `vaultUrl`, `usageDbUrl`, and `githubClientId` are all optional: pass them explicitly when embedding in a host app, since (unlike the standalone app in this repo) they won't come from build-time `KEYPOOL_VAULT_URL` / `KEYPOOL_USAGE_DB` / `GITHUB_CLIENT_ID` env defines.
+
+---
+
 ## 🔑 Configuration Modes
 
 ### Vault Mode (default)
