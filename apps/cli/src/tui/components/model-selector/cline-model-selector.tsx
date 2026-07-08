@@ -3,7 +3,12 @@ import type { ChoiceContext } from "@opentui-ui/dialog";
 import { useDialogKeyboard } from "@opentui-ui/dialog/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { palette } from "../../palette";
-import type { ClineModelPickerEntry } from "./cline-model-picker";
+import {
+	CLINE_MODEL_PICKER_TIER_LABELS,
+	type ClineModelPickerEntry,
+	freeTierDescriptionFor,
+	stripFreeMarker,
+} from "./cline-model-picker";
 import {
 	type KnownModels,
 	resolveModelDisplayName,
@@ -49,11 +54,13 @@ export function ClineModelSelectorContent(
 			key: string;
 			kind: "header" | "model" | "browse";
 			label: string;
+			description?: string;
 			tags: string[];
 			isCurrent: boolean;
 			entryIndex: number;
 		}[] = [];
 		let lastTier: string | null = null;
+		const freeTierDescription = freeTierDescriptionFor(entries);
 		for (let i = 0; i < entries.length; i++) {
 			const entry = entries[i];
 			if (!entry) continue;
@@ -63,7 +70,9 @@ export function ClineModelSelectorContent(
 					rows.push({
 						key: `tier-${entry.tier}`,
 						kind: "header",
-						label: entry.tier === "recommended" ? "Recommended" : "Free",
+						label: CLINE_MODEL_PICKER_TIER_LABELS[entry.tier],
+						description:
+							entry.tier === "free" ? freeTierDescription : undefined,
 						tags: [],
 						isCurrent: false,
 						entryIndex: -1,
@@ -72,10 +81,12 @@ export function ClineModelSelectorContent(
 				rows.push({
 					key: entry.model.id,
 					kind: "model",
-					label: resolveModelDisplayName(
-						entry.model.id,
-						knownModels,
-						entry.model.name,
+					label: stripFreeMarker(
+						resolveModelDisplayName(
+							entry.model.id,
+							knownModels,
+							entry.model.name,
+						),
 					),
 					tags: entry.model.tags,
 					isCurrent: currentModel === entry.model.id,
@@ -147,8 +158,18 @@ export function ClineModelSelectorContent(
 					if (row.kind === "header") {
 						const isFirst = idx === 0;
 						return (
-							<box key={row.key} paddingX={1} marginTop={isFirst ? 0 : 1}>
+							<box
+								key={row.key}
+								paddingX={1}
+								marginTop={isFirst ? 0 : 1}
+								flexDirection="column"
+							>
 								<text fg="gray">{row.label}</text>
+								{row.description && (
+									<text fg="gray">
+										<em>{row.description}</em>
+									</text>
+								)}
 							</box>
 						);
 					}
