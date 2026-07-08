@@ -95,3 +95,10 @@ apps/chatbot/chatbot.md
 agent-debug-*.json
 .claude/worktrees/agent-a76aee2d16014ac28
 .claude/
+.next/dev/static
+**/src-tauri/target/debug/.fingerprint
+apps/examples/desktop-app/src-tauri/target
+apps/examples/desktop-app/webview/.next
+
+# Next.js generated type shim (churns between dev and build)
+apps/examples/desktop-app/webview/next-env.d.ts
