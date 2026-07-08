@@ -51,7 +51,7 @@ export default defineConfig(() =>   {
       tailwindcss(),
       dts({
         entryRoot: 'src',
-        include: ['src/index.ts', 'src/Chatbot.tsx', 'src/hooks/useVault.tsx'],
+        include: ['src/index.ts', 'src/Chatbot.tsx', 'src/hooks/useVault.tsx', 'src/vitePlugin/index.ts'],
         rollupTypes: true,
         insertTypesEntry: true,
       }),
@@ -126,9 +126,21 @@ export default defineConfig(() =>   {
       target: 'esnext',
       cssCodeSplit: false,
       lib: {
-        entry: resolve(__dirname, 'src/index.ts'),
+        // Two independent entries: the browser-facing <Chatbot /> component
+        // (index) and the Node-only Vite plugin (vitePlugin/index) that host
+        // apps need in their own vite.config.ts to copy the agent Web
+        // Worker's sibling chunk files into their own build output (see
+        // src/vitePlugin/index.ts for why). They share this one rolldown
+        // build for convenience, but there is no import between them —
+        // src/index.ts never references src/vitePlugin — so the Node-only
+        // plugin code (node:fs/node:path/node:url, externalized below) never
+        // reaches the browser output chunk.
+        entry: {
+          index: resolve(__dirname, 'src/index.ts'),
+          'vitePlugin/index': resolve(__dirname, 'src/vitePlugin/index.ts'),
+        },
         formats: ['es'] as LibraryFormats[],
-        fileName: () => 'index.js',
+        fileName: (_format, entryName) => `${entryName}.js`,
       },
       rolldownOptions: {
         // @cline/agents|llms|shared are bundled from source (see resolve.alias
@@ -153,6 +165,13 @@ export default defineConfig(() =>   {
           // any HeroUI/React Aria/React Spectrum host, which this package
           // requires) already has it installed transitively.
           /^use-sync-external-store(\/.*)?$/,
+          // vitePlugin/index.ts only runs inside the host's `vite` process
+          // (Node), never in the browser bundle — externalize its Node/Vite
+          // imports instead of bundling them.
+          'vite',
+          'node:fs',
+          'node:path',
+          'node:url',
         ],
         output: {
           // Force a single, predictable stylesheet name so package.json's
