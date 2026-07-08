@@ -24,6 +24,8 @@ import type {
 import {
 	ClineNotSubscribedError,
 	ClineOrgIndividualInferenceSubscriptionError,
+	ClinePassLimitError,
+	extractClinePassLimitMessage,
 	isClineNotSubscribedMessage,
 	isClineOrgIndividualInferenceSubscriptionMessage,
 } from "./errors";
@@ -523,7 +525,7 @@ async function handleClineResponseError(
 	response: Response,
 	providerId: string,
 ): Promise<void> {
-	if (response.status !== 403) {
+	if (response.status < 400) {
 		return;
 	}
 
@@ -534,6 +536,11 @@ async function handleClineResponseError(
 
 	if (isClineOrgIndividualInferenceSubscriptionMessage(body)) {
 		throw new ClineOrgIndividualInferenceSubscriptionError(providerId);
+	}
+
+	const clinePassLimitMessage = extractClinePassLimitMessage(body);
+	if (clinePassLimitMessage) {
+		throw new ClinePassLimitError(clinePassLimitMessage, providerId);
 	}
 
 	if (isClineNotSubscribedMessage(body)) {
