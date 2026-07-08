@@ -21,8 +21,8 @@
     },
     "workingDir": "../tea-ching-cline",
     "sync": {
-        "maxCommitsPerRun": 8,
-        "_comment_maxCommitsPerRun": "8 (au lieu de 10) : les runs à 10 commits frôlaient la limite de contexte 262k de l'orchestrateur (173k observés). evolutions.md recommandait 5 ; 8 est le compromis avec une cadence quotidienne.",
+        "maxCommitsPerRun": 5,
+        "_comment_maxCommitsPerRun": "5 (au lieu de 10) : les runs à 10 commits frôlaient la limite de contexte 262k de l'orchestrateur (173k observés). evolutions.md recommandait 5 ; 8 est le compromis avec une cadence quotidienne.",
         "initialFetchDepth": 200,
         "maxFetchDepth": 2000,
         "batchSize": 3,
