@@ -221,6 +221,26 @@ jobs:
 
       - uses: actions/checkout@v6
 
+      # Must run before ANY install/build step in this job. apps/cline-hub is an
+      # upstream extra this fork doesn't use, and its webview does not build here.
+      # apps/cli's build script (script/build.ts) only invokes the real
+      # `bun -F @cline/cline-hub build:webview` when shouldBuildHubWebview() sees
+      # apps/cline-hub/dist/webview/index.html missing or stale — so stubbing that
+      # file out up front (in addition to faking the workspace package itself, to
+      # avoid workspace errors during SDK packaging) keeps the real build from ever
+      # being attempted, in this step or in the rebuild that sdk/scripts/version.ts
+      # triggers later via `bun run build`. Previously this step ran later and
+      # never created dist/webview/index.html, so that later rebuild always
+      # re-attempted the real (broken) build and failed (see run report 2026-07-09).
+      - name: Remove cline-hub and create a fake cline-hub empty package.json to avoid workspace errors and unbuildable webview
+        run: |
+          rm -rf apps/cline-hub
+          mkdir -p apps/cline-hub/dist/webview apps/cline-hub/src/webview
+          echo "console.log('This is a placeholder package for @cline/cline-hub.');" > apps/cline-hub/index.js
+          echo '{ "name": "@cline/cline-hub", "version": "0.0.0-preview", "private": true, "main": "index.js", "scripts": {"build": "echo Building && exit 0"} }' > apps/cline-hub/package.json
+          echo '{ "name": "@cline/cline-hub-webview", "version": "0.0.0-preview", "private": true, "main": "index.js", "scripts": {"build": "echo Building && exit 0"} }' > apps/cline-hub/src/webview/package.json
+          echo '<!doctype html><title>cline-hub webview disabled (unused in this fork)</title>' > apps/cline-hub/dist/webview/index.html
+
       - name: Create fake gitleaks in /usr/bin to prevent build failures if gitleaks is not installed on the runner.
         run: |
           echo -e '#!/bin/bash\nexit 0' | sudo tee /usr/bin/gitleaks > /dev/null
@@ -346,17 +366,6 @@ jobs:
             apps/cli/dist/cli-linux-x64/bin/cline
             apps/cli/dist/cli-darwin-x64/bin/cline
           if-no-files-found: error
-
-      - name: Remove cline-hub and create a fake cline-hub empty package.json to avoid workspace errors during SDK packaging
-        run: |
-          rm -rf apps/cline-hub
-          # remove apps/cline-hub/src/webview from package.json.workspace with jq
-          # jq 'del(.workspaces[] | select(. == "apps/cline-hub/src/webview"))' package.json > package.json.tmp && mv package.json.tmp package.json
-          # cat package.json
-          mkdir -p apps/cline-hub/src/webview
-          echo "console.log('This is a placeholder package for @sctg/cline-hub.');" > apps/cline-hub/index.js
-          echo '{ "name": "@sctg/cline-hub", "version": "0.0.0-preview", "private": true, "main": "index.js" }' > apps/cline-hub/package.json
-          echo '{ "name": "@sctg/cline-hub-webview", "version": "0.0.0-preview", "private": true, "main": "index.js" }' > apps/cline-hub/src/webview/package.json
 
       - name: Version SDK packages (preview semver)
         id: sdk-version
