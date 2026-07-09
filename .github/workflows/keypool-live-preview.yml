@@ -350,7 +350,9 @@ jobs:
       - name: Remove cline-hub
         run: |
           rm -rf apps/cline-hub
-          
+          # remove apps/cline-hub/src/webview from package.json.workspace with jq
+          jq 'del(.workspaces[] | select(. == "apps/cline-hub/src/webview"))' package.json > package.json.tmp && mv package.json.tmp package.json
+
       - name: Version SDK packages (preview semver)
         id: sdk-version
         working-directory: sdk
@@ -530,8 +532,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
+        # with:
+        #   submodules: recursive
 
       - name: Get clinepool-download version
         id: clinepool-version
@@ -678,8 +680,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          submodules: recursive
+        # with:
+        #   submodules: recursive
 
       - name: Get clinepool-download version
         shell: bash
