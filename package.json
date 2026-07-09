@@ -26,6 +26,7 @@
         "test": "bun --parallel -F './sdk/packages/**' -F @cline/cli -F @cline/cline-hub test",
         "test:unit": "bash -lc 'set -euo pipefail; bun -F @cline/agents test & p1=$!; bun -F @cline/llms test & p2=$!; bun -F @cline/core test:unit & p3=$!; bun -F @cline/cli test:unit & p4=$!; bun -F @cline/cline-hub test & p5=$!; wait $p1; wait $p2; wait $p3; wait $p4; wait $p5'",
         "test:mine": "bash -lc 'set -euo pipefail; bun -F @cline/llms test src/providers/ids.test.ts src/providers/vendors/keypoollive.test.ts src/providers/vendors/cohere.test.ts src/providers/vendors/poolside.test.ts -t \"[Pp]oolside|[Kk]eypool[Ll]ive|[Cc]ohere\" && bun -F @cline/core test:unit -- src/services/llms/provider-defaults.test.ts -t \"[Pp]oolside|[Kk]eypool[Ll]ive|[Cc]ohere\" && bun -F webview-ui test src/components/settings/providers/CohereProvider.test.tsx src/components/settings/providers/PoolsideProvider.test.tsx src/components/settings/providers/KeypoolLiveProvider.test.tsx src/components/chat/KeypoolModelSelector.test.tsx src/components/chat/KeypoolLiveDashboard.test.tsx src/components/chat/ChatTextArea.keypoollive.test.tsx'",
+         "test:invariants": "bash .backport-agent/check-fork-invariants.sh",
         "test:e2e": "bun -F @cline/core test:e2e && bun -F @cline/cli test:e2e",
         "test:e2e:interactive": "bun -F @cline/cli test:e2e:interactive",
         "verify:routines": "zsh -lc 'cd sdk/packages/core && bunx vitest run src/cron/schedule-service.test.ts --config vitest.config.ts'",
