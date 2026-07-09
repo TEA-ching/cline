@@ -347,11 +347,14 @@ jobs:
             apps/cli/dist/cli-darwin-x64/bin/cline
           if-no-files-found: error
 
-      - name: Remove cline-hub
+      - name: Remove cline-hub and create a fake cline-hub empty package.json to avoid workspace errors during SDK packaging
         run: |
           rm -rf apps/cline-hub
           # remove apps/cline-hub/src/webview from package.json.workspace with jq
           jq 'del(.workspaces[] | select(. == "apps/cline-hub/src/webview"))' package.json > package.json.tmp && mv package.json.tmp package.json
+          cat package.json
+          mkdir -p apps/cline-hub
+          echo '{ "name": "@sctg/cline-hub", "version": "0.0.0-preview", "private": true }' > apps/cline-hub/package.json
 
       - name: Version SDK packages (preview semver)
         id: sdk-version
