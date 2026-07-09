@@ -1,5 +1,5 @@
 # customizations.yaml
-# Carte des personnalisations du fork keypool-live (sctg/cline)
+# Carte des personnalisations du fork keypool-live (TEA-ching/cline)
 # Point de fork upstream : 8a6441fddd3b4d372d086886ebe4ee11e78dc993
 # Branche : keypool-live
 #
@@ -7,13 +7,25 @@
 # choisir un niveau de validation approprié et éviter d'écraser silencieusement
 # une fonctionnalité du fork.
 #
+# CONVENTIONS (backport-agent >= 0.8.0) :
+#   - `paths`         : globs des fichiers APPARTENANT à la customization → risque HIGH.
+#   - `related_files` : fichiers d'enregistrement/câblage partagés avec upstream → risque MEDIUM,
+#                       injectés comme contexte dans les prompts IA.
+#   - `tests`         : commandes shell DE CONFIANCE (exécutées via bash par run_validation
+#                       quand l'agent passe les customizationIds correspondants).
+#                       Garder ces commandes rapides et déterministes.
+#   - La vérification déterministe de TOUS les invariants est centralisée dans
+#     .backport-agent/check-fork-invariants.sh (`bun run test:invariants`), qui doit
+#     rester la première commande de chaque liste `tests`.
+#
 # NOTE STRUCTURELLE (migration 4.0.0) :
 #   L'upstream 4.0.0 a restructuré le layer provider : les vendors LLM ont migré de
 #   apps/vscode/src/core/api/providers/ vers sdk/packages/llms/src/providers/vendors/.
 #   Le pont entre l'extension VSCode et le SDK est apps/vscode/src/sdk/cline-session-factory.ts.
-#   Les anciennes paths apps/vscode/src/core/api/providers/*.ts sont supprimées en upstream
-#   mais leur logique vit désormais dans le SDK. Les customizations de ce fork ont été
-#   adaptées en conséquence lors de la migration (commit post-4.0.0).
+#   L'enregistrement des providers se fait dans apps/vscode/src/shared/api.ts (union ApiProvider),
+#   apps/vscode/proto/cline/models.proto (champs *_api_key / keypoollive_*) et
+#   apps/vscode/src/shared/storage/state-keys.ts (liste des secrets).
+#   (L'ancien providers.json n'existe plus.)
 
 customizations:
 
@@ -23,38 +35,40 @@ customizations:
   - id: cohere-provider
     description: >
       Ajoute le fournisseur Cohere pour l'accès aux modèles de langage Cohere.
-      Avant la migration 4.0.0, le provider résidait dans apps/vscode/src/core/api/providers/cohere.ts.
-      Depuis 4.0.0, la logique vendor est dans sdk/packages/llms/src/providers/vendors/cohere.ts.
+      Depuis 4.0.0, la logique vendor est dans sdk/packages/llms/src/providers/vendors/cohere.ts ;
+      le legacy apps/vscode/src/core/api/providers/cohere.ts subsiste dans le fork.
       Le pont de la clé API entre l'extension VSCode et le SDK passe par PROVIDER_API_KEY_MAP
       dans cline-session-factory.ts — l'entrée 'cohere: "cohereApiKey"' est critique.
       Le fournisseur prend en charge la gestion des modèles Cohere, la configuration du raisonnement
       pour les modèles command-a* (mode thinking), la compatibilité des outils avec strict_tools,
-      et la correction des rapports d'utilisation des tokens via un wrapper fetch personnalisé.
+      la correction des rapports d'utilisation des tokens via un wrapper fetch personnalisé,
+      et un variant de prompt système dédié (native-cohere).
     paths:
-      - "apps/vscode/src/core/api/providers/cohere.ts"         # legacy (supprimé en upstream post-4.0)
-      - "apps/vscode/src/core/api/providers/__tests__/cohere.test.ts"
-      - "sdk/packages/llms/src/providers/vendors/cohere.ts"    # vendor SDK (post-4.0.0)
+      - "apps/vscode/src/core/api/providers/cohere.ts"
+      - "sdk/packages/llms/src/providers/vendors/cohere.ts"
+      - "sdk/packages/llms/src/providers/vendors/cohere.test.ts"
+      - "apps/vscode/src/core/prompts/system-prompt/variants/native-cohere/**"
+      - "apps/vscode/webview-ui/src/components/settings/providers/CohereProvider.tsx"
+      - "apps/vscode/webview-ui/src/components/settings/providers/CohereProvider.test.tsx"
     related_files:
       - "apps/vscode/src/shared/api.ts"
       - "apps/vscode/proto/cline/models.proto"
       - "apps/vscode/src/shared/proto-conversions/models/api-configuration-conversion.ts"
-      - "apps/vscode/src/shared/storage/provider-keys.ts"
-      - "apps/vscode/src/shared/providers/providers.json"
-      - "apps/vscode/src/core/api/index.ts"
-      - "apps/vscode/src/sdk/cline-session-factory.ts"         # PROVIDER_API_KEY_MAP
+      - "apps/vscode/src/shared/storage/state-keys.ts"
+      - "apps/vscode/src/sdk/cline-session-factory.ts"
       - "apps/vscode/webview-ui/src/components/settings/utils/providerUtils.ts"
       - "apps/vscode/webview-ui/src/components/settings/ApiOptions.tsx"
     invariants:
       - "L'id de fournisseur 'cohere' doit rester dans l'union ApiProvider de shared/api.ts."
-      - "L'enum ApiProvider du proto doit contenir COHERE avec sa valeur numérique stable."
-      - "convertApiProviderToProto() et convertProtoToApiProvider() doivent être symétriques pour 'cohere'."
-      - "Les clés cohereApiKey doivent rester dans provider-keys.ts."
-      - "providers.json doit contenir l'entrée cohere (value, label, website)."
-      - "PROVIDER_API_KEY_MAP dans cline-session-factory.ts doit contenir l'entrée 'cohere: \"cohereApiKey\"' pour que la clé API soit transmise au SDK."
+      - "Le champ proto cohere_api_key doit rester dans models.proto avec son numéro stable (42)."
+      - "convertApiProviderToProto() et convertProtoToApiProvider() doivent rester symétriques pour 'cohere'."
+      - "La clé cohereApiKey doit rester dans la liste des secrets de state-keys.ts."
+      - "PROVIDER_API_KEY_MAP dans cline-session-factory.ts doit contenir l'entrée 'cohere: \"cohereApiKey\"'."
       - "Le wrapper fetch pour la correction des tokens doit rester fonctionnel dans le vendor SDK."
+      - "Le variant de prompt native-cohere doit rester enregistré."
     tests:
-      - "cd apps/vscode && bun run test:unit -- --timeout 10000 --grep 'Cohere|cohere'"
-      - "grep -q 'cohere.*cohereApiKey\\|cohereApiKey.*cohere' apps/vscode/src/sdk/cline-session-factory.ts"
+      - "bun run test:invariants"
+      - "bun run test:mine"
 
   # ──────────────────────────────────────────────────────────────────────────
   # 2. Fournisseur Poolside (vendor SDK + pont session-factory)
@@ -62,42 +76,42 @@ customizations:
   - id: poolside-provider
     description: >
       Ajoute le fournisseur Poolside pour l'accès aux modèles de langage Poolside.
-      Avant la migration 4.0.0, le provider résidait dans apps/vscode/src/core/api/providers/poolside.ts.
-      Depuis 4.0.0, la logique vendor est dans sdk/packages/llms/src/providers/vendors/poolside.ts.
+      Depuis 4.0.0, la logique vendor est dans sdk/packages/llms/src/providers/vendors/poolside.ts ;
+      le legacy apps/vscode/src/core/api/providers/poolside.ts subsiste dans le fork.
       SPÉCIFICITÉ CRITIQUE : l'API https://inference.poolside.ai requiert que le model ID
       inclue le préfixe "poolside/" (ex: "poolside/laguna-m.1"). Quand poolside est appelé
       en tant que sous-fournisseur via keypoollive, le composite ID "poolside/laguna-m.1" est
       parsé et le bare ID "laguna-m.1" est transmis — le vendor doit re-ajouter le préfixe.
       Le pont de la clé API passe par PROVIDER_API_KEY_MAP dans cline-session-factory.ts.
+      Un variant de prompt système dédié (poolside) existe également.
     paths:
-      - "apps/vscode/src/core/api/providers/poolside.ts"         # legacy (supprimé en upstream post-4.0)
-      - "apps/vscode/src/core/api/providers/__tests__/poolside.test.ts"
-      - "sdk/packages/llms/src/providers/vendors/poolside.ts"    # vendor SDK (post-4.0.0)
+      - "apps/vscode/src/core/api/providers/poolside.ts"
+      - "sdk/packages/llms/src/providers/vendors/poolside.ts"
+      - "sdk/packages/llms/src/providers/vendors/poolside.test.ts"
+      - "apps/vscode/src/core/prompts/system-prompt/variants/poolside/**"
+      - "apps/vscode/webview-ui/src/components/settings/providers/PoolsideProvider.tsx"
+      - "apps/vscode/webview-ui/src/components/settings/providers/PoolsideProvider.test.tsx"
     related_files:
       - "apps/vscode/src/shared/api.ts"
       - "apps/vscode/proto/cline/models.proto"
       - "apps/vscode/src/shared/proto-conversions/models/api-configuration-conversion.ts"
-      - "apps/vscode/src/shared/storage/provider-keys.ts"
-      - "apps/vscode/src/shared/providers/providers.json"
-      - "apps/vscode/src/core/api/index.ts"
-      - "apps/vscode/src/sdk/cline-session-factory.ts"           # PROVIDER_API_KEY_MAP
-      - "sdk/packages/llms/src/providers/builtins.ts"            # model IDs avec préfixe poolside/
+      - "apps/vscode/src/shared/storage/state-keys.ts"
+      - "apps/vscode/src/sdk/cline-session-factory.ts"
+      - "sdk/packages/llms/src/providers/builtins.ts"
       - "apps/vscode/webview-ui/src/components/settings/utils/providerUtils.ts"
       - "apps/vscode/webview-ui/src/components/settings/ApiOptions.tsx"
     invariants:
       - "L'id de fournisseur 'poolside' doit rester dans l'union ApiProvider de shared/api.ts."
-      - "L'enum ApiProvider du proto doit contenir POOLSIDE avec sa valeur numérique stable."
-      - "convertApiProviderToProto() et convertProtoToApiProvider() doivent être symétriques pour 'poolside'."
-      - "Les clés poolsideApiKey doivent rester dans provider-keys.ts."
-      - "providers.json doit contenir l'entrée poolside (value, label, website)."
-      - "PROVIDER_API_KEY_MAP dans cline-session-factory.ts doit contenir l'entrée 'poolside: \"poolsideApiKey\"' pour que la clé API soit transmise au SDK."
+      - "Le champ proto poolside_api_key doit rester dans models.proto avec son numéro stable (43)."
+      - "convertApiProviderToProto() et convertProtoToApiProvider() doivent rester symétriques pour 'poolside'."
+      - "La clé poolsideApiKey doit rester dans la liste des secrets de state-keys.ts."
+      - "PROVIDER_API_KEY_MAP dans cline-session-factory.ts doit contenir l'entrée 'poolside: \"poolsideApiKey\"'."
       - "L'URL par défaut 'https://inference.poolside.ai/v1' doit rester configurée dans builtins.ts."
-      - "Le vendor poolside.ts doit normaliser le model ID en ajoutant le préfixe 'poolside/' si absent : l'API inference.poolside.ai requiert ce préfixe même quand le bare ID est passé via keypoollive."
+      - "Le vendor poolside.ts doit normaliser le model ID en ajoutant le préfixe 'poolside/' si absent."
       - "Les IDs de modèles dans builtins.ts doivent inclure le préfixe 'poolside/' (ex: 'poolside/laguna-m.1')."
     tests:
-      - "cd apps/vscode && bun run test:unit -- --timeout 10000 --grep 'Poolside|poolside'"
-      - "grep -q 'poolside.*poolsideApiKey\\|poolsideApiKey.*poolside' apps/vscode/src/sdk/cline-session-factory.ts"
-      - "grep -q 'startsWith.*poolside' sdk/packages/llms/src/providers/vendors/poolside.ts"
+      - "bun run test:invariants"
+      - "bun run test:mine"
 
   # ──────────────────────────────────────────────────────────────────────────
   # 3. Fournisseur KeypoolLive (cœur métier du fork)
@@ -109,134 +123,108 @@ customizations:
       suivi d'utilisation via SQLite (KeypoolUsageDb), et gestion de session
       (SessionKeyManager). Le fournisseur est enregistré dans la chaîne complète :
       shared/api.ts → proto/cline/models.proto → api-configuration-conversion.ts
-      → provider-keys.ts → providers.json → ApiOptions.tsx → core/api/index.ts.
-      Il expose en plus quatre RPC gRPC dédiés (keypoolGetVaultModels,
-      keypoolRotateKey, keypoolGetUsageStats, keypoolGetErrorStats).
+      → state-keys.ts (secrets) → cline-session-factory.ts → SDK vendor.
+      Il expose onze RPC/contrôleurs keypool* (dont quatre RPCs gRPC historiques :
+      keypoolGetVaultModels, keypoolRotateKey, keypoolGetUsageStats, keypoolGetErrorStats,
+      plus keypoolCheckUpdate, keypoolGetLogMarkdown, keypoolGetRecentLogs,
+      keypoolInjectEnvConfig, keypoolInstallUpdate, keypoolPurgeStats, keypoolSaveLogMarkdown).
+      Un vendor navigateur (keypoollive-browser.ts) existe pour les contextes web.
 
       FIXES POST-MIGRATION 4.0.0 appliqués dans le SDK vendor (keypoollive.ts) :
-      - MAX_KEY_ATTEMPTS est désormais dynamique (= nombre de clés dans le vault)
-        et non hardcodé à 5. Sans ce fix, seules 5 clés sur N sont tentées lors
-        d'une rotation.
+      - MAX_KEY_ATTEMPTS est dynamique (= nombre de clés dans le vault, via _poolKeys.length)
+        et non hardcodé à 5. Sans ce fix, seules 5 clés sur N sont tentées lors d'une rotation.
       - supportsImages est normalisé depuis inputModalities dans resolveNextApiConfig :
         certains fournisseurs vault (ex: Mistral) utilisent inputModalities: ["text","image"]
         au lieu d'un booléen supportsImages explicite.
 
       FIXES dans la couche VSCode :
-      - AiVault.ts normalise également supportsImages depuis inputModalities lors de
-        la transformation vault → AiModel (pour que la UI affiche le bon état).
-      - buildSessionConfig injecte KEYPOOL_VAULT_URL et KEYPOOL_LIVE_SECRET dans
-        process.env ET injecte les métadonnées vault (contextWindow, maxTokens) dans
-        CoreSessionConfig.knownModels pour le modèle sélectionné.
-      - resolveModelInfo inclut un step 4 de fallback vault pour keypoollive : quand
-        le catalog SDK retourne 'unknown' (car keypoollive n'a pas de modèles statiques),
-        le vault est chargé directement pour récupérer contextWindow et supportsImages.
-      - providerUtils.ts keypoollive ne hardcode plus 128000 comme contextWindow par
-        défaut — la valeur réelle du vault est utilisée si disponible.
+      - AiVault.ts normalise également supportsImages depuis inputModalities.
+      - buildSessionConfig (cline-session-factory.ts) injecte KEYPOOL_VAULT_URL et
+        KEYPOOL_LIVE_SECRET dans process.env ET injecte le contextWindow du vault
+        (variable keypooliveContextWindow) pour le modèle sélectionné.
+      - resolveModelInfo inclut un step 4 de fallback vault (loadAiVault) pour keypoollive
+        quand le catalog SDK retourne 'unknown'.
+      - providerUtils.ts keypoollive ne hardcode pas 128000 comme contextWindow par défaut.
     paths:
       - "apps/vscode/src/core/keypoollive/**"
       - "apps/vscode/src/core/api/providers/keypoollive.ts"
       - "apps/vscode/src/core/api/providers/__tests__/keypoollive.test.ts"
-      - "apps/vscode/src/core/controller/models/keypoolGetVaultModels.ts"
-      - "apps/vscode/src/core/controller/models/keypoolRotateKey.ts"
-      - "apps/vscode/src/core/controller/models/keypoolGetUsageStats.ts"
-      - "apps/vscode/src/core/controller/models/keypoolGetErrorStats.ts"
-      - "apps/vscode/src/core/controller/models/resolveModelInfo.ts"       # step 4 vault fallback
+      - "apps/vscode/src/core/controller/models/keypool*.ts"
+      - "apps/vscode/src/core/controller/models/resolveModelInfo.ts"
       - "apps/vscode/src/test/core/keypoollive/**"
-      - "apps/vscode/src/sdk/cline-session-factory.ts"                     # env injection + knownModels
+      - "apps/vscode/src/sdk/cline-session-factory.ts"
       - "sdk/packages/llms/src/providers/vendors/keypoollive.ts"
+      - "sdk/packages/llms/src/providers/vendors/keypoollive.test.ts"
+      - "sdk/packages/llms/src/providers/vendors/keypoollive-browser.ts"
+      - "sdk/packages/llms/src/providers/vendors/keypoollive-browser.example.ts"
       - "sdk/packages/llms/src/providers/ids.ts"
       - "sdk/packages/llms/src/providers/builtins.ts"
       - "sdk/packages/llms/src/providers/builtins-runtime.ts"
+      - "sdk/packages/core/src/integration/keypoollive-tools.live.test.ts"
+      - "sdk/packages/core/src/integration/keypoollive-vault.live.test.ts"
     related_files:
       - "apps/vscode/src/shared/api.ts"
       - "apps/vscode/proto/cline/models.proto"
       - "apps/vscode/src/shared/proto-conversions/models/api-configuration-conversion.ts"
-      - "apps/vscode/src/shared/storage/provider-keys.ts"
-      - "apps/vscode/src/shared/storage/state-keys.ts"                     # keypoollive* fields
-      - "apps/vscode/src/shared/providers/providers.json"
-      - "apps/vscode/src/core/api/index.ts"
+      - "apps/vscode/src/shared/storage/state-keys.ts"
+      - "apps/vscode/src/sdk/vscode-session-host.ts"
       - "apps/vscode/webview-ui/src/components/settings/providers/KeypoolLiveProvider.tsx"
       - "apps/vscode/webview-ui/src/components/settings/utils/providerUtils.ts"
       - "apps/vscode/webview-ui/src/utils/validate.ts"
       - "apps/vscode/webview-ui/src/components/settings/ApiOptions.tsx"
-      - "apps/vscode/src/sdk/vscode-session-host.ts"                       # keypoolEventHandler
     invariants:
       - "L'id de fournisseur 'keypoollive' doit rester dans l'union ApiProvider de shared/api.ts."
-      - "L'enum ApiProvider du proto doit contenir KEYPOOLLIVE avec sa valeur numérique stable."
-      - "convertApiProviderToProto() et convertProtoToApiProvider() doivent être symétriques pour 'keypoollive'."
-      - "Les clés keypoolliveSecret et keypoolliveGatewaySecret doivent rester dans provider-keys.ts."
-      - "providers.json doit contenir l'entrée keypoollive (value, label, website)."
-      - "buildApiHandler() dans core/api/index.ts doit router le cas 'keypoollive' vers KeypoolLiveHandler."
-      - "Les quatre RPCs gRPC keypool* doivent rester déclarés dans models.proto et leurs handlers câblés."
-      - "Les champs proto keypoollive_* (secret, gateway_secret, vault_url, use_gateway, gateway_id, gateway_cache_skip) doivent rester dans state.proto / models.proto."
-      - "MAX_KEY_ATTEMPTS dans keypoollive.ts (SDK vendor) doit être dynamique (nombre de clés dans le vault) et non hardcodé à 5 — vérifier l'absence de 'const MAX_KEY_ATTEMPTS = 5'."
-      - "resolveNextApiConfig dans keypoollive.ts doit normaliser supportsImages depuis inputModalities (patch pour Mistral et autres fournisseurs vault sans champ supportsImages explicite)."
-      - "AiVault.ts doit normaliser supportsImages depuis inputModalities dans la transformation vault → AiModel (pour que la UI affiche correctement le support images)."
-      - "buildSessionConfig dans cline-session-factory.ts doit injecter KEYPOOL_VAULT_URL et KEYPOOL_LIVE_SECRET dans process.env avant de créer la session SDK."
-      - "buildSessionConfig doit peupler CoreSessionConfig.knownModels avec les métadonnées vault (contextWindow, maxTokens) pour le modèle keypoollive sélectionné — ne pas laisser le SDK retourner un contextWindow undefined pour les modèles vault non enregistrés."
-      - "resolveModelInfo doit inclure un step de fallback vault (étape 4) pour keypoollive quand le catalog SDK retourne 'unknown' — ce fallback lit KEYPOOL_VAULT_URL/KEYPOOL_LIVE_SECRET depuis process.env."
-      - "providerUtils.ts keypoollive case ne doit pas hardcoder 128000 comme contextWindow par défaut — utiliser undefined si le vault n'a pas de donnée (évite d'afficher une valeur incorrecte pour les grands modèles comme Mistral 262k)."
+      - "Les champs proto keypoollive_secret (40), keypoollive_gateway_secret (41), keypoollive_vault_url (45), keypoollive_use_gateway (46), keypoollive_gateway_id (47), keypoollive_gateway_cache_skip (48) doivent rester dans models.proto avec leurs numéros stables."
+      - "Les clés keypoolliveSecret et keypoolliveGatewaySecret doivent rester dans la liste des secrets de state-keys.ts."
+      - "Les onze contrôleurs keypool* doivent rester présents dans src/core/controller/models/ et leurs RPCs déclarés dans models.proto."
+      - "MAX_KEY_ATTEMPTS dans keypoollive.ts (SDK vendor) doit rester dynamique via _poolKeys.length — jamais 'const MAX_KEY_ATTEMPTS = 5'."
+      - "resolveNextApiConfig doit normaliser supportsImages depuis inputModalities."
+      - "AiVault.ts doit normaliser supportsImages depuis inputModalities dans la transformation vault → AiModel."
+      - "buildSessionConfig doit injecter KEYPOOL_VAULT_URL et KEYPOOL_LIVE_SECRET dans process.env avant de créer la session SDK."
+      - "buildSessionConfig doit injecter le contextWindow du vault (keypooliveContextWindow) pour le modèle keypoollive sélectionné."
+      - "resolveModelInfo doit garder le fallback vault (loadAiVault) pour keypoollive."
+      - "providerUtils.ts keypoollive ne doit pas hardcoder 128000 comme contextWindow par défaut."
       - "KeypoolUsageDb doit persister dans le globalStorageFsPath de l'extension, pas en mémoire."
-      - "Le context window doit être calculé dynamiquement depuis le vault, jamais hardcodé."
       - "keypoolEventHandler doit être câblé dans vscode-session-host.ts pour les événements key-rotated et key-exhausted."
     tests:
-      - "cd apps/vscode && bun run test:unit -- --timeout 10000 --grep 'KeypoolLive|keypool|Keypool'"
-      - "grep -v 'const MAX_KEY_ATTEMPTS = 5' sdk/packages/llms/src/providers/vendors/keypoollive.ts && echo 'MAX_KEY_ATTEMPTS not hardcoded'"
-      - "grep -q 'KEYPOOL_VAULT_URL\\|KEYPOOL_LIVE_SECRET' apps/vscode/src/sdk/cline-session-factory.ts"
-      - "grep -q 'keypooliveContextWindow\\|knownModels' apps/vscode/src/sdk/cline-session-factory.ts"
-      - "grep -q 'vault fallback\\|loadAiVault' apps/vscode/src/core/controller/models/resolveModelInfo.ts"
+      - "bun run test:invariants"
+      - "bun run test:mine"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 5. Intégration Smart Web Crawling
+  # 4. Intégration Smart Web Crawling
   # ──────────────────────────────────────────────────────────────────────────
   - id: smart-web-crawling-integration
     description: >
       Ajoute un système de récupération web intelligent avec support pour les crawlers
-      spécialisés (Firecrawl, Exa). Le système permet une extraction de contenu
-      améliorée par rapport à un fetch natif, avec :
-      - Détection automatique des crawlers disponibles via un resolver de clés
-      - Basculement transparent vers le fetch natif si aucun crawler n'est disponible
-      - Gestion des erreurs et réessais automatiques
-      - Intégration avec le système de vault pour la gestion des clés des crawlers
-      - Formatage structuré des résultats (markdown + métadonnées)
-
-      L'implémentation suit le pattern :
-      1. Résolution de la configuration du crawler (via CrawlerKeyResolver)
-      2. Sélection du protocole (firecrawl/exa)
-      3. Appel à l'API du crawler avec gestion des erreurs
-      4. Basculement vers fetch natif si nécessaire
-      5. Formatage unifié du résultat
-
-      Les crawlers sont intégrés dans :
-      - Le système d'outils (web-fetch)
-      - Le fournisseur KeypoolLive (pour la gestion des clés)
-      - Le SDK pour une utilisation programmatique
+      spécialisés (Firecrawl, Exa) : détection automatique des crawlers disponibles via
+      un resolver de clés, basculement transparent vers le fetch natif si aucun crawler
+      n'est disponible, gestion des erreurs et réessais, intégration avec le vault
+      keypoollive pour les clés des crawlers, formatage structuré des résultats.
+      Côté VSCode, apps/vscode/src/shared/crawlerFetch.ts fait le pont ; côté SDK,
+      les types partagés sont dans sdk/packages/shared/src/tools/crawler.ts.
     paths:
       - "sdk/packages/core/src/extensions/tools/executors/crawler/**"
       - "sdk/packages/core/src/extensions/tools/executors/web-fetch.ts"
+      - "sdk/packages/core/src/integration/smart-web-fetch.live.test.ts"
+      - "apps/vscode/src/shared/crawlerFetch.ts"
+      - "sdk/packages/shared/src/tools/crawler.ts"
+    related_files:
+      - "sdk/packages/core/src/extensions/tools/definitions.ts"
       - "sdk/packages/core/src/extensions/tools/executors/index.ts"
       - "sdk/packages/llms/src/providers/vendors/keypoollive.ts"
-      - "sdk/packages/core/src/extensions/tools/executors/crawler/smart-web-fetch.test.ts"
-      - "sdk/packages/core/src/integration/smart-web-fetch.live.test.ts"
-    related_files:
-      # Fichiers qui référencent ou utilisent le système de crawling
-      - "sdk/packages/core/src/extensions/tools/definitions.ts"  # Définition des outils
-      - "sdk/packages/core/src/extensions/tools/executors/index.ts"  # Export des exécutants
-      - "sdk/packages/llms/src/index.ts"  # Export des fonctionnalités crawler
+      - "sdk/packages/llms/src/index.ts"
     invariants:
       - "Les types CrawlerProtocol, ResolvedCrawlerConfig et CrawlerKeyResolver doivent rester dans crawler/types.ts."
       - "Les adaptateurs firecrawl.ts et exa.ts doivent rester synchronisés avec les APIs respectives."
       - "createSmartWebFetchExecutor doit toujours accepter un CrawlerKeyResolver et un fallback executor."
       - "Le système doit toujours basculer silencieusement vers le fetch natif en cas d'échec."
-      - "Les clés de configuration des crawlers (FIRECRAWL_API_KEY, EXA_API_KEY) doivent être déclarées pour les tests."
       - "L'intégration avec KeypoolLive pour la gestion des clés crawler doit rester fonctionnelle."
-      - "Les tests unitaires et d'intégration doivent couvrir les cas de fallback et de succès."
     tests:
-      - "cd sdk/packages/core && bun test --grep 'smart-web-fetch|crawler'"
-      - "cd sdk/packages/core && bun test --grep 'SmartWebFetchIntegration'"
+      - "bun run test:invariants"
+      - "bash -lc 'cd sdk/packages/core && bun test src/extensions/tools/executors/crawler/smart-web-fetch.test.ts'"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 6. Dashboard et sélecteur de modèle KeypoolLive dans la webview
+  # 5. Dashboard et sélecteur de modèle KeypoolLive dans la webview
   # ──────────────────────────────────────────────────────────────────────────
   - id: keypoollive-webview-ui
     description: >
@@ -248,20 +236,24 @@ customizations:
       est 'keypoollive'.
     paths:
       - "apps/vscode/webview-ui/src/components/chat/KeypoolLiveDashboard.tsx"
+      - "apps/vscode/webview-ui/src/components/chat/KeypoolLiveDashboard.test.tsx"
       - "apps/vscode/webview-ui/src/components/chat/KeypoolModelSelector.tsx"
+      - "apps/vscode/webview-ui/src/components/chat/KeypoolModelSelector.test.tsx"
       - "apps/vscode/webview-ui/src/components/chat/keypoolliveModelCache.ts"
+      - "apps/vscode/webview-ui/src/components/chat/ChatTextArea.keypoollive.test.tsx"
     related_files:
-      - "apps/vscode/webview-ui/src/components/chat/ChatTextArea.tsx"   # point d'intégration
+      - "apps/vscode/webview-ui/src/components/chat/ChatTextArea.tsx"
       - "apps/vscode/webview-ui/src/components/settings/utils/providerUtils.ts"
     invariants:
       - "KeypoolLiveDashboard et KeypoolModelSelector doivent être importés et rendus conditionnellement dans ChatTextArea."
       - "Le cache keypoolliveModelCache doit être invalidé lors d'une rotation de clé."
       - "Le sélecteur de modèle doit utiliser les modèles retournés par le vault, pas une liste statique."
     tests:
-      - "cd apps/vscode && npm run test:unit -- --timeout 10000 --grep 'KeypoolLive|keypool|Keypool'"
+      - "bun run test:invariants"
+      - "bun run test:mine"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 7. Renommage @cline/* → @sctg/cline-* pour la publication npm
+  # 6. Renommage @cline/* → @sctg/cline-* pour la publication npm
   # ──────────────────────────────────────────────────────────────────────────
   - id: sctg-package-publishing
     description: >
@@ -274,13 +266,13 @@ customizations:
       imports internes du monorepo continuent d'utiliser @cline/*.
       L'URL de dépôt est aussi réécrite pour le trusted publishing OIDC.
     paths:
-      - ".github/workflows/keypool-live-preview.yml"   # job publish-sdk
+      - ".github/workflows/keypool-live-preview.yml"
     related_files:
       - "sdk/packages/llms/package.json"
       - "sdk/packages/agents/package.json"
       - "sdk/packages/shared/package.json"
       - "sdk/packages/core/package.json"
-      - "sdk/package.json"
+      - "sdk/packages/sdk/package.json"
     invariants:
       - "Le renommage @cline/* → @sctg/cline-* doit rester un step CI inline, ne jamais modifier les sources."
       - "Les imports TypeScript dans le monorepo doivent continuer à utiliser @cline/* (pas @sctg/cline-*)."
@@ -289,35 +281,35 @@ customizations:
       - "La permission id-token: write doit rester dans le job publish-sdk pour l'OIDC npm."
       - "Le script doit sortir en erreur si aucun package.json n'a été touché (guard contre une régression silencieuse)."
     tests:
-      - "grep -q '@sctg/cline-' .github/workflows/keypool-live-preview.yml"
-      - "grep -q 'Rename SDK package scope for SCTG publish' .github/workflows/keypool-live-preview.yml"
-      - "! grep -rq '@sctg/cline-' sdk/packages --include='*.ts' 2>/dev/null"
+      - "bun run test:invariants"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 8. Branding ClinePool / SCTG
+  # 7. Branding ClinePool / SCTG
   # ──────────────────────────────────────────────────────────────────────────
   - id: sctg-branding
     description: >
-      Le displayName de l'extension VS Code est "ClinePool" (au lieu de "Cline").
+      Le displayName de l'extension VS Code est "ClinePool" (au lieu de "Cline")
+      et le publisher est "sctg-development" (directement dans package.json ;
+      le workflow de release réécrit aussi repository.url/homepage/author).
       Les icônes (icon.png, icon.svg, robot_panel_dark.png, robot_panel_light.png,
-      sleepy-cline.svg, cline-bot.*) ont été remplacées par les visuels SCTG.
-      L'icône racine du dépôt (assets/icons/) a également été remplacée.
-      Ce changement évite la confusion visuelle avec l'extension Cline officielle
-      et est requis par les règles de publication du VS Code Marketplace.
+      sleepy-cline.svg, cline-bot.*) ont été remplacées par les visuels SCTG,
+      ainsi que l'icône racine du dépôt (assets/icons/).
+      HISTORIQUE : le commit 0e093700a a écrasé displayName lors d'un merge upstream ;
+      le check d'invariants détecte désormais cette régression.
     paths:
       - "apps/vscode/assets/icons/**"
       - "assets/icons/**"
     related_files:
-      - "apps/vscode/package.json"   # displayName = "ClinePool", icon path
+      - "apps/vscode/package.json"
     invariants:
       - "Le champ displayName dans apps/vscode/package.json doit rester 'ClinePool'."
-      - "Les icônes du fork (icon.png, robot_panel_*.png, cline-bot.woff) ne doivent pas être remplacées par les icônes upstream lors d'un merge."
-      - "Le publisher doit rester 'saoudrizwan' (le publisher est modifié par .github/workflows/keypool-live-preview.yml)."
+      - "Le champ publisher dans apps/vscode/package.json doit rester 'sctg-development'."
+      - "Les icônes du fork ne doivent pas être remplacées par les icônes upstream lors d'un merge."
     tests:
-      - "node -e \"const p=require('./apps/vscode/package.json'); console.assert(p.displayName==='ClinePool','displayName must be ClinePool')\""
+      - "bun run test:invariants"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 9. Workflow de release preview keypool-live
+  # 8. Workflow de release preview keypool-live
   # ──────────────────────────────────────────────────────────────────────────
   - id: keypoollive-release-workflow
     description: >
@@ -328,10 +320,12 @@ customizations:
             linux-arm64, darwin-x64, darwin-arm64) ;
         (3) publication des packages SDK sous @sctg/cline-* sur npmjs via OIDC ;
         (4) création d'une GitHub pre-release avec les artefacts VSIX.
-      Ce workflow est distinct du workflow upstream (ext-vscode-publish-stable.yml)
-      et ne doit pas être écrasé par un merge automatique.
+      Un second workflow (build-clinepool-download.yml) construit l'app
+      clinepool-download. Ces workflows sont distincts des workflows upstream
+      et ne doivent pas être écrasés par un merge automatique.
     paths:
       - ".github/workflows/keypool-live-preview.yml"
+      - ".github/workflows/build-clinepool-download.yml"
     invariants:
       - "Le trigger 'push: branches: [keypool-live]' doit rester inchangé."
       - "Le job publish-sdk doit toujours précéder le job github-release (dépendance needs)."
@@ -339,33 +333,75 @@ customizations:
       - "La concurrency group 'preview-release-${{ github.ref }}' doit rester pour éviter les double-publications."
       - "Les secrets VSCE_PAT, NPM_TOKEN (ou OIDC), NODE_AUTH_TOKEN doivent rester référencés correctement."
     tests:
-      - "yamllint -d relaxed .github/workflows/keypool-live-preview.yml"
+      - "bun run test:invariants"
+      - "bash -lc 'command -v yamllint >/dev/null && yamllint -d \"{extends: relaxed, rules: {trailing-spaces: disable, line-length: disable}}\" .github/workflows/keypool-live-preview.yml || echo yamllint-not-installed-skipped'"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 10. Agent de backport et infrastructure d'analyse
+  # 9. Application clinepool-download (Rust)
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: clinepool-download-app
+    description: >
+      Application standalone Rust (apps/clinepool-download) qui sert les artefacts
+      de release ClinePool (VSIX multi-plateforme) — inclut Cargo.toml, sources,
+      tests et Dockerfile. Construite par .github/workflows/build-clinepool-download.yml.
+      Totalement absente d'upstream : tout commit upstream touchant ces chemins est suspect.
+    paths:
+      - "apps/clinepool-download/**"
+    related_files:
+      - ".github/workflows/build-clinepool-download.yml"
+    invariants:
+      - "Le dossier apps/clinepool-download doit rester intact après chaque sync (aucun fichier upstream ne doit s'y installer)."
+    tests:
+      - "bun run test:invariants"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 10. Intégration keypool du chatbot
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: chatbot-keypool-integration
+    description: >
+      Le chatbot (apps/chatbot) intègre keypoollive : hook React useKeypoolRotation
+      pour suivre les rotations de clés et lib keypool-usage pour le suivi d'utilisation.
+    paths:
+      - "apps/chatbot/src/hooks/useKeypoolRotation.ts"
+      - "apps/chatbot/src/lib/keypool-usage.ts"
+    related_files:
+      - "apps/chatbot/src/App.tsx"
+    invariants:
+      - "useKeypoolRotation et keypool-usage doivent rester présents et importables dans le chatbot."
+    tests:
+      - "bun run test:invariants"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 11. Agent de backport et infrastructure d'analyse
   # ──────────────────────────────────────────────────────────────────────────
   - id: backport-agent-infra
     description: >
       Infrastructure ajoutée pour automatiser les synchronisations upstream :
       dossier evals/analysis/ contenant les patterns de détection de conflits,
-      les scripts de test du backport, et ce fichier customizations.yaml lui-même.
-      Le fichier .clinerules/general.md contient les règles tribales du projet
-      qui doivent être transmises à l'agent à chaque synchronisation.
+      le script .backport-agent/check-fork-invariants.sh (source de vérité des
+      vérifications déterministes, exposé comme `bun run test:invariants`),
+      ce fichier customizations.yaml lui-même, et la config de l'agent.
+      Le fichier .clinerules/general.md contient les règles tribales du projet ;
+      d'autres fichiers .clinerules (bun-and-node.md, network.md, …) sont aussi
+      spécifiques au fork ou enrichis par lui.
     paths:
       - "evals/analysis/**"
       - ".backport-agent/customizations.yaml"
-      - ".clinerules/general.md"
+      - ".backport-agent/config.json"
+      - ".backport-agent/check-fork-invariants.sh"
+      - ".clinerules/**"
       - ".claude/settings.json"
     invariants:
-      - ".backport-agent/customizations.yaml doit être maintenu à jour après chaque nouvelle personnalisation (sections cohere, poolside, keypoollive notamment)."
+      - ".backport-agent/customizations.yaml doit être maintenu à jour après chaque nouvelle personnalisation."
+      - "check-fork-invariants.sh doit rester exécutable et référencé par le script racine test:invariants."
       - ".clinerules/general.md doit être inclus dans le contexte de l'agent lors d'un backport."
       - "Les patterns de détection dans evals/analysis/ ne doivent pas être supprimés lors d'un merge."
     tests:
-      - "test -f customizations.yaml && echo 'customizations.yaml exists'"
-      - "test -f .clinerules/general.md && echo '.clinerules/general.md exists'"
+      - "bun run test:invariants"
+      - "bash -lc 'test -f .backport-agent/customizations.yaml && test -x .backport-agent/check-fork-invariants.sh'"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 11. Documentation Mintlify / sdk/model-providers
+  # 12. Documentation Mintlify / sdk/model-providers
   # ──────────────────────────────────────────────────────────────────────────
   - id: sctg-documentation
     description: >
@@ -374,43 +410,35 @@ customizations:
       les noms de packages @sctg/cline-*. Le README principal du dépôt et le
       README marketplace ont également été mis à jour.
     paths:
-      - "docs/**"
+      - "docs/sdk/model-providers.mdx"
       - "apps/vscode/README.md"
       - "apps/vscode/README.marketplace.md"
       - "README.md"
-      - "docs/sdk/model-providers.mdx"
       - "sdk/packages/agents/README.md"
     invariants:
       - "docs/sdk/model-providers.mdx doit mentionner keypoollive comme fournisseur."
-      - "Le README marketplace ne doit pas référencer uniquement les fournisseurs upstream (il doit mentionner KeypoolLive)."
+      - "Le README marketplace doit mentionner KeypoolLive (pas uniquement les fournisseurs upstream)."
     tests:
-      - "grep -qiE 'keypoollive|keypool' docs/sdk/model-providers.mdx && echo 'OK'"
-  # ──────────────────────────────────────────────────────────────────────────
-  # 12. Visuels et assets
-  # ──────────────────────────────────────────────────────────────────────────
-  - id: sctg-assets
-    description: >
-      Les icônes ont été remplacées par des visuels SCTG pour différencier le fork de l'extension officielle.
-    paths:
-      - "apps/vscode/assets/icons/icon.png"
-      - "apps/vscode/assets/icons/icon.svg"
-      - "assets/icons/icon.png"
-    invariants:
-      - "Les icônes du fork ne doivent pas être écrasées par les icônes upstream lors d'un merge."
+      - "bun run test:invariants"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # 13. Mise à jour de l'extension VS Code
+  # 13. Mise à jour de l'extension VS Code (About + Check for Updates)
   # ──────────────────────────────────────────────────────────────────────────
   - id: vscode-extension-update
-    description: >  
-      Dans l'UI de settings, le titre de l'extension est affiché comme "Cline v{version} with Keypool Live" et la date de build est affichée en dessous. Cela permet aux utilisateurs de savoir qu'ils utilisent la version du fork avec le support Keypool Live.
-      Un bouton "Check for Updates" est également ajouté pour permettre aux utilisateurs de vérifier les mises à jour de l'extension. 
+    description: >
+      Dans l'UI de settings, le titre de l'extension est affiché comme
+      "Cline v{version} with Keypool Live" et la date de build est affichée en dessous.
+      Un bouton "Check for Updates" permet de vérifier les mises à jour via le
+      contrôleur keypoolCheckUpdate (et keypoolInstallUpdate pour l'installation).
     paths:
       - "apps/vscode/webview-ui/src/components/settings/sections/AboutSection.tsx"
       - "apps/vscode/src/core/controller/models/keypoolCheckUpdate.ts"
+      - "apps/vscode/src/core/controller/models/keypoolInstallUpdate.ts"
       - "apps/vscode/src/utils/build-date.ts"
       - "apps/vscode/webview-ui/src/config/BuildDate.ts"
     invariants:
       - "Le titre de l'extension doit inclure 'with Keypool Live' pour indiquer le fork."
-      - "La date de build doit être affichée dans AboutSection pour informer les utilisateurs."
-      - "Le bouton 'Check for Updates' doit déclencher la vérification des mises à jour via keypoolCheckUpdate."
+      - "La date de build doit être affichée dans AboutSection."
+      - "Le bouton 'Check for Updates' doit déclencher keypoolCheckUpdate."
+    tests:
+      - "bun run test:invariants"

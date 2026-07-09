@@ -1,5 +1,5 @@
 {
-    "command": "bunx @sctg/backport-agent@latest --verbose --config .backport-agent/config.json --backport-customizations .backport-agent/customizations.yaml --keypool-vault-url $KEYPOOL_VAULT_URL --keypool-live-secret $KEYPOOL_LIVE_SECRET",
+    "command": "bunx @sctg/backport-agent@latest --verbose --config .backport-agent/config.json --backport-customizations .backport-agent/customizations.yaml --keypool-vault-url $KEYPOOL_VAULT_URL --keypool-live-secret $KEYPOOL_LIVE_SECRET 2>&1 | tee .backport-agent/logs/output_$(date +%Y%m%d_%H%M%S)_backport-agent.log",
     "report": {
         "destination": ".backport-agent"
     },
@@ -21,13 +21,15 @@
     },
     "workingDir": "../tea-ching-cline",
     "sync": {
-        "maxCommitsPerRun": 10,
+        "maxCommitsPerRun": 8,
+        "_comment_maxCommitsPerRun": "8 (au lieu de 10) : les runs à 10 commits frôlaient la limite de contexte 262k de l'orchestrateur (173k observés). evolutions.md recommandait 5 ; 8 est le compromis avec une cadence quotidienne.",
         "initialFetchDepth": 200,
         "maxFetchDepth": 2000,
         "batchSize": 3,
         "maxIterations": 250,
         "dryRun": false,
-        "createPullRequest": false,
+        "createPullRequest": true,
+        "_comment_createPullRequest": "Câblé host-side depuis backport-agent 0.8.0 : generate_report crée/actualise une draft PR de la branche sync vers keypool-live de façon déterministe. Nécessite GITHUB_TOKEN.",
         "branchPrefix": "sync/upstream-",
         "prNumberMatching": {
             "enabled": true,
@@ -37,60 +39,63 @@
     "models": {
         "provider": "keypoollive",
         "apiKey": "auto",
-        "_fast":"poolside/poolside/laguna-m.1",
         "fast": "mistral/mistral-code-agent-latest",
-        "specialist": "mistral/mistral-vibe-cli-latest",
-        "_specialist": "mistral/mistral-medium-2604",
-        "_powerful": "openai/gpt-5.5",
-        "powerful": "mistral/mistral-medium-latest",
-        "summarizer": "gemini/gemini-3-flash-preview"
+        "_comment_fast": "Orchestrateur de la boucle d'outils (262k ctx, 18 clés mistral). A fait ses preuves sur les runs réels.",
+        "specialist": "mistral/devstral-latest",
+        "_comment_specialist": "Résolution de conflits (1er essai). mistral-vibe-cli-latest échouait 2/3 en sortie JSON sur les conflits réels (runs du 06-07/07) avec repli destructif take-upstream. mistral-medium-3-5 : modèle le plus capable accessible (SWE-Bench Verified 77.6%, tau3-Telecom 91.4%), 262k ctx, 18 clés.",
+        "powerful": "gemini/gemini-3.1-pro-preview",
+        "_comment_powerful": "Fallback de résolution + second avis du consensus. Vendeur différent du specialist (mistral) → le consensus inter-vendeurs détecte réellement les résolutions douteuses. 1M ctx, utile aussi pour les gros diffs (largeContextThreshold). 21 clés gemini.",
+        "summarizer": "gemini/gemini-3-flash-preview",
+        "_comment_summarizer": "Compaction de contexte (1M ctx, 21 clés gemini)."
     },
     "ai": {
-        "_comment": "AI quality guardrails — all fields are optional (defaults shown). Remove this section to use defaults.",
+        "_comment": "Garde-fous IA. Depuis backport-agent 0.8.0, minAutoApplyConfidence est appliqué en code (host gate dans apply_resolved_file), plus seulement dans le prompt.",
         "minAutoApplyConfidence": "medium",
-        "_comment_minAutoApplyConfidence": "Minimum AI confidence level to auto-apply a conflict resolution without human review. \"high\" = only apply when the AI is very certain.",
-        "requireReviewOnSemanticRisk": false,
-        "_comment_requireReviewOnSemanticRisk": "When true, any commit with semantic risk factors (e.g. API surface changes) is escalated to \"review-required\" by reconcile_ai_assessments.",
-        "enableConflictConsensus": false,
-        "_comment_enableConflictConsensus": "DISABLED BY DEFAULT. Set to true to run a second independent resolution using config.models.powerful and compare the two outputs. Consensus failures downgrade confidence to \"low\". This roughly doubles LLM cost per conflict.",
+        "_comment_minAutoApplyConfidence": "medium + consensus inter-vendeurs actif = équilibre confiance/débit. Passer à high si vous constatez de mauvaises résolutions medium dans les PRs.",
+        "requireReviewOnSemanticRisk": true,
+        "_comment_requireReviewOnSemanticRisk": "Escalade en review-required tout commit avec facteurs de risque sémantique lors d'une réconciliation d'évaluations.",
+        "enableConflictConsensus": true,
+        "_comment_enableConflictConsensus": "Une seconde résolution indépendante (models.powerful = gpt-5.5, vendeur différent du specialist claude-sonnet-5) est comparée à la première ; divergence => confiance low => bloqué par le host gate. Coût ~2x par conflit, justifié pour un run quotidien non surveillé.",
         "conflictConsensusThreshold": 0.7,
-        "_comment_conflictConsensusThreshold": "Minimum Dice-coefficient line similarity (0..1) between the two consensus responses to consider them in agreement. Only used when enableConflictConsensus=true.",
-        "enrichCustomizationContext": true,
-        "_comment_enrichCustomizationContext": "When true, check_customization_compatibility reads up to 2 matching source files (2000 chars each) and injects their content into the AI prompt for richer context."
+        "enrichCustomizationContext": true
     },
     "resolve": {
         "ours": [],
         "theirs": ["**/catalog.generated.ts"]
     },
     "validation": {
+        "_comment": "test:invariants (78 checks déterministes des invariants du fork, <1s) est dans chaque suite. test:mine cible les tests unitaires keypool/cohere/poolside.",
         "low": [
-            "bun install && bun run build:sdk",
-            "bun install && pushd apps/vscode && bun run check-types ; popd",
-            "bun install && bun run build:sdk"
+            "bun install && bun run test:invariants",
+            "bun run build:sdk",
+            "pushd apps/vscode && bun run check-types ; popd"
         ],
         "medium": [
-            "bun install && bun run build:sdk",
-            "bun install && pushd apps/vscode && bun run check-types ; popd",
-            "bun install && pushd apps/vscode && bun run test:unit ; popd",
-            "bun install && pushd sdk && bun run types ; popd",
-            "bun install && bun run test:mine"
+            "bun install && bun run test:invariants",
+            "bun run build:sdk",
+            "pushd apps/vscode && bun run check-types ; popd",
+            "pushd apps/vscode && bun run test:unit ; popd",
+            "bun run test:mine"
         ],
         "high": [
-            "bun install && bun run build:sdk",
-            "bun install && pushd apps/vscode && bun run check-types ; popd",
-            "bun install && pushd apps/vscode && bun run test:unit ; popd",
-            "bun install && pushd apps/vscode && bun run compile ; popd",
-            "bun install && pushd apps/vscode && bunx vsce package --no-dependencies ; popd"
+            "bun install && bun run test:invariants",
+            "bun run build:sdk",
+            "pushd apps/vscode && bun run check-types ; popd",
+            "pushd apps/vscode && bun run test:unit ; popd",
+            "bun run test:mine",
+            "pushd apps/vscode && bun run compile ; popd",
+            "pushd apps/vscode && bunx vsce package --no-dependencies ; popd"
         ],
         "final": [
             "bun install",
+            "bun run test:invariants",
             "bun run build:sdk",
             "pushd apps/vscode && bun run build:webview ; popd",
             "pushd apps/vscode && bunx vsce package --no-dependencies ; popd",
             "pushd apps/cli && bun run build ; popd",
             "pushd apps/chatbot && bun run build ; popd",
-            "bun install && bun run test:mine",
-            "bun install && pushd apps/vscode && bun run test:unit ; popd",
+            "bun run test:mine",
+            "pushd apps/vscode && bun run test:unit ; popd",
             "git checkout ."
         ]
     }
