@@ -94,3 +94,4 @@ apps/chatbot/llm.txt
 apps/chatbot/chatbot.md
 agent-debug-*.json
 .claude/worktrees/agent-a76aee2d16014ac28
+.claude/
