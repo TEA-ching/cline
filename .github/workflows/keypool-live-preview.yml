@@ -223,22 +223,25 @@ jobs:
 
       # Must run before ANY install/build step in this job. apps/cline-hub is an
       # upstream extra this fork doesn't use, and its webview does not build here.
-      # apps/cli's build script (script/build.ts) only invokes the real
-      # `bun -F @cline/cline-hub build:webview` when shouldBuildHubWebview() sees
-      # apps/cline-hub/dist/webview/index.html missing or stale — so stubbing that
-      # file out up front (in addition to faking the workspace package itself, to
-      # avoid workspace errors during SDK packaging) keeps the real build from ever
-      # being attempted, in this step or in the rebuild that sdk/scripts/version.ts
-      # triggers later via `bun run build`. Previously this step ran later and
-      # never created dist/webview/index.html, so that later rebuild always
-      # re-attempted the real (broken) build and failed (see run report 2026-07-09).
+      # apps/cli's build entrypoint (apps/cli/bun.mts) invokes the real
+      # `bun -F @cline/cline-hub build:webview` whenever shouldBuildHubWebview()
+      # sees apps/cline-hub/dist/webview/index.html missing or older than
+      # apps/cline-hub/src/webview. That check re-trips even with the dist/webview
+      # stub below in place: the later "Rename SDK package scope" step rewrites
+      # apps/cline-hub/src/webview/package.json (to apply the @sctg/ rename),
+      # which bumps its mtime past the stub's — so the placeholder package here
+      # MUST expose a working `build:webview` script (not just `build`), or the
+      # rebuild attempt fails. Bun's `-F <name> <script>` reports the misleading
+      # "No packages matched the filter" when the name matches but the requested
+      # script doesn't exist on it, which is what caused prior CI failures here
+      # (see run reports 2026-07-09).
       - name: Remove cline-hub and create a fake cline-hub empty package.json to avoid workspace errors and unbuildable webview
         run: |
           rm -rf apps/cline-hub
           mkdir -p apps/cline-hub/dist/webview apps/cline-hub/src/webview
           echo "console.log('This is a placeholder package for @cline/cline-hub.');" > apps/cline-hub/index.js
-          echo '{ "name": "@cline/cline-hub", "version": "0.0.0-preview", "private": true, "main": "index.js", "scripts": {"build": "echo Building && exit 0"} }' > apps/cline-hub/package.json
-          echo '{ "name": "@cline/cline-hub-webview", "version": "0.0.0-preview", "private": true, "main": "index.js", "scripts": {"build": "echo Building && exit 0"} }' > apps/cline-hub/src/webview/package.json
+          echo '{ "name": "@cline/cline-hub", "version": "0.0.0-preview", "private": true, "main": "index.js", "scripts": {"build": "echo Building && exit 0", "build:webview": "echo Building webview && exit 0"} }' > apps/cline-hub/package.json
+          echo '{ "name": "@cline/cline-hub-webview", "version": "0.0.0-preview", "private": true, "main": "index.js", "scripts": {"build": "echo Building && exit 0", "build:webview": "echo Building webview && exit 0"} }' > apps/cline-hub/src/webview/package.json
           echo '<!doctype html><title>cline-hub webview disabled (unused in this fork)</title>' > apps/cline-hub/dist/webview/index.html
 
       - name: Create fake gitleaks in /usr/bin to prevent build failures if gitleaks is not installed on the runner.
