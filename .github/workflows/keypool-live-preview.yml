@@ -353,9 +353,10 @@ jobs:
           # remove apps/cline-hub/src/webview from package.json.workspace with jq
           # jq 'del(.workspaces[] | select(. == "apps/cline-hub/src/webview"))' package.json > package.json.tmp && mv package.json.tmp package.json
           # cat package.json
-          mkdir -p apps/cline-hub
+          mkdir -p apps/cline-hub/src/webview
           echo "console.log('This is a placeholder package for @sctg/cline-hub.');" > apps/cline-hub/index.js
           echo '{ "name": "@sctg/cline-hub", "version": "0.0.0-preview", "private": true, "main": "index.js" }' > apps/cline-hub/package.json
+          echo '{ "name": "@sctg/cline-hub-webview", "version": "0.0.0-preview", "private": true, "main": "index.js" }' > apps/cline-hub/src/webview/package.json
 
       - name: Version SDK packages (preview semver)
         id: sdk-version
