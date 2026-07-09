@@ -347,6 +347,10 @@ jobs:
             apps/cli/dist/cli-darwin-x64/bin/cline
           if-no-files-found: error
 
+      - name: Remove cline-hub
+        run: |
+          rm -rf apps/cline-hub
+          
       - name: Version SDK packages (preview semver)
         id: sdk-version
         working-directory: sdk
