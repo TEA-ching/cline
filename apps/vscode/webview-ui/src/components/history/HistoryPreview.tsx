@@ -161,6 +161,7 @@ const HistoryPreview = ({ showHistoryView }: HistoryPreviewProps) => {
 											/>
 										)}
 										<div className="history-task-description ph-no-capture">{item.task}</div>
+										{item.isLegacy && <span className="history-cost-chip">Legacy</span>}
 									</div>
 									<div className="history-meta-stack">
 										<span className="history-date">{formatDate(item.ts)}</span>
