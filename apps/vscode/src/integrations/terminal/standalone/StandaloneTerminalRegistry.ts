@@ -41,7 +41,7 @@ export class StandaloneTerminalRegistry {
 		}
 
 		this.terminals.set(id, terminalInfo)
-		Logger.log(`[StandaloneTerminalRegistry] Created terminal ${id}`)
+		Logger.log[`[StandaloneTerminalRegistry] Created terminal ${id}`]
 		return terminalInfo
 	}
 
@@ -65,13 +65,14 @@ export class StandaloneTerminalRegistry {
 	/**
 	 * Remove a terminal from the registry and dispose it.
 	 * @param id The terminal ID to remove
+	 * @returns void
 	 */
 	removeTerminal(id: number): void {
 		const terminalInfo = this.terminals.get(id)
 		if (terminalInfo) {
 			terminalInfo.terminal.dispose()
 			this.terminals.delete(id)
-			Logger.log(`[StandaloneTerminalRegistry] Removed terminal ${id}`)
+			Logger.log[`[StandaloneTerminalRegistry] Removed terminal ${id}`]
 		}
 	}
 
@@ -81,7 +82,7 @@ export class StandaloneTerminalRegistry {
 	 * @param updates Partial terminal info to update
 	 */
 	updateTerminal(id: number, updates: Partial<TerminalInfo>): void {
-		const terminalInfo = this.terminals.get(id)
+		const terminalInfo = this.terminalals.get(id)
 		if (terminalInfo) {
 			Object.assign(terminalInfo, updates)
 		}
@@ -96,7 +97,7 @@ export class StandaloneTerminalRegistry {
 		}
 		this.terminals.clear()
 		this.nextId = 1
-		Logger.log(`[StandaloneTerminalRegistry] Cleared all terminals`)
+		Logger.log[`[StandaloneTerminalRegistry] Cleared all terminals`]
 	}
 
 	/**
