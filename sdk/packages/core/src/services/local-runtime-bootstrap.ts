@@ -1,3 +1,4 @@
+import { resolveProviderRequestHeaders } from "@cline/llms";
 import type {
     AgentConfig,
     AgentEvent,
@@ -156,28 +157,6 @@ function countSeededRootRuns(
 	return count;
 }
 
-function buildOpenAICodexHeaders(input: {
-	sessionId: string;
-	configHeaders: CoreSessionConfig["headers"];
-	storedHeaders: ProviderSettings["headers"];
-	accountId?: string;
-	accessToken?: string;
-}): Record<string, string> | undefined {
-	const headers: Record<string, string> = {
-		...(input.storedHeaders ?? {}),
-		...(input.configHeaders ?? {}),
-	};
-	const resolvedAccountId =
-		input.accountId?.trim() || deriveOpenAICodexAccountId(input.accessToken);
-	headers.originator = "cline";
-	headers.session_id = input.sessionId;
-	headers["User-Agent"] = `Cline/${process.env.npm_package_version || "1.0.0"}`;
-	if (resolvedAccountId) {
-		headers["ChatGPT-Account-Id"] = resolvedAccountId;
-	}
-	return headers;
-}
-
 export function buildKeyPoolLiveHeader(input: {
 	configHeaders: CoreSessionConfig["headers"];
 	storedHeaders: ProviderSettings["headers"];
@@ -201,35 +180,7 @@ export function buildKeyPoolLiveHeader(input: {
 	return headers;
 }
 
-function deriveOpenAICodexAccountId(
-	accessToken: string | undefined,
-): string | undefined {
-	const trimmed = accessToken?.trim();
-	if (!trimmed) {
-		return undefined;
-	}
-	const payload = decodeJwtPayload(trimmed) as {
-		"https://api.openai.com/auth"?: { chatgpt_account_id?: string };
-		organizations?: Array<{ id?: string }>;
-		chatgpt_account_id?: string;
-	} | null;
-	const authAccountId =
-		payload?.["https://api.openai.com/auth"]?.chatgpt_account_id;
-	if (typeof authAccountId === "string" && authAccountId.length > 0) {
-		return authAccountId;
-	}
-	const orgAccountId = payload?.organizations?.[0]?.id;
-	if (typeof orgAccountId === "string" && orgAccountId.length > 0) {
-		return orgAccountId;
-	}
-	const rootAccountId = payload?.chatgpt_account_id;
-	if (typeof rootAccountId === "string" && rootAccountId.length > 0) {
-		return rootAccountId;
-	}
-	return undefined;
-}
-
-export function buildProviderConfig(
+function buildProviderConfig(
 	config: CoreSessionConfig,
 	sessionId: string,
 	source: StartSessionInput["source"],
@@ -250,50 +201,42 @@ export function buildProviderConfig(
 		config.providerConfig?.providerId === config.providerId
 			? config.providerConfig
 			: undefined;
-	const clineClientHeaders = buildClineClientRequestHeaders({
+	const resolvedHeaders = resolveProviderRequestHeaders({
 		providerId: config.providerId,
 		sessionId,
 		source,
 		defaultSource: SessionSource.CLI,
-		clientName: config.extensionContext?.client?.name,
-		clientVersion: config.extensionContext?.client?.version,
-		clientVersionHeaderFallback: config.headers?.["X-CLIENT-VERSION"],
-		platform: config.extensionContext?.client?.platform,
-		platformVersion: config.extensionContext?.client?.platformVersion,
-		isMultiRoot: config.extensionContext?.client?.isMultiRoot,
+		client: {
+			name: config.extensionContext?.client?.name,
+			version: config.extensionContext?.client?.version,
+			versionHeaderFallback: config.headers?.["X-CLIENT-VERSION"],
+			platform: config.extensionContext?.client?.platform,
+			platformVersion: config.extensionContext?.client?.platformVersion,
+			isMultiRoot: config.extensionContext?.client?.isMultiRoot,
+		},
 		coreVersion: corePackageVersion,
+		openAiCodex: {
+			accountId: sessionProviderConfig?.accountId ?? stored?.auth?.accountId,
+			accessToken:
+				sessionProviderConfig?.accessToken ??
+				config.apiKey ??
+				stored?.auth?.accessToken ??
+				stored?.apiKey,
+			userAgentVersion: process.env.npm_package_version,
+		},
+		headers: {
+			stored: stored?.headers,
+			config: config.headers,
+			session: sessionProviderConfig?.headers,
+		},
 	});
-	// TODO: (bee) Move header resolution logic into @cline/llms
-	const resolvedHeaders =
-		config.providerId === "openai-codex"
-			? buildOpenAICodexHeaders({
-					sessionId,
-					configHeaders: config.headers,
-					storedHeaders: stored?.headers,
-					accountId: stored?.auth?.accountId,
-					accessToken:
-						config.apiKey ?? stored?.auth?.accessToken ?? stored?.apiKey,
-				})
-			: config.providerId === "keypoollive"
-				? buildKeyPoolLiveHeader({
-						configHeaders: config.headers,
-						storedHeaders: stored?.headers,
-						onEvent: keypoolEventHandler,
-					})
-				: clineClientHeaders
-					? {
-							...(stored?.headers ?? {}),
-							...(config.headers ?? {}),
-							...clineClientHeaders,
-						}
-					: (config.headers ?? stored?.headers);
 	const settings: ProviderSettings = {
 		...(stored ?? {}),
 		provider: config.providerId,
 		model: config.modelId,
 		apiKey: config.apiKey ?? stored?.apiKey,
 		baseUrl: config.baseUrl ?? stored?.baseUrl,
-		headers: resolvedHeaders,
+		headers: undefined,
 		reasoning: resolveReasoningSettings(config, stored?.reasoning),
 		modelCatalog,
 	};
@@ -301,12 +244,8 @@ export function buildProviderConfig(
 		...toProviderConfig(settings),
 		...(sessionProviderConfig ?? {}),
 	};
-	if (clineClientHeaders) {
-		providerConfig.headers = {
-			...(resolvedHeaders ?? {}),
-			...(sessionProviderConfig?.headers ?? {}),
-			...clineClientHeaders,
-		};
+	if (resolvedHeaders) {
+		providerConfig.headers = resolvedHeaders;
 	}
 	if (config.knownModels) {
 		providerConfig.knownModels = config.knownModels;
