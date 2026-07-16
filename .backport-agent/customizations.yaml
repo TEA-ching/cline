@@ -167,11 +167,14 @@ customizations:
       - "apps/vscode/proto/cline/models.proto"
       - "apps/vscode/src/shared/proto-conversions/models/api-configuration-conversion.ts"
       - "apps/vscode/src/shared/storage/state-keys.ts"
+      - "apps/vscode/src/sdk/cline-session-factory.ts"
       - "apps/vscode/src/sdk/vscode-session-host.ts"
       - "apps/vscode/webview-ui/src/components/settings/providers/KeypoolLiveProvider.tsx"
       - "apps/vscode/webview-ui/src/components/settings/utils/providerUtils.ts"
       - "apps/vscode/webview-ui/src/utils/validate.ts"
       - "apps/vscode/webview-ui/src/components/settings/ApiOptions.tsx"
+      - "sdk/packages/core/src/services/local-runtime-bootstrap.ts"
+      - "sdk/packages/llms/src/providers/request-headers.ts"
     invariants:
       - "L'id de fournisseur 'keypoollive' doit rester dans l'union ApiProvider de shared/api.ts."
       - "Les champs proto keypoollive_secret (40), keypoollive_gateway_secret (41), keypoollive_vault_url (45), keypoollive_use_gateway (46), keypoollive_gateway_id (47), keypoollive_gateway_cache_skip (48) doivent rester dans models.proto avec leurs numéros stables."
@@ -186,6 +189,7 @@ customizations:
       - "providerUtils.ts keypoollive ne doit pas hardcoder 128000 comme contextWindow par défaut."
       - "KeypoolUsageDb doit persister dans le globalStorageFsPath de l'extension, pas en mémoire."
       - "keypoolEventHandler doit être câblé dans vscode-session-host.ts pour les événements key-rotated et key-exhausted."
+      - "buildProviderConfig (local-runtime-bootstrap.ts) doit appeler buildKeyPoolLiveHeader() pour providerId === 'keypoollive' AVANT de retomber sur resolveProviderRequestHeaders() (@cline/llms) — ce dernier ne connaît pas keypoollive et perdrait l'injection User-Agent + l'événement keypoolEventHandler 'user-agent-set'."
     tests:
       - "bun run test:invariants"
       - "bun run test:mine"

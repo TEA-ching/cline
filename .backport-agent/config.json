@@ -43,8 +43,8 @@
         "_comment_fast": "Orchestrateur de la boucle d'outils (262k ctx, 18 clés mistral). A fait ses preuves sur les runs réels.",
         "specialist": "mistral/devstral-latest",
         "_comment_specialist": "Résolution de conflits (1er essai). mistral-vibe-cli-latest échouait 2/3 en sortie JSON sur les conflits réels (runs du 06-07/07) avec repli destructif take-upstream. mistral-medium-3-5 : modèle le plus capable accessible (SWE-Bench Verified 77.6%, tau3-Telecom 91.4%), 262k ctx, 18 clés.",
-        "powerful": "openai/gpt-5-5",
-        "_comment_powerful": "Fallback de résolution + second avis du consensus. Vendeur différent du specialist (mistral) → le consensus inter-vendeurs détecte réellement les résolutions douteuses. 1M ctx, utile aussi pour les gros diffs (largeContextThreshold). 21 clés gemini.",
+        "powerful": "cohere/command-a-reasoning-08-2025",
+        "_comment_powerful": "Fallback de résolution + second avis du consensus. Vendeur différent du specialist (mistral) → le consensus inter-vendeurs détecte réellement les résolutions douteuses. Remplace openai/gpt-5-5 (2026-07-16) : échouait systématiquement (réponse vide, 0ms, 'Unexpected end of JSON input') sur analyze_commit_for_backport et check_customization_compatibility dans les runs du 07-15, tout en étant facturé cher côté utilisateur. Cohere est gratuit pour l'utilisateur ; command-a-reasoning-08-2025 est le modèle 'reasoning' dédié du catalogue Cohere du fork.",
         "summarizer": "gemini/gemini-3-flash-preview",
         "_comment_summarizer": "Compaction de contexte (1M ctx, 21 clés gemini)."
     },
@@ -55,7 +55,7 @@
         "requireReviewOnSemanticRisk": true,
         "_comment_requireReviewOnSemanticRisk": "Escalade en review-required tout commit avec facteurs de risque sémantique lors d'une réconciliation d'évaluations.",
         "enableConflictConsensus": true,
-        "_comment_enableConflictConsensus": "Une seconde résolution indépendante (models.powerful = gpt-5.5, vendeur différent du specialist claude-sonnet-5) est comparée à la première ; divergence => confiance low => bloqué par le host gate. Coût ~2x par conflit, justifié pour un run quotidien non surveillé.",
+        "_comment_enableConflictConsensus": "Une seconde résolution indépendante (models.powerful = cohere/command-a-reasoning-08-2025, vendeur différent du specialist mistral/devstral-latest) est comparée à la première ; divergence => confiance low => bloqué par le host gate. Coût ~2x par conflit, justifié pour un run quotidien non surveillé.",
         "conflictConsensusThreshold": 0.7,
         "enrichCustomizationContext": true
     },
