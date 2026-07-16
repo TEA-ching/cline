@@ -85,6 +85,7 @@ apps/vscode/webview-ui/src/**/*.js.map
 .cline/**/managed.json
 .cline/**/bundle.json
 ai.json
+ai.*.json
 run-*.prompts.jsonl
 apps/vscode/tsconfig.test.generated.json
 apps/chatbot/chatbot-v2.md
