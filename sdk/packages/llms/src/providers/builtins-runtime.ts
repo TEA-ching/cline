@@ -75,6 +75,10 @@ async function loadFamilyFactory(
 				const module = await import("./vendors/keypoollive");
 				return module.createKeypoolliveProvider;
 			}
+			case "ollama": {
+				const module = await import("./ai-sdk");
+				return module.createOllamaProvider;
+			}
 			case "sap-ai-core": {
 				const module = await import("./ai-sdk");
 				return module.createSapAiCoreProvider;

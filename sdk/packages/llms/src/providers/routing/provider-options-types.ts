@@ -19,6 +19,7 @@ export type AiSdkProviderOptionsTarget =
 	| "openai-codex"
 	| "opencode"
 	| "dify"
+	| "ollama"
 	| "sapaicore";
 
 export type ProviderOptionSuppression = {
@@ -86,6 +87,8 @@ export function inferProviderOptionsTarget(
 			return "opencode";
 		case "dify":
 			return "dify";
+		case "ollama":
+			return "ollama";
 		case "sapaicore":
 			return "sapaicore";
 		default:

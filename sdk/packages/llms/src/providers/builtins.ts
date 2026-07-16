@@ -53,6 +53,15 @@ const OPENROUTER_STICKY_SESSION_METADATA: GatewayProviderMetadata = {
 	},
 };
 
+/**
+ * Context window requested from Ollama when neither the resolved model nor
+ * the user's configuration supplies one. Matches the pre-SDK-migration
+ * handler default; deliberately larger than Ollama's 4096 server default,
+ * which cannot fit Cline's agentic prompts. Single source of truth — the
+ * vendor, the VS Code session factory, and the settings UI all import this.
+ */
+export const OLLAMA_DEFAULT_CONTEXT_WINDOW = 32768;
+
 export type ProviderFamily =
 	| "keypoollive"
 	| "openai"
@@ -68,6 +77,7 @@ export type ProviderFamily =
 	| "openai-codex"
 	| "opencode"
 	| "dify"
+	| "ollama"
 	| "sap-ai-core";
 
 export interface BuiltinSpec {
@@ -476,6 +486,7 @@ function inferClient(spec: BuiltinSpec): ProviderClient {
 		case "openai-codex":
 		case "opencode":
 		case "dify":
+		case "ollama":
 		case "sap-ai-core":
 			return "ai-sdk-community";
 		default:
@@ -915,11 +926,15 @@ const OPENAI_COMPATIBLE_SPECS: BuiltinSpec[] = [
 		id: "ollama",
 		name: "Ollama",
 		description: "Ollama Cloud and local LLM hosting",
-		family: "openai-compatible",
+		// Routed to the native Ollama API vendor (`vendors/ollama.ts`), not the
+		// OpenAI-compatible `/v1` endpoint: `/v1` ignores `options.num_ctx`, so
+		// models would always load with Ollama's 4096-token server default.
+		family: "ollama",
 		popular: 25,
+		capabilities: ["tools"],
 		defaultModelId: "",
 		apiKeyEnv: ["OLLAMA_API_KEY"],
-		defaults: { baseUrl: "http://localhost:11434/v1" },
+		defaults: { baseUrl: "http://localhost:11434" },
 		modelsSourceUrl: "http://localhost:11434/api/tags",
 	},
 	{
