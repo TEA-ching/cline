@@ -526,7 +526,7 @@ const ApiOptions = ({
 				<KeypoolLiveProvider currentMode={currentMode} isPopup={isPopup} />
 			)}
 
-			{apiConfiguration && (selectedProvider.includes("openai") || isCustomProvider) && (
+			{apiConfiguration && (selectedProvider === "openai" || isCustomProvider) && (
 				<OpenAICompatibleProvider
 					currentMode={currentMode}
 					isPopup={isPopup}
