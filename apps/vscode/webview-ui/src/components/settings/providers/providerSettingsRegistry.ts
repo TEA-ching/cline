@@ -14,6 +14,7 @@ const CUSTOM_PROVIDER_SETTINGS_IDS = new Set([
 	"claude-code",
 	"cline",
 	"cline-pass",
+	"cohere",
 	"dify",
 	"hicap",
 	"keypoollive",
@@ -26,6 +27,7 @@ const CUSTOM_PROVIDER_SETTINGS_IDS = new Set([
 	"openai-codex",
 	"openai-native",
 	"openrouter",
+	"poolside",
 	"qwen",
 	"qwen-code",
 	"requesty",
@@ -52,7 +54,6 @@ const GENERIC_PROVIDER_PRESENTATION_OVERRIDES: Record<string, GenericProviderPre
 	groq: {
 		signupUrl: "https://console.groq.com/keys",
 	},
-	poolside: {},
 	cerebras: {
 		signupUrl: "https://cloud.cerebras.ai/",
 	},
@@ -156,7 +157,6 @@ const FALLBACK_GENERIC_PROVIDER_NAMES = {
 	minimax: "MiniMax",
 	mistral: "Mistral",
 	nousResearch: "NousResearch",
-	poolside: "Poolside",
 	together: "Together",
 	v0: "Vercel v0",
 	wandb: "W&B",

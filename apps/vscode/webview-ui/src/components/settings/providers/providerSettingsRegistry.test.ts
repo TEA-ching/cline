@@ -43,12 +43,16 @@ describe("providerSettingsRegistry", () => {
 
 	it("keeps provider-specific UIs as explicit custom overrides", () => {
 		expect(hasCustomProviderSettings("openai")).toBe(true)
+		expect(hasCustomProviderSettings("cohere")).toBe(true)
+		expect(hasCustomProviderSettings("poolside")).toBe(true)
 		expect(hasCustomProviderSettings("deepseek")).toBe(false)
 		expect(hasCustomProviderSettings("groq")).toBe(false)
 		expect(hasCustomProviderSettings("cerebras")).toBe(false)
 		expect(hasCustomProviderSettings("minimax")).toBe(false)
 		expect(hasCustomProviderSettings("together")).toBe(false)
 		expect(getGenericProviderSettings("openai", listing({ id: "openai", name: "OpenAI" }))).toBeUndefined()
+		expect(getGenericProviderSettings("cohere", listing({ id: "cohere", name: "Cohere" }))).toBeUndefined()
+		expect(getGenericProviderSettings("poolside", listing({ id: "poolside", name: "Poolside" }))).toBeUndefined()
 	})
 
 	it("allows migrated simple SDK providers to use the generic fallback", () => {
@@ -67,7 +71,6 @@ describe("providerSettingsRegistry", () => {
 			["mistral", "Mistral", "https://console.mistral.ai/codestral"],
 			["nebius", "Nebius", "https://auth.tokenfactory.nebius.com/ui/login"],
 			["nousResearch", "NousResearch", undefined],
-			["poolside", "Poolside", undefined],
 			["sambanova", "SambaNova", "https://docs.sambanova.ai/cloud/docs/get-started/overview"],
 			["tencent-tokenhub", "Tencent TokenHub", "https://cloud.tencent.com/document/product/1823/130050"],
 			["vercel-ai-gateway", "Vercel AI Gateway", "https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai"],
