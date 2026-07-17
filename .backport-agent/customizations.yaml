@@ -58,8 +58,10 @@ customizations:
       - "apps/vscode/src/sdk/cline-session-factory.ts"
       - "apps/vscode/webview-ui/src/components/settings/utils/providerUtils.ts"
       - "apps/vscode/webview-ui/src/components/settings/ApiOptions.tsx"
+      - "apps/vscode/webview-ui/src/components/settings/providers/providerSettingsRegistry.ts"
     invariants:
       - "L'id de fournisseur 'cohere' doit rester dans l'union ApiProvider de shared/api.ts."
+      - "'cohere' doit rester dans CUSTOM_PROVIDER_SETTINGS_IDS de providerSettingsRegistry.ts — son absence fait que isCustomProvider redevient vrai et ApiOptions.tsx affiche CohereProvider ET le formulaire générique OpenAICompatible en double."
       - "Le champ proto cohere_api_key doit rester dans models.proto avec son numéro stable (42)."
       - "convertApiProviderToProto() et convertProtoToApiProvider() doivent rester symétriques pour 'cohere'."
       - "La clé cohereApiKey doit rester dans la liste des secrets de state-keys.ts."
@@ -100,7 +102,9 @@ customizations:
       - "sdk/packages/llms/src/providers/builtins.ts"
       - "apps/vscode/webview-ui/src/components/settings/utils/providerUtils.ts"
       - "apps/vscode/webview-ui/src/components/settings/ApiOptions.tsx"
+      - "apps/vscode/webview-ui/src/components/settings/providers/providerSettingsRegistry.ts"
     invariants:
+      - "'poolside' doit rester dans CUSTOM_PROVIDER_SETTINGS_IDS de providerSettingsRegistry.ts, et absent de GENERIC_PROVIDER_PRESENTATION_OVERRIDES / FALLBACK_GENERIC_PROVIDER_NAMES — sinon genericProviderSettings redevient vrai et ApiOptions.tsx affiche PoolsideProvider ET GenericProviderSettings en double."
       - "L'id de fournisseur 'poolside' doit rester dans l'union ApiProvider de shared/api.ts."
       - "Le champ proto poolside_api_key doit rester dans models.proto avec son numéro stable (43)."
       - "convertApiProviderToProto() et convertProtoToApiProvider() doivent rester symétriques pour 'poolside'."
