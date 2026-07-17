@@ -87,6 +87,7 @@
             "pushd apps/vscode && bunx vsce package --no-dependencies ; popd"
         ],
         "final": [
+            "echo '=== FINAL VALIDATION ===\nbun install && bun run test:invariants && bun run build:sdk && pushd apps/vscode && bun run check-types && bun run test:unit && bun run compile && bunx vsce package --no-dependencies && popd && pushd apps/cli && bun run build && popd && pushd apps/chatbot && bun run build && popd && bun run test:mine'",
             "bun install",
             "bun run test:invariants",
             "bun run build:sdk",
