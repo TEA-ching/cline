@@ -425,9 +425,14 @@ export class SessionRuntime {
 			getConversationId: () => this.conversation.getConversationId(),
 			getActiveRunId: () => this.activeRunId ?? "",
 			appendRecoveryNotice: (message, _reason) => {
+				// ── FORK BUGFIX (keypool-live): checkpoint-runcount-fix ──────
+				// See .backport-agent/customizations.yaml id
+				// "checkpoint-runcount-fix". Tags this synthetic system
+				// message so checkpoint run counting excludes it.
 				this.conversation.appendMessage({
 					role: "user",
 					content: [{ type: "text", text: message }],
+					metadata: { kind: "recovery_notice" },
 				});
 			},
 		});
@@ -1220,9 +1225,14 @@ export class SessionRuntime {
 		}
 		if (verdict.kind === "soft") {
 			if (verdict.message) {
+				// ── FORK BUGFIX (keypool-live): checkpoint-runcount-fix ──────
+				// See .backport-agent/customizations.yaml id
+				// "checkpoint-runcount-fix". Tags this synthetic system
+				// message so checkpoint run counting excludes it.
 				this.conversation.appendMessage({
 					role: "user",
 					content: [{ type: "text", text: verdict.message }],
+					metadata: { kind: "loop_detection_notice" },
 				});
 			}
 			return;
@@ -1265,9 +1275,14 @@ export class SessionRuntime {
 			const outcome = await this.mistakeTracker.record(input);
 			if (outcome.action === "stop") {
 				this.trackerAbortInFlight = true;
+				// ── FORK BUGFIX (keypool-live): checkpoint-runcount-fix ──────
+				// See .backport-agent/customizations.yaml id
+				// "checkpoint-runcount-fix". Tags this synthetic system
+				// message so checkpoint run counting excludes it.
 				this.conversation.appendMessage({
 					role: "user",
 					content: [{ type: "text", text: outcome.message }],
+					metadata: { kind: "mistake_stop_notice" },
 				});
 				this.activeRuntime?.abort(outcome.reason ?? outcome.message);
 			}

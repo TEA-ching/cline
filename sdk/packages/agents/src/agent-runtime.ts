@@ -564,7 +564,15 @@ export class AgentRuntime {
 	}
 
 	private async addUserReminderMessage(text: string): Promise<AgentMessage> {
-		const reminderMessage = createMessage("user", [{ type: "text", text }]);
+		// ── FORK BUGFIX (keypool-live): checkpoint-runcount-fix ─────────────
+		// See .backport-agent/customizations.yaml id "checkpoint-runcount-fix".
+		// Tags this synthetic system-injected message so checkpoint run
+		// counting (which counts genuine user-authored turns) can exclude it.
+		const reminderMessage = createMessage(
+			"user",
+			[{ type: "text", text }],
+			{ kind: "completion_reminder" },
+		);
 		this.state.messages.push(reminderMessage);
 		await this.emit({
 			type: "message-added",

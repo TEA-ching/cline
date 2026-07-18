@@ -138,6 +138,20 @@ check_grep "docs mention keypoollive" "eypool" docs/sdk/model-providers.mdx
 check_file "customizations manifest" .backport-agent/customizations.yaml
 check_file "clinerules general"      .clinerules/general.md
 
+# ── 11. Checkpoint run-count fix (BUGFIX, not a feature — see customizations.yaml
+#         id "checkpoint-runcount-fix" for the full rationale and the exact
+#         removal criteria to apply once upstream fixes this itself) ─────────
+check_file "fork-owned checkpoint-run-counting.ts (AgentMessage layer)" sdk/packages/core/src/hooks/checkpoint-run-counting.ts
+check_file "fork-owned checkpoint-message-filter.ts (LlmsProviders.Message layer)" sdk/packages/core/src/session/checkpoint-message-filter.ts
+check_grep "checkpoint-hooks uses message-based run counting" "countGenuineUserPromptMessages" sdk/packages/core/src/hooks/checkpoint-hooks.ts
+check_absent "checkpoint-hooks has no initialRunCount option (redundant under message counting)" "initialRunCount" sdk/packages/core/src/hooks/checkpoint-hooks.ts
+check_absent "local-runtime-bootstrap has no countSeededRootRuns (redundant under message counting)" "countSeededRootRuns" sdk/packages/core/src/services/local-runtime-bootstrap.ts
+check_grep "checkpoint-restore uses the shared genuine-user-message filter" "isGenuineUserPromptMessage" sdk/packages/core/src/session/checkpoint-restore.ts
+check_grep "agent-runtime tags the completion-tool reminder as synthetic" "completion_reminder" sdk/packages/agents/src/agent-runtime.ts
+check_grep "orchestrator tags the recovery notice as synthetic" "recovery_notice" sdk/packages/core/src/runtime/orchestration/session-runtime-orchestrator.ts
+check_grep "orchestrator tags the soft loop-detection warning as synthetic" "loop_detection_notice" sdk/packages/core/src/runtime/orchestration/session-runtime-orchestrator.ts
+check_grep "orchestrator tags the mistake-limit stop notice as synthetic" "mistake_stop_notice" sdk/packages/core/src/runtime/orchestration/session-runtime-orchestrator.ts
+
 echo "===================================="
 echo "Invariant checks: $PASS_COUNT passed, $FAIL_COUNT failed"
 exit $FAIL

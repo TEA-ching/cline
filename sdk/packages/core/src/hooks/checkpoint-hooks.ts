@@ -1,6 +1,9 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 import type { AgentHooks, BasicLogger } from "@cline/shared";
+// ── FORK BUGFIX (keypool-live): checkpoint-runcount-fix ──────────────────────
+// See .backport-agent/customizations.yaml id "checkpoint-runcount-fix".
+import { countGenuineUserPromptMessages } from "./checkpoint-run-counting";
 
 const execFile = promisify(execFileCallback);
 
@@ -21,8 +24,17 @@ type CreateCheckpointHooksOptions = {
 	sessionId: string;
 	logger?: BasicLogger;
 	readSessionMetadata: () => Promise<Record<string, unknown> | undefined>;
+	/**
+	 * Applies an update to session metadata against the freshest persisted
+	 * value available at write time (not a value captured earlier). This
+	 * avoids clobbering concurrent metadata writes - see checkpoint history
+	 * loss bug where a stale `readSessionMetadata()` snapshot was merged
+	 * against and then written back, dropping entries written in between.
+	 */
 	writeSessionMetadata: (
-		metadata: Record<string, unknown>,
+		updater: (
+			current: Record<string, unknown> | undefined,
+		) => Record<string, unknown>,
 	) => Promise<void> | void;
 	/**
 	 * Optional custom checkpoint implementation. When provided, the built-in
@@ -34,13 +46,6 @@ type CreateCheckpointHooksOptions = {
 		sessionId: string;
 		runCount: number;
 	}) => Promise<CheckpointEntry | undefined> | CheckpointEntry | undefined;
-	/**
-	 * Starting value for the internal run counter. Use this when a session
-	 * is created with initial messages (e.g. after a checkpoint restore) so
-	 * that new checkpoint entries get runCount values that don't collide
-	 * with entries carried over from the source session.
-	 */
-	initialRunCount?: number;
 };
 
 function warn(logger: BasicLogger | undefined, message: string): void {
@@ -155,7 +160,6 @@ function upsertCheckpointHistory(
 export function createCheckpointHooks(
 	options: CreateCheckpointHooksOptions,
 ): AgentHooks {
-	let runCount = options.initialRunCount ?? 0;
 	let repoSupported: boolean | undefined;
 
 	const ensureGitRepository = async (): Promise<boolean> => {
@@ -174,7 +178,9 @@ export function createCheckpointHooks(
 		return repoSupported;
 	};
 
-	const createCheckpoint = async (): Promise<CheckpointEntry | undefined> => {
+	const createCheckpoint = async (
+		runCount: number,
+	): Promise<CheckpointEntry | undefined> => {
 		if (options.createCheckpoint) {
 			return await options.createCheckpoint({
 				cwd: options.cwd,
@@ -253,37 +259,54 @@ export function createCheckpointHooks(
 	};
 
 	return {
-		beforeRun: async ({ snapshot }) => {
-			if (snapshot.parentAgentId != null) {
-				return undefined;
-			}
-			runCount += 1;
-			return undefined;
-		},
+		// ── FORK BUGFIX (keypool-live): checkpoint-runcount-fix ─────────────
+		// See .backport-agent/customizations.yaml id "checkpoint-runcount-fix"
+		// for the full rationale and the exact removal criteria. There used
+		// to be a `beforeRun` hook here incrementing a mutable `runCount` on
+		// every root-level run/continue invocation - but upstream's
+		// `AgentRuntime.run()`/`.continue()` both funnel into the same
+		// `execute()`, which calls `beforeRun` unconditionally regardless of
+		// whether this is a new user turn or an internal continuation (retry,
+		// provider key rotation, etc). That made `runCount` count internal
+		// invocations instead of user-visible turns, silently diverging from
+		// the webview's own turn counter (apps/vscode/src/sdk/sdk-checkpoints.ts)
+		// and causing checkpoint restore to fail ("No checkpoint found at or
+		// before run N") almost universally. `beforeRun` is no longer needed:
+		// `beforeModel` below now derives the run number directly from the
+		// count of genuine user-authored messages in the snapshot, which is
+		// immune to internal continuations that add no new message (or only
+		// synthetic ones - see checkpoint-run-counting.ts).
 		beforeModel: async ({ snapshot }) => {
-			if (
-				snapshot.parentAgentId != null ||
-				snapshot.iteration !== 1 ||
-				runCount < 1
-			) {
+			if (snapshot.parentAgentId != null || snapshot.iteration !== 1) {
 				return undefined;
 			}
-			const entry = await createCheckpoint();
+			const runCount = countGenuineUserPromptMessages(snapshot.messages);
+			if (runCount < 1) {
+				return undefined;
+			}
+			const entry = await createCheckpoint(runCount);
 			if (!entry) {
 				return undefined;
 			}
-			const metadata = await options.readSessionMetadata();
-			const existing = readCheckpointMetadata(metadata);
-			if (existing?.latest.ref === entry.ref) {
+			const staleExisting = readCheckpointMetadata(
+				await options.readSessionMetadata(),
+			);
+			if (staleExisting?.latest.ref === entry.ref) {
 				return undefined;
 			}
-			const history = upsertCheckpointHistory(existing?.history ?? [], entry);
-			await options.writeSessionMetadata({
-				...(metadata ?? {}),
-				checkpoint: {
-					latest: entry,
-					history,
-				} satisfies CheckpointMetadata,
+			await options.writeSessionMetadata((current) => {
+				const existing = readCheckpointMetadata(current);
+				const history = upsertCheckpointHistory(
+					existing?.history ?? [],
+					entry,
+				);
+				return {
+					...(current ?? {}),
+					checkpoint: {
+						latest: entry,
+						history,
+					} satisfies CheckpointMetadata,
+				};
 			});
 			return undefined;
 		},

@@ -450,3 +450,94 @@ customizations:
       - "Le bouton 'Check for Updates' doit déclencher keypoolCheckUpdate."
     tests:
       - "bun run test:invariants"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 14. Correctif : comptage des checkpoints (runCount) décorrélé des tours utilisateur
+  # ──────────────────────────────────────────────────────────────────────────
+  - id: checkpoint-runcount-fix
+    description: >
+      BUGFIX AMONT (pas une fonctionnalité du fork) — à retirer dès qu'upstream
+      corrige le problème sous-jacent. Symptôme observé : "No checkpoint found
+      at or before run N in session ..." lors d'un clic sur Restore/Reset dans
+      l'UI, quasi systématique avec le fournisseur keypoollive (mais
+      reproductible avec n'importe quel fournisseur générant des continuations
+      internes fréquentes — retries, rotation de clé, reprise après erreur).
+
+      CAUSE RACINE (amont, pas spécifique au fork) : dans
+      sdk/packages/agents/src/agent-runtime.ts, `run()` et `continue()` sont
+      strictement identiques (les deux appellent `execute()`), qui appelle
+      inconditionnellement `callBeforeRunHooks()` à CHAQUE invocation — qu'il
+      s'agisse d'un nouveau tour utilisateur ou d'une continuation interne. Le
+      hook checkpoint (sdk/packages/core/src/hooks/checkpoint-hooks.ts)
+      incrémentait son `runCount` sur ce même signal : il comptait donc des
+      invocations internes, pas des tours utilisateur visibles. Côté webview
+      (apps/vscode/src/sdk/sdk-checkpoints.ts), le comptage se fait sur les
+      messages ClineMessage réellement visibles. Les deux échelles divergent
+      fortement (ex : runCount=131 côté SDK pour 6 tours visibles côté UI), et
+      rien ne les réconciliait — d'où l'échec quasi garanti de la recherche de
+      checkpoint. Confirmé identique sur upstream/main et sur upstream v4.0.0
+      (dernière release taguée de cette lignée) : ce n'est pas une régression
+      du fork. (Deux bugs annexes de perte de métadonnées ont aussi été
+      corrigés au passage dans local-runtime-host.ts, avant la découverte de
+      cette cause racine — voir l'historique git pour le détail si besoin.)
+
+      FIX DU FORK : le runCount du checkpoint est recalculé à partir du
+      nombre de messages utilisateur "genuine" (non synthétiques) présents
+      dans l'historique du snapshot de l'agent, au lieu d'un compteur
+      incrémenté à chaque execute(). Ceci nécessite de distinguer les
+      messages utilisateur réels des messages utilisateur synthétiques
+      injectés par le système, via metadata.kind — plusieurs de ces tags
+      n'existaient pas et ont été ajoutés (completion_reminder,
+      recovery_notice, loop_detection_notice, mistake_stop_notice ;
+      compaction_summary existait déjà). Deux fichiers neufs, 100% fork,
+      portent la logique de filtrage : checkpoint-run-counting.ts (couche
+      AgentMessage vivante, tool_result a son propre rôle "tool") et
+      checkpoint-message-filter.ts (couche LlmsProviders.Message persistée,
+      tool_result est imbriqué dans des messages role:"user" — les deux
+      couches ont des règles différentes, ne pas les unifier).
+
+      CRITÈRE DE DÉMONTAGE — à vérifier à chaque backport touchant un fichier
+      de `related_files` :
+      1. Si sdk/packages/agents/src/agent-runtime.ts distingue désormais
+         explicitement run() de continue() (paramètre, flag sur le snapshot,
+         ou hook séparé), OU
+      2. Si sdk/packages/core/src/hooks/checkpoint-hooks.ts ne repose plus sur
+         un compteur runCount incrémenté par un hook beforeRun mais calcule
+         déjà le numéro de run à partir du contenu des messages,
+      ALORS ce patch est obsolète : prendre la version amont de TOUS les
+      fichiers de `related_files`, supprimer les fichiers de `paths`, et
+      retirer cette entrée. Ne pas tenter de fusionner les deux logiques.
+      Vérification manuelle recommandée avant de retirer : reproduire une
+      session avec plusieurs continuations internes (ex: forcer un retry)
+      puis un vrai nouveau message, éditer/restaurer le prompt le plus
+      ancien — doit réussir sans "No checkpoint found".
+    paths:
+      - "sdk/packages/core/src/hooks/checkpoint-run-counting.ts"
+      - "sdk/packages/core/src/hooks/checkpoint-run-counting.test.ts"
+      - "sdk/packages/core/src/session/checkpoint-message-filter.ts"
+      - "sdk/packages/core/src/session/checkpoint-message-filter.test.ts"
+    related_files:
+      - "sdk/packages/core/src/hooks/checkpoint-hooks.ts"
+      - "sdk/packages/core/src/hooks/checkpoint-hooks.test.ts"
+      - "sdk/packages/core/src/session/checkpoint-restore.ts"
+      - "sdk/packages/core/src/session/checkpoint-restore.test.ts"
+      - "sdk/packages/core/src/services/local-runtime-bootstrap.ts"
+      - "sdk/packages/agents/src/agent-runtime.ts"
+      - "sdk/packages/agents/src/agent-runtime.test.ts"
+      - "sdk/packages/core/src/runtime/orchestration/session-runtime-orchestrator.ts"
+      - "sdk/packages/core/src/runtime/orchestration/session-runtime-orchestrator.test.ts"
+      - "sdk/packages/core/src/runtime/host/local-runtime-host.ts"
+      - "sdk/packages/core/src/runtime/host/local-runtime-host.test.ts"
+    invariants:
+      - "checkpoint-hooks.ts ne doit plus contenir de compteur runCount mutable incrémenté dans un hook beforeRun ; l'objet AgentHooks retourné par createCheckpointHooks ne doit plus exposer beforeRun."
+      - "checkpoint-hooks.ts doit importer countGenuineUserPromptMessages depuis ./checkpoint-run-counting."
+      - "checkpoint-hooks.ts ne doit plus accepter d'option initialRunCount (le comptage par message la rend redondante)."
+      - "agent-runtime.ts::addUserReminderMessage doit tagger son message avec metadata.kind === 'completion_reminder'."
+      - "session-runtime-orchestrator.ts doit tagger recovery_notice (appendRecoveryNotice), loop_detection_notice (avertissement soft loop-detection) et mistake_stop_notice (notice d'arrêt mistake-record) sur les messages système correspondants."
+      - "checkpoint-restore.ts doit utiliser isGenuineUserPromptMessage depuis ./checkpoint-message-filter plutôt qu'un filtre inline dupliqué."
+      - "local-runtime-bootstrap.ts ne doit plus contenir de fonction countSeededRootRuns (devenue redondante)."
+    tests:
+      - "bun run test:invariants"
+      - "bash -lc 'cd sdk/packages/core && bunx vitest run src/hooks/checkpoint-hooks.test.ts src/hooks/checkpoint-run-counting.test.ts src/session/checkpoint-restore.test.ts src/session/checkpoint-message-filter.test.ts src/runtime/orchestration/session-runtime-orchestrator.test.ts src/runtime/host/local-runtime-host.test.ts'"
+      - "bash -lc 'cd sdk/packages/agents && bunx vitest run src/agent-runtime.test.ts'"
+      - "bun run test:mine"

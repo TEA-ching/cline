@@ -404,6 +404,12 @@ describe("AgentRuntime", () => {
 						(part) => part.type === "text" && part.text.includes("submit"),
 					),
 				).toBe(true);
+				// FORK BUGFIX (keypool-live): checkpoint-runcount-fix - see
+				// .backport-agent/customizations.yaml. This synthetic
+				// system-injected reminder must be tagged so checkpoint run
+				// counting (checkpoint-run-counting.ts) doesn't mistake it
+				// for a genuine user turn.
+				expect(reminder?.metadata?.kind).toBe("completion_reminder");
 				return [
 					{
 						type: "tool-call-delta",
