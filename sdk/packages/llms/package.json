@@ -45,13 +45,13 @@
 	},
 	"peerDependenciesMeta": {
 		"@aws-sdk/client-bedrock-runtime": {
-			"optional": true
+			"optional": false
 		},
 		"ai-sdk-provider-claude-code": {
-			"optional": true
+			"optional": false
 		},
 		"ai-sdk-provider-codex-cli": {
-			"optional": true
+			"optional": false
 		}
 	},
 	"dependencies": {
