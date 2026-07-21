@@ -6,6 +6,9 @@ import {
 	buildWorkspaceMetadata,
 	type ClineCore,
 	type CoreSessionConfig,
+	createSessionCompactionState,
+	projectSessionCompactionState,
+	type SessionCompactionState,
 	type SessionPendingPrompt,
 	SessionSource,
 	splitCoreSessionConfig,
@@ -212,6 +215,9 @@ function buildCoreSessionConfig(config: JsonRecord): JsonRecord {
 		modelId: config.model ?? config.modelId ?? "",
 		mode: config.mode ?? "act",
 		apiKey: config.apiKey ?? config.api_key ?? "",
+		baseUrl: config.baseUrl,
+		headers: config.headers,
+		providerConfig: config.providerConfig,
 		workspaceRoot: config.workspaceRoot ?? config.workspace_root ?? "",
 		cwd: config.cwd ?? config.workspaceRoot ?? config.workspace_root ?? "",
 		systemPrompt: config.systemPrompt ?? config.system_prompt ?? "",
@@ -274,7 +280,7 @@ export function buildSessionConnectionUpdate(
 					providerConfig:
 						config.providerConfig as SessionConnectionUpdate["providerConfig"],
 				}
-			: {}),
+				: {}),
 		...(typeof config.thinking === "boolean"
 			? { thinking: config.thinking }
 			: {}),
@@ -291,6 +297,54 @@ export function shouldUpdateSessionConnection(
 		buildSessionConnectionUpdate(currentConfig),
 		buildSessionConnectionUpdate(nextConfig),
 	);
+}
+
+function readAliasedString(
+	config: JsonRecord,
+	primaryKey: string,
+	aliasKey: string,
+): string | undefined {
+	for (const key of [primaryKey, aliasKey]) {
+		if (!Object.hasOwn(config, key)) continue;
+		const value = String(config[key] ?? "").trim();
+		return value || undefined;
+	}
+	return undefined;
+}
+
+export function mergeSessionConfig(
+	currentConfig: JsonRecord,
+	updates: JsonRecord,
+): JsonRecord {
+	const providerId =
+		readAliasedString(updates, "provider", "providerId") ??
+		readAliasedString(currentConfig, "provider", "providerId");
+	const modelId =
+		readAliasedString(updates, "model", "modelId") ??
+		readAliasedString(currentConfig, "model", "modelId");
+	return {
+		...currentConfig,
+		...updates,
+		...(providerId ? { provider: providerId, providerId } : {}),
+		...(modelId ? { model: modelId, modelId } : {}),
+	};
+}
+
+export function hasProviderChanged(
+	currentConfig: JsonRecord,
+	nextConfig: JsonRecord,
+): boolean {
+	const currentProviderId = readAliasedString(
+		currentConfig,
+		"provider",
+		"providerId",
+	);
+	const nextProviderId = readAliasedString(
+		nextConfig,
+		"provider",
+		"providerId",
+	);
+	return nextProviderId !== undefined && currentProviderId !== nextProviderId;
 }
 
 async function resolveSystemPrompt(config: JsonRecord): Promise<string> {
@@ -324,7 +378,7 @@ async function resolveSystemPrompt(config: JsonRecord): Promise<string> {
 			config.systemPrompt.trim().length > 0
 				? config.systemPrompt
 				: typeof config.system_prompt === "string" &&
-						config.system_prompt.trim().length > 0
+					config.system_prompt.trim().length > 0
 					? config.system_prompt
 					: undefined,
 		platform: process.platform || "unknown",

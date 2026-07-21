@@ -51,6 +51,7 @@ export type LiveSession = {
 	startedAt: number;
 	endedAt?: number;
 	status: string;
+	transitioningProvider?: boolean;
 	prompt?: string;
 	title?: string;
 	attachedViaHub?: boolean;
