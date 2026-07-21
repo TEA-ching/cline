@@ -1,7 +1,9 @@
 import type {
 	AgentToolContext,
+	BasicLogger,
 	ClineCore,
 	HubServer,
+	ITelemetryService,
 	NodeHubClient,
 	ToolApprovalResult,
 } from "@cline/core";
@@ -107,6 +109,8 @@ export type SidecarContext = {
 	hubClient: NodeHubClient | null;
 	hubServer: HubServer | null;
 	workspaceRoot: string;
+	logger?: BasicLogger;
+	telemetry?: ITelemetryService;
 	unsubscribeSessionEvents: (() => void) | null;
 };
 export type BunRuntimeApi = {
