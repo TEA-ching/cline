@@ -151,6 +151,8 @@ check_grep "agent-runtime tags the completion-tool reminder as synthetic" "compl
 check_grep "orchestrator tags the recovery notice as synthetic" "recovery_notice" sdk/packages/core/src/runtime/orchestration/session-runtime-orchestrator.ts
 check_grep "orchestrator tags the soft loop-detection warning as synthetic" "loop_detection_notice" sdk/packages/core/src/runtime/orchestration/session-runtime-orchestrator.ts
 check_grep "orchestrator tags the mistake-limit stop notice as synthetic" "mistake_stop_notice" sdk/packages/core/src/runtime/orchestration/session-runtime-orchestrator.ts
+check_grep "persistence-service exposes mergeSessionMetadata (re-merges on every OCC retry)" "mergeSessionMetadata" sdk/packages/core/src/session/services/persistence-service.ts
+check_grep "local-runtime-host prefers mergeSessionMetadata over the racy updateSession path" "mergeSessionMetadata" sdk/packages/core/src/runtime/host/local-runtime-host.ts
 
 echo "===================================="
 echo "Invariant checks: $PASS_COUNT passed, $FAIL_COUNT failed"

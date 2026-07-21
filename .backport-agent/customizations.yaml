@@ -481,6 +481,29 @@ customizations:
       corrigés au passage dans local-runtime-host.ts, avant la découverte de
       cette cause racine — voir l'historique git pour le détail si besoin.)
 
+      BUG ANNEXE #3 (découvert après un premier round de test réel, sessions
+      très actives avec beaucoup d'appels d'outils rapprochés) : même après
+      le fix ci-dessus, une session avec ~800 messages en quelques minutes
+      perdait quand même la quasi-totalité de son historique de checkpoints
+      (une seule entrée survivait sur 14 runs réels). Cause : dans
+      sdk/packages/core/src/session/services/persistence-service.ts,
+      `UnifiedSessionPersistenceService.updateSession()` relit bien une ligne
+      fraîche à chaque tentative de sa boucle de retry OCC (verrou de statut),
+      mais réutilise à CHAQUE tentative la MÊME métadonnée déjà calculée par
+      l'appelant avant même le début de la boucle, au lieu de la refusionner
+      contre l'état frais relu. Deux écritures de métadonnées concurrentes
+      pour la même session (ex: un checkpoint et une mise à jour de coût/usage
+      pour le même tour) peuvent alors s'écraser silencieusement l'une
+      l'autre — celle qui gagne le retry écrase l'autre sans qu'aucune des
+      deux ne voie d'erreur. Fix : nouvelle méthode interne
+      `mergeSessionMetadata()` (non exposée sur l'API publique
+      RuntimeHost/ClineCore, pour ne pas casser les appelants existants de
+      `updateSession()` qui attendent un remplacement pur) qui réapplique le
+      resolver de fusion contre la ligne fraîchement relue à CHAQUE tentative
+      de retry. `LocalRuntimeHost.persistSessionMetadata` l'utilise en
+      priorité, avec repli sur l'ancien comportement si le backend ne
+      l'implémente pas (double de test, etc.).
+
       FIX DU FORK : le runCount du checkpoint est recalculé à partir du
       nombre de messages utilisateur "genuine" (non synthétiques) présents
       dans l'historique du snapshot de l'agent, au lieu d'un compteur
@@ -504,13 +527,26 @@ customizations:
       2. Si sdk/packages/core/src/hooks/checkpoint-hooks.ts ne repose plus sur
          un compteur runCount incrémenté par un hook beforeRun mais calcule
          déjà le numéro de run à partir du contenu des messages,
-      ALORS ce patch est obsolète : prendre la version amont de TOUS les
-      fichiers de `related_files`, supprimer les fichiers de `paths`, et
-      retirer cette entrée. Ne pas tenter de fusionner les deux logiques.
-      Vérification manuelle recommandée avant de retirer : reproduire une
-      session avec plusieurs continuations internes (ex: forcer un retry)
+      ALORS la partie comptage-par-message (checkpoint-run-counting.ts,
+      checkpoint-message-filter.ts, checkpoint-hooks.ts, checkpoint-restore.ts,
+      local-runtime-bootstrap.ts, agent-runtime.ts, session-runtime-orchestrator.ts)
+      est obsolète : prendre la version amont de ces fichiers, supprimer les
+      fichiers de `paths` correspondants, et retirer les invariants associés.
+      3. Séparément : si `UnifiedSessionPersistenceService.updateSession()`
+         (persistence-service.ts) refusionne déjà le resolver de métadonnées
+         contre la ligne fraîchement relue à chaque tentative de retry OCC
+         (plutôt que de réutiliser une valeur figée), ALORS le bug annexe #3
+         est corrigé en amont : supprimer `mergeSessionMetadata()` et son
+         usage dans local-runtime-host.ts, et repasser par `updateSession()`
+         directement.
+      Ne pas tenter de fusionner les deux logiques dans un cas comme dans
+      l'autre. Vérification manuelle recommandée avant de retirer : reproduire
+      une session avec plusieurs continuations internes (ex: forcer un retry)
       puis un vrai nouveau message, éditer/restaurer le prompt le plus
-      ancien — doit réussir sans "No checkpoint found".
+      ancien — doit réussir sans "No checkpoint found". Pour le bug #3,
+      reproduire une session très active (beaucoup d'appels d'outils
+      rapprochés) et vérifier que l'historique de checkpoints contient bien
+      toutes les entrées attendues, pas seulement la dernière.
     paths:
       - "sdk/packages/core/src/hooks/checkpoint-run-counting.ts"
       - "sdk/packages/core/src/hooks/checkpoint-run-counting.test.ts"
@@ -528,6 +564,8 @@ customizations:
       - "sdk/packages/core/src/runtime/orchestration/session-runtime-orchestrator.test.ts"
       - "sdk/packages/core/src/runtime/host/local-runtime-host.ts"
       - "sdk/packages/core/src/runtime/host/local-runtime-host.test.ts"
+      - "sdk/packages/core/src/session/services/persistence-service.ts"
+      - "sdk/packages/core/src/session/services/persistence-service.test.ts"
     invariants:
       - "checkpoint-hooks.ts ne doit plus contenir de compteur runCount mutable incrémenté dans un hook beforeRun ; l'objet AgentHooks retourné par createCheckpointHooks ne doit plus exposer beforeRun."
       - "checkpoint-hooks.ts doit importer countGenuineUserPromptMessages depuis ./checkpoint-run-counting."
@@ -536,6 +574,8 @@ customizations:
       - "session-runtime-orchestrator.ts doit tagger recovery_notice (appendRecoveryNotice), loop_detection_notice (avertissement soft loop-detection) et mistake_stop_notice (notice d'arrêt mistake-record) sur les messages système correspondants."
       - "checkpoint-restore.ts doit utiliser isGenuineUserPromptMessage depuis ./checkpoint-message-filter plutôt qu'un filtre inline dupliqué."
       - "local-runtime-bootstrap.ts ne doit plus contenir de fonction countSeededRootRuns (devenue redondante)."
+      - "persistence-service.ts doit exposer mergeSessionMetadata(), qui refusionne le resolver contre la ligne fraîchement relue à chaque tentative de retry OCC (pas de métadonnée figée réutilisée)."
+      - "local-runtime-host.ts::persistSessionMetadata doit préférer mergeSessionMetadata via invokeOptionalValue, avec repli sur l'ancien chemin updateSession si le backend ne l'implémente pas."
     tests:
       - "bun run test:invariants"
       - "bash -lc 'cd sdk/packages/core && bunx vitest run src/hooks/checkpoint-hooks.test.ts src/hooks/checkpoint-run-counting.test.ts src/session/checkpoint-restore.test.ts src/session/checkpoint-message-filter.test.ts src/runtime/orchestration/session-runtime-orchestrator.test.ts src/runtime/host/local-runtime-host.test.ts'"
