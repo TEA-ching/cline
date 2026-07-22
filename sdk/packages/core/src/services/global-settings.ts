@@ -29,9 +29,13 @@ const GlobalSettingsStringListSchema = z
 		return normalized.length > 0 ? normalized : undefined;
 	});
 
-const GlobalCompactionStrategySchema = z.enum(["basic", "agentic"]).catch("basic");
+const GlobalCompactionStrategySchema = z
+	.enum(["basic", "agentic"])
+	.catch("agentic");
 
-export type GlobalCompactionStrategy = z.infer<typeof GlobalCompactionStrategySchema>;
+export type GlobalCompactionStrategy = z.infer<
+	typeof GlobalCompactionStrategySchema
+>;
 
 export const GlobalSettingsSchema = z
 	.object({
@@ -190,7 +194,7 @@ export function setAutoUpdateEnabledGlobally(
 }
 
 export function readCompactionStrategyGlobally(): GlobalCompactionStrategy {
-	return readGlobalSettings().compactionStrategy ?? "basic";
+	return readGlobalSettings().compactionStrategy ?? "agentic";
 }
 
 export function setCompactionStrategyGlobally(
@@ -328,16 +332,16 @@ export function filterExtensionToolRegistrations(
 			...extension,
 			setup: (api: AgentExtensionApi, ctx) =>
 				extension.setup?.(
-					{
-						...api,
-						registerTool: (tool) => {
-							if (!disabled.has(tool.name)) {
-								api.registerTool(tool);
-							}
-						},
+				{
+					...api,
+					registerTool: (tool) => {
+						if (!disabled.has(tool.name)) {
+							api.registerTool(tool);
+						}
 					},
-					ctx,
-				),
+				},
+				ctx,
+			),
 		};
 	});
 }
