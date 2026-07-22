@@ -112,6 +112,126 @@ describe("createPoolsideProviderModule", () => {
 		});
 	});
 
+	describe("assistant input message tagging (untagged InputParam enum)", () => {
+		// @ai-sdk/openai's Responses API prompt builder echoes a prior assistant text
+		// turn as `{role: "assistant", content: [{type: "output_text", ...}]}` with no
+		// `type` field. Captured live from production: Poolside (poolside/laguna-s-2.1)
+		// rejects the *entire* request with a 400 ("did not match any variant of
+		// untagged enum InputParam") unless assistant-role input items are tagged
+		// `type: "message"`. Verified directly against the real API: the exact
+		// captured request body that failed succeeds once this tag is added, and
+		// nothing else about the request needs to change.
+
+		it("tags an untyped assistant-role input item with type: message", async () => {
+			const baseFetch = vi.fn(async () => jsonResponse({ ok: true }));
+			const patchedFetch = await capturePatchedFetch({ fetch: baseFetch });
+
+			await patchedFetch("https://inference.poolside.ai/v1/responses", {
+				method: "POST",
+				body: JSON.stringify({
+					model: "poolside/laguna-s-2.1",
+					input: [
+						{ role: "system", content: "sys" },
+						{ role: "user", content: [{ type: "input_text", text: "hi" }] },
+						{ role: "assistant", content: [{ type: "output_text", text: "hello back" }] },
+					],
+				}),
+			});
+
+			const [, init] = baseFetch.mock.calls[0];
+			const sent = JSON.parse(init.body as string);
+			expect(sent.input[0]).toEqual({ role: "system", content: "sys" });
+			expect(sent.input[1]).toEqual({ role: "user", content: [{ type: "input_text", text: "hi" }] });
+			expect(sent.input[2]).toEqual({
+				type: "message",
+				role: "assistant",
+				content: [{ type: "output_text", text: "hello back" }],
+			});
+		});
+
+		it("leaves an assistant input item untouched when it already has a type", async () => {
+			const baseFetch = vi.fn(async () => jsonResponse({ ok: true }));
+			const patchedFetch = await capturePatchedFetch({ fetch: baseFetch });
+
+			await patchedFetch("https://inference.poolside.ai/v1/responses", {
+				method: "POST",
+				body: JSON.stringify({
+					model: "poolside/laguna-s-2.1",
+					input: [
+						{
+							type: "message",
+							id: "msg_1",
+							role: "assistant",
+							status: "completed",
+							content: [{ type: "output_text", text: "hello back", annotations: [], logprobs: [] }],
+						},
+					],
+				}),
+			});
+
+			const [, init] = baseFetch.mock.calls[0];
+			const sent = JSON.parse(init.body as string);
+			expect(sent.input[0]).toEqual({
+				type: "message",
+				id: "msg_1",
+				role: "assistant",
+				status: "completed",
+				content: [{ type: "output_text", text: "hello back", annotations: [], logprobs: [] }],
+			});
+		});
+
+		it("does not touch function_call / function_call_output items (no role field)", async () => {
+			const baseFetch = vi.fn(async () => jsonResponse({ ok: true }));
+			const patchedFetch = await capturePatchedFetch({ fetch: baseFetch });
+
+			const functionCall = { type: "function_call", call_id: "c1", name: "read_files", arguments: "{}" }
+			const functionCallOutput = { type: "function_call_output", call_id: "c1", output: "ok" }
+
+			await patchedFetch("https://inference.poolside.ai/v1/responses", {
+				method: "POST",
+				body: JSON.stringify({
+					model: "poolside/laguna-s-2.1",
+					input: [functionCall, functionCallOutput],
+				}),
+			});
+
+			const [, init] = baseFetch.mock.calls[0];
+			const sent = JSON.parse(init.body as string);
+			expect(sent.input).toEqual([functionCall, functionCallOutput])
+		});
+
+		it("patches assistant input items even when the request has no tools", async () => {
+			const baseFetch = vi.fn(async () => jsonResponse({ ok: true }));
+			const patchedFetch = await capturePatchedFetch({ fetch: baseFetch });
+
+			await patchedFetch("https://inference.poolside.ai/v1/responses", {
+				method: "POST",
+				body: JSON.stringify({
+					model: "poolside/laguna-s-2.1",
+					input: [{ role: "assistant", content: [{ type: "output_text", text: "hi" }] }],
+				}),
+			});
+
+			const [, init] = baseFetch.mock.calls[0];
+			const sent = JSON.parse(init.body as string);
+			expect(sent.input[0].type).toBe("message")
+			expect(sent.strict_tools).toBeUndefined()
+		});
+
+		it("does not modify the body when there is no input array", async () => {
+			const baseFetch = vi.fn(async () => jsonResponse({ ok: true }));
+			const patchedFetch = await capturePatchedFetch({ fetch: baseFetch });
+
+			await patchedFetch("https://inference.poolside.ai/v1/responses", {
+				method: "POST",
+				body: JSON.stringify({ model: "poolside/laguna-s-2.1" }),
+			});
+
+			const [, init] = baseFetch.mock.calls[0];
+			expect(JSON.parse(init.body as string)).toEqual({ model: "poolside/laguna-s-2.1" });
+		});
+	});
+
 	describe("tool schema patching (strict_tools compatibility)", () => {
 		it("does not modify the request body when no tools are present", async () => {
 			const baseFetch = vi.fn(async () => jsonResponse({ ok: true }));
@@ -513,6 +633,114 @@ describe("createPoolsideProviderModule", () => {
 				required: ["x"],
 			});
 			expect(sent.tools[1].function.parameters).toEqual({});
+		});
+	});
+
+	describe("tool schema patching — flat Responses API tool shape", () => {
+		// Poolside is only ever called via /v1/responses. The Responses API's tool
+		// objects are flat ({type, name, parameters}), unlike Chat Completions'
+		// nested {type, function: {name, parameters}}. Captured live from a real
+		// request (with poolside/laguna-s-2.1): every tool used this flat shape,
+		// so the nested-only check above never actually patched anything in
+		// production — these tests pin the flat-shape path.
+
+		it("converts an empty-properties object schema to {} on a flat tool", async () => {
+			const baseFetch = vi.fn(async () => jsonResponse({ ok: true }));
+			const patchedFetch = await capturePatchedFetch({ fetch: baseFetch });
+
+			await patchedFetch("https://inference.poolside.ai/v1/responses", {
+				method: "POST",
+				body: JSON.stringify({
+					model: "poolside/laguna-s-2.1",
+					tools: [
+						{
+							type: "function",
+							name: "heroui-react__get_theme_variables",
+							description: "Get HeroUI v3 default theme variables and design tokens.",
+							parameters: { type: "object", properties: {} },
+						},
+					],
+				}),
+			});
+
+			const [, init] = baseFetch.mock.calls[0];
+			const sent = JSON.parse(init.body as string);
+			expect(sent.tools[0].parameters).toEqual({});
+			expect(sent.strict_tools).toBe(true);
+		});
+
+		it("strips unsupported constraints (minLength, maximum) on a flat tool", async () => {
+			const baseFetch = vi.fn(async () => jsonResponse({ ok: true }));
+			const patchedFetch = await capturePatchedFetch({ fetch: baseFetch });
+
+			await patchedFetch("https://inference.poolside.ai/v1/responses", {
+				method: "POST",
+				body: JSON.stringify({
+					model: "poolside/laguna-s-2.1",
+					tools: [
+						{
+							type: "function",
+							name: "ask_question",
+							parameters: {
+								type: "object",
+								properties: {
+									question: { type: "string", minLength: 1 },
+									options: { type: "array", minItems: 2, maxItems: 5, items: { type: "string", minLength: 1 } },
+								},
+								required: ["question", "options"],
+							},
+						},
+					],
+				}),
+			});
+
+			const [, init] = baseFetch.mock.calls[0];
+			const sent = JSON.parse(init.body as string);
+			expect(sent.tools[0].parameters).toEqual({
+				type: "object",
+				properties: {
+					question: { type: "string" },
+					options: { type: "array", items: { type: "string" } },
+				},
+				required: ["question", "options"],
+			});
+		});
+
+		it("adds a required field to a flat tool's object schema that has properties but no required array", async () => {
+			const baseFetch = vi.fn(async () => jsonResponse({ ok: true }));
+			const patchedFetch = await capturePatchedFetch({ fetch: baseFetch });
+
+			await patchedFetch("https://inference.poolside.ai/v1/responses", {
+				method: "POST",
+				body: JSON.stringify({
+					model: "poolside/laguna-s-2.1",
+					tools: [
+						{
+							type: "function",
+							name: "attempt_completion",
+							parameters: {
+								type: "object",
+								properties: { result: { type: "string" }, command: { type: "string" } },
+								required: ["result"],
+							},
+						},
+						{
+							type: "function",
+							name: "switch_to_act_mode",
+							parameters: { type: "object", properties: {} },
+						},
+					],
+				}),
+			});
+
+			const [, init] = baseFetch.mock.calls[0];
+			const sent = JSON.parse(init.body as string);
+			expect(sent.tools[0].parameters).toEqual({
+				type: "object",
+				properties: { result: { type: "string" }, command: { type: "string" } },
+				required: ["result"],
+			});
+			expect(sent.tools[1].parameters).toEqual({});
 		});
 	});
 

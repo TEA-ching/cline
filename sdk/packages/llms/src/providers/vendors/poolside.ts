@@ -405,30 +405,70 @@ async function cleanupOldLogFiles(directoryPath: string, maxFilesToKeep: number)
 }
 
 /**
+ * @ai-sdk/openai's Responses API prompt builder echoes a prior assistant text
+ * turn into `input` as `{role: "assistant", content: [{type: "output_text", ...}]}`
+ * with no explicit `type` field (see its "assistant" case pushing plain
+ * `{role, content, id}` objects). Poolside's backend (observed with
+ * poolside/laguna-s-2.1) requires assistant-role input items to be tagged
+ * `type: "message"` to match its `InputParam` untagged enum — without it,
+ * deserialization fails and the *entire* request is rejected with a 400,
+ * even though the untagged form works against OpenAI and older Poolside models.
+ */
+function patchAssistantInputMessages(input: unknown[]): unknown[] {
+	return input.map((item) => {
+		if (!item || typeof item !== "object" || Array.isArray(item)) return item
+		const record = item as Record<string, unknown>
+		if (record.role === "assistant" && record.type === undefined) {
+			return { type: "message", ...record }
+		}
+		return item
+	})
+}
+
+/**
  * Returns a modified fetch function that:
  * 1. Patches tool schemas for strict_tools=true compatibility (strips unsupported constraints,
  *    ensures required fields on object schemas).
  * 2. Injects strict_tools=true when tools are present in the request body.
- * 3. Corrects message-end token counts: command-a* models with thinking report
+ * 3. Tags untyped assistant-role `input` items with `type: "message"` (see
+ *    patchAssistantInputMessages).
+ * 4. Corrects message-end token counts: command-a* models with thinking report
  *    tokens.input_tokens=0 in the SSE stream; billed_units.input_tokens holds the correct value.
  */
 function patchPoolsideUsageFetch(baseFetch: typeof fetch): typeof fetch {
 	return async (input, init) => {
-		// Patch tool schemas and add strict_tools when tools are present.
+		// Patch the input/tools of the request body before sending.
 		if (init?.body) {
 			const body = typeof init.body === "string" ? JSON.parse(init.body) : init.body
+			let bodyChanged = false
+
+			if (Array.isArray(body?.input)) {
+				body.input = patchAssistantInputMessages(body.input)
+				bodyChanged = true
+			}
+
 			if (body?.tools && body?.tools.length > 0) {
 				// strict_tools=true requires every object-typed parameter schema to have
 				// at least one required field — patch schemas that violate this before sending.
 				body.tools = body.tools.map((tool: any) => {
+					// Responses API tools are flat ({type, name, parameters}); Chat Completions
+					// tools nest under `.function`. Poolside is only ever called via /v1/responses,
+					// so the flat shape is what real traffic uses — patch whichever is present.
 					if (tool?.function?.parameters) {
 						return { ...tool, function: { ...tool.function, parameters: patchObjectSchemaRequired(tool.function.parameters) } }
+					}
+					if (tool?.parameters) {
+						return { ...tool, parameters: patchObjectSchemaRequired(tool.parameters) }
 					}
 					return tool
 				})
 				if (!body.strict_tools) {
 					body.strict_tools = true
 				}
+				bodyChanged = true
+			}
+
+			if (bodyChanged) {
 				init.body = JSON.stringify(body)
 			}
 		}
