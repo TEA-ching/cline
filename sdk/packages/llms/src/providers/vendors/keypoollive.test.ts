@@ -138,6 +138,134 @@ describe("keypoollive provider", () => {
 		);
 	});
 
+	it("excludes a key with a future quotaResetAt, even as last-resort fallback", async () => {
+		const now = Date.now();
+		mockVaultEnvironment({
+			version: 1,
+			providers: {
+				mistral: {
+					protocol: "openai",
+					endpoint: "https://api.mistral.local/v1",
+					keys: [
+						{ key: "k_exhausted", owner: "test", type: "paid", quotaResetAt: new Date(now + 60_000).toISOString() },
+						{ key: "k_healthy", owner: "test", type: "paid" },
+					],
+					models: [{ id: "devstral-latest", usage: "chat" }],
+				},
+			},
+		});
+		const usedKeys: string[] = [];
+
+		createOpenAICompatibleProviderMock.mockImplementation(
+			(cfg: GatewayResolvedProviderConfig) => ({
+				async *stream(): AsyncIterable<AgentModelEvent> {
+					usedKeys.push(String(cfg.apiKey));
+					yield { type: "finish", reason: "stop" };
+				},
+			}),
+		);
+
+		const { createKeypoolliveProvider } = await importFreshKeypoollive();
+		const provider = createKeypoolliveProvider(baseConfig());
+		const context = baseContext();
+
+		// Run several times: the quota-exhausted key must never be selected,
+		// not even as a round-robin fallback (unlike a plain cooldown guess).
+		await collectEvents(provider, baseRequest(), context);
+		await collectEvents(provider, baseRequest(), context);
+		await collectEvents(provider, baseRequest(), context);
+
+		expect(usedKeys).toEqual(["k_healthy", "k_healthy", "k_healthy"]);
+	});
+
+	it("re-includes a key once its quotaResetAt has passed", async () => {
+		const now = Date.now();
+		mockVaultEnvironment({
+			version: 1,
+			providers: {
+				mistral: {
+					protocol: "openai",
+					endpoint: "https://api.mistral.local/v1",
+					keys: [
+						{ key: "k_recovered", owner: "test", type: "paid", quotaResetAt: new Date(now - 60_000).toISOString() },
+					],
+					models: [{ id: "devstral-latest", usage: "chat" }],
+				},
+			},
+		});
+		const usedKeys: string[] = [];
+
+		createOpenAICompatibleProviderMock.mockImplementation(
+			(cfg: GatewayResolvedProviderConfig) => ({
+				async *stream(): AsyncIterable<AgentModelEvent> {
+					usedKeys.push(String(cfg.apiKey));
+					yield { type: "finish", reason: "stop" };
+				},
+			}),
+		);
+
+		const { createKeypoolliveProvider } = await importFreshKeypoollive();
+		const provider = createKeypoolliveProvider(baseConfig());
+		await collectEvents(provider, baseRequest(), baseContext());
+
+		expect(usedKeys).toEqual(["k_recovered"]);
+	});
+
+	it("emits quota-exhausted-suspected on the 3rd matching 401 for a mistral-protocol key", async () => {
+		mockVaultEnvironment(vaultConfig(["k_mistral_only"], "mistral"));
+
+		createMistralProviderMock.mockImplementation(() => ({
+			async *stream(): AsyncIterable<AgentModelEvent> {
+				const err = new Error("Unauthorized") as Error & { status: number };
+				err.status = 401;
+				throw err;
+			},
+		}));
+
+		const { createKeypoolliveProvider } = await importFreshKeypoollive();
+		const provider = createKeypoolliveProvider(baseConfig());
+		const keypoolEventHandler = vi.fn();
+		const context = { ...baseContext(), keypoolEventHandler };
+
+		// 3 separate requests, each failing once with the same 401 signature —
+		// mirrors 3 consecutive live requests against an exhausted Mistral key.
+		await collectEventsUntilError(provider, baseRequest(), context);
+		await collectEventsUntilError(provider, baseRequest(), context);
+		await collectEventsUntilError(provider, baseRequest(), context);
+
+		const quotaEvents = keypoolEventHandler.mock.calls
+			.map(([event]) => event)
+			.filter((event) => event.type === "quota-exhausted-suspected");
+		expect(quotaEvents).toHaveLength(1);
+		expect(quotaEvents[0]).toMatchObject({ providerName: "mistral", protocol: "mistral" });
+	});
+
+	it("does not emit quota-exhausted-suspected for non-mistral protocols, even on 3 matching 401s", async () => {
+		mockVaultEnvironment(vaultConfig(["k_openai_only"], "openai"));
+
+		createOpenAICompatibleProviderMock.mockImplementation(() => ({
+			async *stream(): AsyncIterable<AgentModelEvent> {
+				const err = new Error("Unauthorized") as Error & { status: number };
+				err.status = 401;
+				throw err;
+			},
+		}));
+
+		const { createKeypoolliveProvider } = await importFreshKeypoollive();
+		const provider = createKeypoolliveProvider(baseConfig());
+		const keypoolEventHandler = vi.fn();
+		const context = { ...baseContext(), keypoolEventHandler };
+
+		await collectEventsUntilError(provider, baseRequest(), context);
+		await collectEventsUntilError(provider, baseRequest(), context);
+		await collectEventsUntilError(provider, baseRequest(), context);
+
+		const quotaEvents = keypoolEventHandler.mock.calls
+			.map(([event]) => event)
+			.filter((event) => event.type === "quota-exhausted-suspected");
+		expect(quotaEvents).toHaveLength(0);
+	});
+
 	it("restores round-robin index after module reload via KEYPOOL_STATE_FILE", async () => {
 		mockVaultEnvironment(vaultConfig(["k_live_x", "k_live_y"]));
 		const usedKeys: string[] = [];

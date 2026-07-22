@@ -172,6 +172,8 @@ function transformAiConfigToVaultConfig(aiConfig: AiConfig): AiVaultConfig {
 				key: k.key,
 				owner: k.owner ?? "unknown",
 				type: k.type ?? "paid",
+				quotaResetAt: k.quotaResetAt,
+				quotaExhaustedAt: k.quotaExhaustedAt,
 			})),
 			models: provider.models.map((m) => ({
 				id: m.id,

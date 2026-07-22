@@ -361,11 +361,21 @@ export async function markKeyAsFailed(
  * @param keys - List of available keys from the vault.
  * @returns The selected VaultKey or null if no keys are eligible.
  */
+/**
+ * A key with a future `quotaResetAt` is known to be exhausted until that
+ * instant (e.g. a Mistral monthly quota). Unlike a cooldown guess, this is
+ * externally-confirmed dead weight, so it's excluded at the same tier as
+ * `type === "expired"` — never used, even as a last-resort fallback.
+ */
+function isQuotaExhausted(key: VaultKey): boolean {
+	return !!key.quotaResetAt && Date.now() < Date.parse(key.quotaResetAt);
+}
+
 async function selectNextKey(
 	providerName: string,
 	keys: VaultKey[],
 ): Promise<VaultKey | null> {
-	const eligible = keys.filter((k) => k.type !== "expired");
+	const eligible = keys.filter((k) => k.type !== "expired" && !isQuotaExhausted(k));
 	if (eligible.length === 0) return null;
 
 	const usable = eligible.filter((k) => isKeyUsable(providerName, k.key));

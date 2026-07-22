@@ -11,6 +11,10 @@ export interface VaultKey {
 	owner: string;
 	/** The billing tier or status of the key. */
 	type: AiKeyTier;
+	/** ISO 8601 — key becomes usable again at/after this instant (quota exhaustion). */
+	quotaResetAt?: string;
+	/** ISO 8601 — when this key was flagged quota-exhausted (audit only). */
+	quotaExhaustedAt?: string;
 }
 
 /**
@@ -118,6 +122,8 @@ export interface AiKey {
 	key: string;
 	owner: string;
 	type?: AiKeyTier;
+	quotaResetAt?: string;
+	quotaExhaustedAt?: string;
 }
 
 export interface AiModel {

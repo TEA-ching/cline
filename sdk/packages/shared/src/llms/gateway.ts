@@ -190,6 +190,22 @@ export interface KeypoolKeyExhaustedEvent {
 	error: string;
 }
 
+/**
+ * Fired when a key reaches its failure threshold with a signature that looks
+ * like a provider-side quota exhaustion rather than a transient error (e.g.
+ * Mistral's generic "401 Unauthorized" repeated 3 times). The provider name
+ * on this event always matches a protocol the caller has opted into treating
+ * this way — currently only "mistral". The embedder decides what to persist
+ * (e.g. a `quotaResetAt` on the vault key) and for how long.
+ */
+export interface KeypoolQuotaExhaustedSuspectedEvent {
+	type: "quota-exhausted-suspected";
+	providerName: string;
+	modelId: string;
+	protocol: string;
+	keyHint: string;
+}
+
 /** Fired after a successful stream with the cumulative token usage totals. */
 export interface KeypoolUsageRecordedEvent {
 	type: "usage-recorded";
@@ -219,6 +235,7 @@ export type KeypoolEvent =
 	| KeypoolKeyRotatedEvent
 	| KeypoolKeyRecoveredEvent
 	| KeypoolKeyExhaustedEvent
+	| KeypoolQuotaExhaustedSuspectedEvent
 	| KeypoolUsageRecordedEvent
 	| KeypoolUserAgentSetEvent;
 

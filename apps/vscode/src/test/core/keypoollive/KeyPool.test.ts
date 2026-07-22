@@ -68,6 +68,63 @@ describe("KeyPool", () => {
 				;["key1", "key2"].should.containEql(res.apiKey)
 			}
 		})
+
+		it("should exclude a key with a future quotaResetAt, even as last-resort fallback", async () => {
+			const vaultWithQuota: AiVaultConfig = {
+				version: 1,
+				providers: {
+					anthropic: {
+						protocol: "anthropic",
+						keys: [
+							{ key: "key1", owner: "owner1", type: "paid", quotaResetAt: new Date(Date.now() + 60_000).toISOString() },
+							{ key: "key2", owner: "owner2", type: "paid" },
+						],
+						models: [{ id: "claude-3-opus", name: "Opus", usage: "chat" }],
+					},
+				},
+			}
+
+			const res1 = await resolveNextApiConfig(vaultWithQuota, "anthropic")
+			res1?.apiKey.should.equal("key2")
+			const res2 = await resolveNextApiConfig(vaultWithQuota, "anthropic")
+			res2?.apiKey.should.equal("key2")
+		})
+
+		it("should return null when every key is quota-exhausted", async () => {
+			const vaultAllExhausted: AiVaultConfig = {
+				version: 1,
+				providers: {
+					anthropic: {
+						protocol: "anthropic",
+						keys: [
+							{ key: "key1", owner: "owner1", type: "paid", quotaResetAt: new Date(Date.now() + 60_000).toISOString() },
+						],
+						models: [{ id: "claude-3-opus", name: "Opus", usage: "chat" }],
+					},
+				},
+			}
+
+			const res = await resolveNextApiConfig(vaultAllExhausted, "anthropic")
+			should.not.exist(res)
+		})
+
+		it("should re-include a key once its quotaResetAt has passed", async () => {
+			const vaultRecovered: AiVaultConfig = {
+				version: 1,
+				providers: {
+					anthropic: {
+						protocol: "anthropic",
+						keys: [
+							{ key: "key1", owner: "owner1", type: "paid", quotaResetAt: new Date(Date.now() - 60_000).toISOString() },
+						],
+						models: [{ id: "claude-3-opus", name: "Opus", usage: "chat" }],
+					},
+				},
+			}
+
+			const res = await resolveNextApiConfig(vaultRecovered, "anthropic")
+			res?.apiKey.should.equal("key1")
+		})
 	})
 
 	describe("buildModelDescriptions", () => {

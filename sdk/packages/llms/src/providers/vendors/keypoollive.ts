@@ -147,6 +147,10 @@ interface VaultKey {
 	key: string;
 	owner: string;
 	type: AiKeyTier;
+	/** ISO 8601 — key becomes usable again at/after this instant (quota exhaustion). */
+	quotaResetAt?: string;
+	/** ISO 8601 — when this key was flagged quota-exhausted (audit only). */
+	quotaExhaustedAt?: string;
 }
 
 /**
@@ -230,6 +234,8 @@ interface RawAiKey {
 	key: string;
 	owner?: string;
 	type?: AiKeyTier;
+	quotaResetAt?: string;
+	quotaExhaustedAt?: string;
 }
 
 /**
@@ -496,6 +502,8 @@ function transformRawConfig(raw: RawAiConfig): AiVaultConfig {
 				key: k.key,
 				owner: k.owner ?? "unknown",
 				type: k.type ?? "paid",
+				quotaResetAt: k.quotaResetAt,
+				quotaExhaustedAt: k.quotaExhaustedAt,
 			})),
 			models: p.models.map((m) => ({ ...m })),
 		};
@@ -1124,8 +1132,11 @@ function markKeyAsHealthy(providerName: string, keyValue: string): void {
  *
  * @param providerName - Name of the vault provider
  * @param keyValue - API key string that failed
+ * @returns The updated consecutive failure count, so callers can detect the
+ *   exact request that crossed `MAX_FAILURE_COUNT` (used by the Mistral
+ *   quota-exhaustion heuristic, which only fires on that transition).
  */
-function markKeyAsFailed(providerName: string, keyValue: string): void {
+function markKeyAsFailed(providerName: string, keyValue: string): number {
 	const id = keyStatusId(providerName, keyValue);
 	const existing = keyStatuses.get(id);
 	const failureCount = (existing?.failureCount ?? 0) + 1;
@@ -1137,6 +1148,7 @@ function markKeyAsFailed(providerName: string, keyValue: string): void {
 			failureCount >= MAX_FAILURE_COUNT ? Date.now() : existing?.cooledDownAt,
 	});
 	persistStateSoon();
+	return failureCount;
 }
 
 /**
@@ -1155,13 +1167,23 @@ function markKeyAsFailed(providerName: string, keyValue: string): void {
  *                   scoped embedders pass `<scope>::<providerName>` for isolation)
  * @returns Next usable key, or null if no keys are available
  */
+/**
+ * A key with a future `quotaResetAt` is known to be exhausted until that
+ * instant (e.g. a Mistral monthly quota). Unlike a cooldown guess, this is
+ * externally-confirmed dead weight, so it's excluded at the same tier as
+ * `type === "expired"` — never used, even as a last-resort fallback.
+ */
+function isQuotaExhausted(key: VaultKey): boolean {
+	return !!key.quotaResetAt && Date.now() < Date.parse(key.quotaResetAt);
+}
+
 function selectNextKey(
 	providerName: string,
 	keys: VaultKey[],
 	statsMap: Map<string, KeyStats24h>,
 	stateKey: string = providerName,
 ): VaultKey | null {
-	const eligible = keys.filter((k) => k.type !== "expired");
+	const eligible = keys.filter((k) => k.type !== "expired" && !isQuotaExhausted(k));
 	if (eligible.length === 0) return null;
 
 	const usable = eligible.filter((k) => isKeyUsable(stateKey, k.key));
@@ -1363,6 +1385,32 @@ function isKeyError(error: unknown): boolean {
 		msg.includes("rate limit") ||
 		msg.includes("quota")
 	);
+}
+
+/**
+ * Mistral returns an identical generic `401 {"detail":"Unauthorized"}` for a
+ * monthly-quota-exhausted key and a genuinely revoked key — there is no way
+ * to tell them apart from the HTTP response alone (confirmed by live testing
+ * against known-exhausted keys). Per product decision, 3 consecutive matches
+ * of this exact signature on a Mistral key are treated as strong enough
+ * evidence to suspect quota exhaustion. This is deliberately narrower than
+ * `isKeyError()` and is only consulted for `protocol === "mistral"` at the
+ * call site — it must never affect other protocols' legitimate 401s.
+ */
+function looksLikeMistralQuotaSignature(error: unknown): boolean {
+	if (extractHttpStatus(error) !== 401) return false;
+	if (!error || typeof error !== "object") return false;
+	const e = error as Record<string, unknown>;
+	const nested =
+		e.error && typeof e.error === "object" ? (e.error as Record<string, unknown>) : undefined;
+	const response =
+		e.response && typeof e.response === "object" ? (e.response as Record<string, unknown>) : undefined;
+	const messageCandidates = [e.message, nested?.message, response?.message];
+	const msg = messageCandidates
+		.filter((value): value is string => typeof value === "string")
+		.join(" ")
+		.toLowerCase();
+	return msg.includes("unauthorized");
 }
 
 // ─── Provider factory ─────────────────────────────────────────────────────────
@@ -2253,9 +2301,29 @@ export const createKeypoolliveProvider: GatewayProviderFactory = (config) => ({
 				}
 
 				// Key error detected - mark key as failed and rotate
-				markKeyAsFailed(stateKey, resolvedApiKey);
+				const updatedFailureCount = markKeyAsFailed(stateKey, resolvedApiKey);
 				clearVaultCache(vaultCacheKey); // Force vault reload in case it was updated
 				const errorMessage = err instanceof Error ? err.message : String(err);
+
+				// Mistral-only: the 3rd consecutive matching 401 is treated as
+				// suspected quota exhaustion (see looksLikeMistralQuotaSignature).
+				// This is a separate, narrower signal from the generic cooldown
+				// above — it lets the embedder persist a long-lived exclusion
+				// (`quotaResetAt`) instead of retrying every 15 minutes for the
+				// rest of the month.
+				if (
+					resolvedProtocol === "mistral" &&
+					updatedFailureCount === MAX_FAILURE_COUNT &&
+					looksLikeMistralQuotaSignature(err)
+				) {
+					context.keypoolEventHandler?.({
+						type: "quota-exhausted-suspected",
+						providerName,
+						modelId,
+						protocol: resolvedProtocol,
+						keyHint: maskedKey,
+					});
+				}
 				context.logger?.log("KeypoolLive rotating key after provider error", {
 					providerId: "keypoollive",
 					severity: "warn",
