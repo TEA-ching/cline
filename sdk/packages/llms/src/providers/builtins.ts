@@ -22,6 +22,7 @@ import type {
 	ProviderClient,
 	ProviderProtocol,
 } from "../catalog/types";
+import type { BuiltinSpec } from "./builtin-types";
 import {
 	ClineNotSubscribedError,
 	ClineOrgIndividualInferenceSubscriptionError,
@@ -31,10 +32,11 @@ import {
 	isClineOrgIndividualInferenceSubscriptionMessage,
 } from "./errors";
 import { filterOpenAICodexModels } from "./openai-codex-models";
+import { GENERATED_PROVIDER_SPECS } from "./providers.generated";
 import {
 	ANTHROPIC_AND_QWEN_CACHE_ROUTING_METADATA,
 	ANTHROPIC_ROUTING_METADATA,
-	QWEN_CACHE_ROUTING_METADATA,
+	QWEN_CACHE_ROUTADATA,
 } from "./routing/anthropic-compatible";
 import { GLM_THINKING_ROUTING_METADATA } from "./routing/glm-thinking";
 import { MINIMAX_THINKING_ROUTING_METADATA } from "./routing/minimax-thinking";
@@ -63,44 +65,10 @@ const OPENROUTER_STICKY_SESSION_METADATA: GatewayProviderMetadata = {
  */
 export const OLLAMA_DEFAULT_CONTEXT_WINDOW = 32768;
 
-export type ProviderFamily =
-	| "keypoollive"
-	| "openai"
-	| "openai-compatible"
-	| "anthropic"
-	| "google"
-	| "vertex"
-	| "bedrock"
-	| "mistral"
-	| "cohere"
-	| "poolside"
-	| "claude-code"
-	| "openai-codex"
-	| "opencode"
-	| "dify"
-	| "ollama"
-	| "sap-ai-core";
+export type { BuiltinSpec, ProviderFamily } from "./builtin-types";
 
-export interface BuiltinSpec {
-	id: string;
-	name: string;
-	description: string;
-	family: ProviderFamily;
-	protocol?: ProviderProtocol;
-	client?: ProviderClient;
-	capabilities?: ProviderCapability[];
-	popular?: number;
-	modelsProviderId?: string;
-	defaultModelId?: string;
-	modelsFactory?: () => Record<string, ModelInfo>;
-	env?: readonly ("browser" | "node")[];
-	apiKeyEnv?: readonly string[];
-	modelsSourceUrl?: string;
-	docsUrl?: string;
-	defaults?: GatewayProviderSettings;
-	configFields?: readonly ProviderConfigField[];
-	metadata?: GatewayProviderMetadata;
-}
+type BuiltinSpecOverride = Pick<BuiltinSpec, "id"> &
+	Partial<Omit<BuiltinSpec, "id">>;
 
 const API_KEY_FIELD: ProviderConfigField = {
 	path: "apiKey",
@@ -306,6 +274,60 @@ function getProviderMetadata(
 	return metadata;
 }
 
+function mergeDefaults(
+	base: GatewayProviderSettings | undefined,
+	override: GatewayProviderSettings | undefined,
+): GatewayProviderSettings | undefined {
+	if (!override) {
+		return base;
+	}
+	if (!base) {
+		return override;
+	}
+	return {
+		...base,
+		...override,
+	};
+}
+
+function mergeBuiltinSpec(
+	base: BuiltinSpec | undefined,
+	override: BuiltinSpecOverride,
+): BuiltinSpec {
+	const merged = {
+		...base,
+		...override,
+		defaults: mergeDefaults(base?.defaults, override.defaults),
+	};
+
+	if (!merged.name || !merged.description || !merged.family) {
+		throw new Error(
+			`Builtin provider "${override.id}" is missing required provider metadata.`,
+		);
+	}
+
+	return merged as BuiltinSpec;
+}
+
+function mergeBuiltinSpecs(
+	generatedSpecs: readonly BuiltinSpec[],
+	overrides: readonly BuiltinSpecOverride[],
+): BuiltinSpec[] {
+	const generatedById = new Map(
+		generatedSpecs.map((spec) => [spec.id, spec] as const),
+	);
+	const overriddenIds = new Set<string>();
+	const mergedOverrides = overrides.map((override) => {
+		overriddenIds.add(override.id);
+		return mergeBuiltinSpec(generatedById.get(override.id), override);
+	});
+	const generatedOnlySpecs = generatedSpecs.filter(
+		(spec) => !overriddenIds.has(spec.id),
+	);
+
+	return [...mergedOverrides, ...generatedOnlySpecs];
+}
+
 function generatedModels(providerId: string): Record<string, ModelInfo> {
 	return cloneModels(getGeneratedModelsForProvider(providerId));
 }
@@ -344,8 +366,8 @@ function buildClaudeCodeModels(): Record<string, ModelInfo> {
 			id === "opus"
 				? pickAnthropicModel((modelId) => modelId.includes("opus"))
 				: id === "haiku"
-					? pickAnthropicModel((modelId) => modelId.includes("haiku"))
-					: pickAnthropicModel((modelId) => modelId.includes("sonnet"));
+				? pickAnthropicModel((modelId) => modelId.includes("haiku"))
+				: pickAnthropicModel((modelId) => modelId.includes("sonnet"));
 		return {
 			...source,
 			id,
@@ -598,7 +620,12 @@ const clinePass = createClineLikeSpec({
 	},
 });
 
-const OPENAI_COMPATIBLE_SPECS: BuiltinSpec[] = [
+/**
+ * Handwritten providers plus generated providers that require Cline-specific
+ * runtime or product policy. Providers fully described by models.dev must not
+ * be duplicated here.
+ */
+const OPENAI_COMPATIBLE_SPEC_OVERRIDES: BuiltinSpecOverride[] = [
 	{
 		id: "openai-compatible",
 		name: "OpenAI Compatible",
@@ -644,15 +671,6 @@ const OPENAI_COMPATIBLE_SPECS: BuiltinSpec[] = [
 		defaults: { baseUrl: "https://api.together.xyz/v1" },
 	},
 	{
-		id: "fireworks",
-		name: "Fireworks AI",
-		description: "High-performance inference platform",
-		family: "openai-compatible",
-		defaultModelId: "accounts/fireworks/models/kimi-k2p6",
-		apiKeyEnv: ["FIREWORKS_API_KEY"],
-		defaults: { baseUrl: "https://api.fireworks.ai/inference/v1" },
-	},
-	{
 		id: "groq",
 		name: "Groq",
 		description: "Ultra-fast LPU inference",
@@ -680,35 +698,6 @@ const OPENAI_COMPATIBLE_SPECS: BuiltinSpec[] = [
 		defaults: { baseUrl: "https://api.sambanova.ai/v1" },
 	},
 	{
-		id: "nebius",
-		name: "Nebius",
-		description: "European cloud AI infrastructure",
-		family: "openai-compatible",
-		defaultModelId: "nvidia/nemotron-3-super-120b-a12b",
-		apiKeyEnv: ["NEBIUS_API_KEY"],
-		defaults: { baseUrl: "https://api.studio.nebius.ai/v1" },
-	},
-	{
-		id: "baseten",
-		name: "Baseten",
-		description: "ML inference platform",
-		family: "openai-compatible",
-		apiKeyEnv: ["BASETEN_API_KEY"],
-		modelsProviderId: "baseten",
-		defaults: { baseUrl: "https://model-api.baseten.co/v1" },
-	},
-	{
-		id: "requesty",
-		name: "Requesty",
-		description: "AI router with multiple provider support",
-		family: "openai-compatible",
-		capabilities: ["reasoning"],
-		defaultModelId: "openai/gpt-5.4",
-		apiKeyEnv: ["REQUESTY_API_KEY"],
-		modelsProviderId: "requesty",
-		defaults: { baseUrl: "https://router.requesty.ai/v1" },
-	},
-	{
 		id: "litellm",
 		name: "LiteLLM",
 		description: "Self-hosted LLM proxy",
@@ -719,16 +708,6 @@ const OPENAI_COMPATIBLE_SPECS: BuiltinSpec[] = [
 		defaultModelId: "gpt-5.4",
 		apiKeyEnv: ["LITELLM_API_KEY"],
 		defaults: { baseUrl: "http://localhost:4000/v1" },
-	},
-	{
-		id: "huggingface",
-		name: "Hugging Face",
-		description: "Hugging Face inference API",
-		family: "openai-compatible",
-		defaultModelId: "MiniMaxAI/MiniMax-M2.5",
-		apiKeyEnv: ["HF_TOKEN"],
-		modelsProviderId: "huggingface",
-		defaults: { baseUrl: "https://router.huggingface.co/v1" },
 	},
 	{
 		id: "vercel-ai-gateway",
@@ -856,51 +835,6 @@ const OPENAI_COMPATIBLE_SPECS: BuiltinSpec[] = [
 		metadata: GLM_THINKING_ROUTING_METADATA,
 	},
 	{
-		id: "moonshot",
-		name: "Moonshot",
-		description: "Moonshot AI Studio models",
-		family: "openai-compatible",
-		capabilities: ["tools", "reasoning"],
-		defaultModelId: "kimi-k2-0905-preview",
-		apiKeyEnv: ["MOONSHOT_API_KEY"],
-		modelsProviderId: "moonshot",
-		defaults: { baseUrl: "https://api.moonshot.ai/v1" },
-	},
-	{
-		id: "wandb",
-		name: "W&B by CoreWeave",
-		description: "Weights & Biases",
-		family: "openai-compatible",
-		capabilities: ["reasoning", "prompt-cache", "tools"],
-		defaultModelId: "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8",
-		apiKeyEnv: ["WANDB_API_KEY"],
-		modelsProviderId: "wandb",
-		defaults: { baseUrl: "https://api.inference.wandb.ai/v1" },
-	},
-	{
-		id: "xiaomi",
-		name: "Xiaomi",
-		description: "Xiaomi",
-		family: "openai-compatible",
-		capabilities: ["prompt-cache", "tools", "reasoning"],
-		defaultModelId: "mimo-v2.5",
-		apiKeyEnv: ["XIAOMI_API_KEY"],
-		modelsProviderId: "xiaomi",
-		defaults: { baseUrl: "https://api.xiaomimimo.com/v1" },
-	},
-	{
-		id: "tencent-tokenhub",
-		name: "Tencent TokenHub",
-		description: "Tencent TokenHub AI models",
-		family: "openai-compatible",
-		capabilities: ["tools", "reasoning"],
-		defaultModelId: "hy3-preview",
-		apiKeyEnv: ["TENCENT_TOKENHUB_API_KEY"],
-		modelsProviderId: "tencent-tokenhub",
-		docsUrl: "https://cloud.tencent.com/document/product/1823/130050",
-		defaults: { baseUrl: "https://tokenhub.tencentmaas.com/v1" },
-	},
-	{
 		id: "kilo",
 		name: "Kilo Gateway",
 		description: "Kilo Gateway",
@@ -941,6 +875,9 @@ const OPENAI_COMPATIBLE_SPECS: BuiltinSpec[] = [
 		capabilities: ["tools"],
 		defaultModelId: "",
 		apiKeyEnv: ["OLLAMA_API_KEY"],
+		// Local Ollama models are discovered dynamically; do not inherit the
+		// generated Ollama Cloud catalog when merging the models.dev spec.
+		modelsFactory: () => ({}),
 		defaults: { baseUrl: "http://localhost:11434" },
 		modelsSourceUrl: "http://localhost:11434/api/tags",
 	},
@@ -1005,7 +942,11 @@ const OPENAI_COMPATIBLE_SPECS: BuiltinSpec[] = [
 	},
 ];
 
-export const BUILTIN_SPECS: BuiltinSpec[] = [
+/**
+ * Non-OpenAI-compatible runtime/product overrides. Keep generated catalog facts
+ * in providers.generated.ts and only retain Cline-owned behavior here.
+ */
+const BUILTIN_SPEC_OVERRIDES: BuiltinSpecOverride[] = [
 	{
 		id: "openai-native",
 		name: "OpenAI",
@@ -1037,7 +978,7 @@ export const BUILTIN_SPECS: BuiltinSpec[] = [
 		description: "OpenAI Codex via the local Codex CLI provider",
 		family: "openai-codex",
 		capabilities: ["reasoning", "provider-tools", "local-auth"],
-		defaultModelId: "gpt-5.3-codex",
+		defaultModelId: "gpt-5.6-sol",
 		modelsProviderId: "openai",
 		defaults: { baseUrl: "https://chatgpt.com/backend-api/codex" },
 		configFields: [],
@@ -1050,7 +991,7 @@ export const BUILTIN_SPECS: BuiltinSpec[] = [
 		family: "anthropic",
 		popular: 15,
 		capabilities: ["reasoning", "prompt-cache"],
-		defaultModelId: "claude-sonnet-4-6",
+		defaultModelId: "claude-sonnet-5",
 		apiKeyEnv: ["ANTHROPIC_API_KEY"],
 		modelsProviderId: "anthropic",
 		defaults: { baseUrl: "https://api.anthropic.com/v1" },
@@ -1074,7 +1015,6 @@ export const BUILTIN_SPECS: BuiltinSpec[] = [
 		family: "google",
 		popular: 45,
 		capabilities: ["reasoning", "prompt-cache"],
-		defaultModelId: "gemma-4-26b",
 		apiKeyEnv: ["GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY"],
 		modelsProviderId: "gemini",
 		defaults: { baseUrl: "https://generativelanguage.googleapis.com/v1beta" },
@@ -1119,13 +1059,7 @@ export const BUILTIN_SPECS: BuiltinSpec[] = [
 	},
 	{
 		id: "mistral",
-		name: "Mistral",
-		description: "Mistral AI models via AI SDK provider",
-		family: "mistral",
-		capabilities: ["reasoning"],
-		defaultModelId: "mistral-medium-latest",
-		apiKeyEnv: ["MISTRAL_API_KEY"],
-		modelsFactory: () => ({}),
+		// models.dev does not currently publish Mistral's API base URL.
 		defaults: { baseUrl: "https://api.mistral.ai/v1" },
 	},
 	{
@@ -1229,7 +1163,7 @@ export const BUILTIN_SPECS: BuiltinSpec[] = [
 		description: "OpenCode SDK multi-provider runtime",
 		family: "opencode",
 		capabilities: ["reasoning", "oauth"],
-		defaultModelId: "openai/gpt-5.4",
+		defaultModelId: "openai/gpt-5.6-sol",
 		modelsProviderId: "opencode",
 		defaults: { baseUrl: "" },
 		configFields: [],
@@ -1243,8 +1177,25 @@ export const BUILTIN_SPECS: BuiltinSpec[] = [
 		apiKeyEnv: ["DIFY_API_KEY"],
 		modelsFactory: () => ({}),
 	},
-	...OPENAI_COMPATIBLE_SPECS,
+	{
+		id: "sapaicore",
+		name: "SAP AI Core",
+		description: "SAP AI Core inference and orchestration platform",
+		family: "sap-ai-core",
+		client: "ai-sdk-community",
+		capabilities: ["tools", "reasoning", "prompt-cache"],
+		defaultModelId: "anthropic--claude-3.5-sonnet",
+		apiKeyEnv: ["AICORE_SERVICE_KEY", "VCAP_SERVICES"],
+		modelsProviderId: "sapaicore",
+		metadata: ANTHROPIC_ROUTING_METADATA,
+	},
+	...OPENAI_COMPATIBLE_SPEC_OVERRIDES,
 ];
+
+export const BUILTIN_SPECS: BuiltinSpec[] = mergeBuiltinSpecs(
+	GENERATED_PROVIDER_SPECS,
+	BUILTIN_SPEC_OVERRIDES,
+);
 
 function getModels(spec: BuiltinSpec): Record<string, ModelInfo> {
 	if (spec.modelsFactory) {
@@ -1260,14 +1211,17 @@ function toModelCollection(spec: BuiltinSpec): ModelCollection {
 	const sourceModels = getModels(spec);
 	const capabilities = getProviderCapabilities(spec);
 	const metadata = getProviderMetadata(spec);
-	const models =
+	const models: Record<string, ModelInfo> =
 		Object.keys(sourceModels).length > 0
-			? sourceModels
+			? { ...sourceModels }
 			: spec.defaultModelId
 				? {
 					[spec.defaultModelId]: fallbackModelInfo(spec.defaultModelId, spec),
 				}
 				: {};
+	if (spec.defaultModelId && !models[spec.defaultModelId]) {
+		models[spec.defaultModelId] = fallbackModelInfo(spec.defaultModelId, spec);
+	}
 	const modelIds = Object.keys(models);
 	const defaultModelId = spec.defaultModelId || modelIds[0] || "default";
 
