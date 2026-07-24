@@ -36,7 +36,7 @@ jobs:
       # and for git tag names (colons are not allowed in refs).
       datetime_safe: ${{ steps.meta.outputs.datetime_safe }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Compute version and datetime
         id: meta
@@ -102,7 +102,7 @@ jobs:
         working-directory: apps/vscode
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           lfs: true
 
@@ -112,7 +112,7 @@ jobs:
           bun-version: "1.3.14"
 
       - name: Setup Node.js 22
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           # Keep aligned with the nightly publish workflow.
           # Node 24 / npm 11 can cause ELSPROBLEMS with `npm list` during vsce packaging.
@@ -146,7 +146,7 @@ jobs:
           bun install
           # avoid conflicts
           rm -rf apps/web
-          rm -rf apps/cline-hub
+          # rm -rf apps/cline-hub
           rm -rf apps/clinepool-download
           rm -rf apps/examples
         shell: bash
@@ -219,7 +219,7 @@ jobs:
       # - name: Install deps
       #   run: sudo apt-get update && sudo apt-get install -y libglib2.0-dev 
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Must run before ANY install/build step in this job. apps/cline-hub is an
       # upstream extra this fork doesn't use, and its webview does not build here.
@@ -235,14 +235,14 @@ jobs:
       # "No packages matched the filter" when the name matches but the requested
       # script doesn't exist on it, which is what caused prior CI failures here
       # (see run reports 2026-07-09).
-      - name: Remove cline-hub and create a fake cline-hub empty package.json to avoid workspace errors and unbuildable webview
-        run: |
-          rm -rf apps/cline-hub
-          mkdir -p apps/cline-hub/dist/webview apps/cline-hub/src/webview
-          echo "console.log('This is a placeholder package for @cline/cline-hub.');" > apps/cline-hub/index.js
-          echo '{ "name": "@cline/cline-hub", "version": "0.0.0-preview", "private": true, "main": "index.js", "scripts": {"build": "echo Building && exit 0", "build:webview": "echo Building webview && exit 0"} }' > apps/cline-hub/package.json
-          echo '{ "name": "@cline/cline-hub-webview", "version": "0.0.0-preview", "private": true, "main": "index.js", "scripts": {"build": "echo Building && exit 0", "build:webview": "echo Building webview && exit 0"} }' > apps/cline-hub/src/webview/package.json
-          echo '<!doctype html><title>cline-hub webview disabled (unused in this fork)</title>' > apps/cline-hub/dist/webview/index.html
+      # - name: Remove cline-hub and create a fake cline-hub empty package.json to avoid workspace errors and unbuildable webview
+      #   run: |
+      #     rm -rf apps/cline-hub
+      #     mkdir -p apps/cline-hub/dist/webview apps/cline-hub/src/webview
+      #     echo "console.log('This is a placeholder package for @cline/cline-hub.');" > apps/cline-hub/index.js
+      #     echo '{ "name": "@cline/cline-hub", "version": "0.0.0-preview", "private": true, "main": "index.js", "scripts": {"build": "echo Building && exit 0", "build:webview": "echo Building webview && exit 0"} }' > apps/cline-hub/package.json
+      #     echo '{ "name": "@cline/cline-hub-webview", "version": "0.0.0-preview", "private": true, "main": "index.js", "scripts": {"build": "echo Building && exit 0", "build:webview": "echo Building webview && exit 0"} }' > apps/cline-hub/src/webview/package.json
+      #     echo '<!doctype html><title>cline-hub webview disabled (unused in this fork)</title>' > apps/cline-hub/dist/webview/index.html
 
       - name: Create fake gitleaks in /usr/bin to prevent build failures if gitleaks is not installed on the runner.
         run: |
@@ -260,7 +260,7 @@ jobs:
           bun-version: "1.3.14"
 
       - name: Setup Node.js 24
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "24.x"
           registry-url: "https://registry.npmjs.org"
@@ -548,7 +548,7 @@ jobs:
       attestations: write
       packages: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         # with:
         #   submodules: recursive
 
@@ -696,7 +696,7 @@ jobs:
             
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         # with:
         #   submodules: recursive
 
@@ -764,7 +764,7 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
