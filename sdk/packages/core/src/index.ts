@@ -448,6 +448,7 @@ export type {
 	SendSessionInput,
 	SessionAccumulatedUsage,
 	SessionUsageSummary,
+	StartSessionConfig,
 	StartSessionInput,
 	StartSessionResult,
 } from "./runtime/host/runtime-host";
@@ -941,6 +942,7 @@ export type { RuntimeEnvironment } from "./types";
 export type { SessionStatus } from "./types/common";
 export { SESSION_STATUSES, SessionSource } from "./types/common";
 export type {
+	ClineCoreStartConfig,
 	CoreAgentMode,
 	CoreCheckpointConfig,
 	CoreCheckpointContext,
