@@ -328,6 +328,7 @@ jobs:
           bun run build:sdk
           bun run build:models
           bun run build:sdk
+          pushd apps/cline-hub && bun run build:webview && popd
           cd apps/cli
           bun run build
           bun run build:platforms
