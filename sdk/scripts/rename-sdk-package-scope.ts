@@ -30,6 +30,8 @@ const sdkDir: string = path.join(root, 'sdk')
 const docsDir: string = path.join(root, 'docs')
 const agentsDir: string = path.join(root, '.agents')
 const chatbotDir: string = path.join(root, 'apps', 'chatbot')
+const cliDir: string = path.join(root, 'apps', 'cli')
+const clineHubDir: string = path.join(root, 'apps', 'cline-hub')
 const ignoredDirs: Set<string> = new Set([
   'node_modules',
   '.git',
@@ -230,7 +232,7 @@ void (async (): Promise<void> => {
       ...(fs.existsSync(appsCliDir) ? findFilesByExtension(appsCliDir, 'README.md') : []),
       ...(fs.existsSync(appsClineHubDir) ? findFilesByExtension(appsClineHubDir, 'README.md') : []),
       ...(fs.existsSync(appsExamplesDir) ? findFilesByExtension(appsExamplesDir, 'README.md') : []),
-      ...(fs.existsSync(chatbotDir) ? findFilesByExtension(chatbotDir, 'README.md') : [])
+      ...(fs.existsSync(chatbotDir) ? findFilesByExtension(chatbotDir, 'README.md') : []),
     ]
 
     for (const readmePath of readmeFiles) {
@@ -256,7 +258,9 @@ void (async (): Promise<void> => {
       ...(fs.existsSync(appsCliDir) ? findAllFiles(appsCliDir) : []),
       ...(fs.existsSync(appsClineHubDir) ? findAllFiles(appsClineHubDir) : []),
       ...(fs.existsSync(appsExamplesDir) ? findAllFiles(appsExamplesDir) : []),
-      ...(fs.existsSync(chatbotDir) ? findAllFiles(chatbotDir) : [])
+      ...(fs.existsSync(chatbotDir) ? findAllFiles(chatbotDir) : []),
+      ...(fs.existsSync(cliDir) ? findAllFiles(cliDir) : []),
+      ...(fs.existsSync(clineHubDir) ? findAllFiles(clineHubDir) : []),
     ]
 
     for (const filePath of allFiles) {
