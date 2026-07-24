@@ -25,8 +25,6 @@ import type {
     CommonApiHandlerOptions,
 } from "./ai-sdk-handler";
 import { createHandler } from "@cline/llms";
-import { CohereHandler } from "./cohere";
-import { PoolsideHandler } from "./poolside";
 
 /**
  * Maps an AiProtocol to the correct Cloudflare AI Gateway provider slug.
@@ -224,17 +222,34 @@ export class KeypoolLiveHandler {
 
 		switch (protocol) {
 			case "cohere":
-				return new CohereHandler({
-					cohereBaseUrl: baseUrl,
-					cohereApiKey: apiKey,
-					apiModelId: model.id,
-				});
+				// Route through the SDK gateway (sdk/packages/llms/src/providers/vendors/cohere.ts),
+				// same as the cases below — see the "poolside" case for why: the old
+				// hand-rolled CohereHandler validated model.id against a hardcoded
+				// allowlist and silently substituted a stale default model for any
+				// model not in that allowlist.
+				return createHandler({
+					providerId: "cohere",
+					modelId: model.id,
+					apiKey,
+					baseUrl,
+					fetch,
+					onRetryAttempt: this.options.onRetryAttempt,
+				} as Parameters<typeof createHandler>[0]) as unknown as ApiHandler;
 			case "poolside":
-				return new PoolsideHandler({
-					poolsideApiKey: apiKey,
-					poolsideBaseUrl: baseUrl,
-					apiModelId: model.id,
-				});
+				// Route through the SDK gateway (sdk/packages/llms/src/providers/vendors/poolside.ts),
+				// same as the cases below — it is the only place that knows about
+				// Poolside's current model catalog and /v1/responses quirks. The old
+				// hand-rolled PoolsideHandler (Chat Completions API, a hardcoded
+				// 2-model allowlist) silently substituted a stale default model for
+				// any model not in that allowlist.
+				return createHandler({
+					providerId: "poolside",
+					modelId: model.id,
+					apiKey,
+					baseUrl,
+					fetch,
+					onRetryAttempt: this.options.onRetryAttempt,
+				} as Parameters<typeof createHandler>[0]) as unknown as ApiHandler;
 			case "anthropic":
 				return createHandler({
 					providerId: "anthropic",
