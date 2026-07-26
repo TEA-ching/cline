@@ -128,7 +128,10 @@ describe("provider-ids", () => {
 
 	it("registers Poolside as an OpenAI-compatible built-in provider", async () => {
 		expect(BUILT_IN_PROVIDER_IDS).toContain("poolside");
-		const defaultModelId = generatedProviderDefault("poolside");
+		// The fork overrides Poolside's defaultModelId by hand in builtins.ts
+		// (see customizations.yaml id "poolside-provider"), so it's expected
+		// to differ from the generated catalog's default.
+		const defaultModelId = "poolside/laguna-m.1";
 
 		await expect(getProvider("poolside")).resolves.toMatchObject({
 			id: "poolside",

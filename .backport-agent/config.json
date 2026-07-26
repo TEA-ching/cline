@@ -43,10 +43,10 @@
         "_comment_fast": "Orchestrateur de la boucle d'outils (262k ctx, 18 clés mistral). A fait ses preuves sur les runs réels.",
         "specialist": "mistral/devstral-latest",
         "_comment_specialist": "Résolution de conflits (1er essai). mistral-vibe-cli-latest échouait 2/3 en sortie JSON sur les conflits réels (runs du 06-07/07) avec repli destructif take-upstream. mistral-medium-3-5 : modèle le plus capable accessible (SWE-Bench Verified 77.6%, tau3-Telecom 91.4%), 262k ctx, 18 clés.",
-        "powerful": "cohere/command-a-reasoning-08-2025",
+        "powerful": "poolside/poolside/laguna-s-2.1",
         "_comment_powerful": "Fallback de résolution + second avis du consensus. Vendeur différent du specialist (mistral) → le consensus inter-vendeurs détecte réellement les résolutions douteuses. Remplace openai/gpt-5-5 (2026-07-16) : échouait systématiquement (réponse vide, 0ms, 'Unexpected end of JSON input') sur analyze_commit_for_backport et check_customization_compatibility dans les runs du 07-15, tout en étant facturé cher côté utilisateur. Cohere est gratuit pour l'utilisateur ; command-a-reasoning-08-2025 est le modèle 'reasoning' dédié du catalogue Cohere du fork.",
-        "summarizer": "gemini/gemini-3-flash-preview",
-        "_comment_summarizer": "Compaction de contexte (1M ctx, 21 clés gemini)."
+        "summarizer": "poolside/poolside/laguna-s-2.1",
+        "_comment_summarizer": "Compaction de contexte (1M ctx, 24 clés)."
     },
     "ai": {
         "_comment": "Garde-fous IA. Depuis backport-agent 0.8.0, minAutoApplyConfidence est appliqué en code (host gate dans apply_resolved_file), plus seulement dans le prompt.",

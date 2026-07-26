@@ -59,6 +59,9 @@ customizations:
       - "apps/vscode/webview-ui/src/components/settings/utils/providerUtils.ts"
       - "apps/vscode/webview-ui/src/components/settings/ApiOptions.tsx"
       - "apps/vscode/webview-ui/src/components/settings/providers/providerSettingsRegistry.ts"
+      - "sdk/packages/llms/src/providers/builtins.ts"
+      - "sdk/packages/llms/src/providers/builtin-types.ts"
+      - "sdk/packages/llms/src/providers/ids.ts"
     invariants:
       - "L'id de fournisseur 'cohere' doit rester dans l'union ApiProvider de shared/api.ts."
       - "'cohere' doit rester dans CUSTOM_PROVIDER_SETTINGS_IDS de providerSettingsRegistry.ts — son absence fait que isCustomProvider redevient vrai et ApiOptions.tsx affiche CohereProvider ET le formulaire générique OpenAICompatible en double."
@@ -68,6 +71,7 @@ customizations:
       - "PROVIDER_API_KEY_MAP dans cline-session-factory.ts doit contenir l'entrée 'cohere: \"cohereApiKey\"'."
       - "Le wrapper fetch pour la correction des tokens doit rester fonctionnel dans le vendor SDK."
       - "Le variant de prompt native-cohere doit rester enregistré."
+      - "'cohere' doit rester dans l'union ProviderFamily de builtin-types.ts ET dans BUILT_IN_PROVIDER (ids.ts) — les deux registres sont indépendants, l'absence dans l'un casse la compilation du SDK sans que l'autre le détecte (incident du 2026-07-26, voir backport-agent/evolutions.md)."
     tests:
       - "bun run test:invariants"
       - "bun run test:mine"
@@ -100,11 +104,14 @@ customizations:
       - "apps/vscode/src/shared/storage/state-keys.ts"
       - "apps/vscode/src/sdk/cline-session-factory.ts"
       - "sdk/packages/llms/src/providers/builtins.ts"
+      - "sdk/packages/llms/src/providers/builtin-types.ts"
+      - "sdk/packages/llms/src/providers/ids.ts"
       - "apps/vscode/webview-ui/src/components/settings/utils/providerUtils.ts"
       - "apps/vscode/webview-ui/src/components/settings/ApiOptions.tsx"
       - "apps/vscode/webview-ui/src/components/settings/providers/providerSettingsRegistry.ts"
     invariants:
       - "'poolside' doit rester dans CUSTOM_PROVIDER_SETTINGS_IDS de providerSettingsRegistry.ts, et absent de GENERIC_PROVIDER_PRESENTATION_OVERRIDES / FALLBACK_GENERIC_PROVIDER_NAMES — sinon genericProviderSettings redevient vrai et ApiOptions.tsx affiche PoolsideProvider ET GenericProviderSettings en double."
+      - "'poolside' doit rester dans l'union ProviderFamily de builtin-types.ts ET dans BUILT_IN_PROVIDER (ids.ts). Le test builtins.test.ts \"uses generated specs directly when no runtime override is required\" doit continuer d'EXCLURE 'poolside' (son defaultModelId 'poolside/laguna-m.1' diverge intentionnellement du catalogue généré)."
       - "L'id de fournisseur 'poolside' doit rester dans l'union ApiProvider de shared/api.ts."
       - "Le champ proto poolside_api_key doit rester dans models.proto avec son numéro stable (43)."
       - "convertApiProviderToProto() et convertProtoToApiProvider() doivent rester symétriques pour 'poolside'."
@@ -164,6 +171,7 @@ customizations:
       - "sdk/packages/llms/src/providers/ids.ts"
       - "sdk/packages/llms/src/providers/builtins.ts"
       - "sdk/packages/llms/src/providers/builtins-runtime.ts"
+      - "sdk/packages/llms/src/providers/builtin-types.ts"
       - "sdk/packages/core/src/integration/keypoollive-tools.live.test.ts"
       - "sdk/packages/core/src/integration/keypoollive-vault.live.test.ts"
     related_files:
@@ -194,6 +202,7 @@ customizations:
       - "KeypoolUsageDb doit persister dans le globalStorageFsPath de l'extension, pas en mémoire."
       - "keypoolEventHandler doit être câblé dans vscode-session-host.ts pour les événements key-rotated et key-exhausted."
       - "buildProviderConfig (local-runtime-bootstrap.ts) doit appeler buildKeyPoolLiveHeader() pour providerId === 'keypoollive' AVANT de retomber sur resolveProviderRequestHeaders() (@cline/llms) — ce dernier ne connaît pas keypoollive et perdrait l'injection User-Agent + l'événement keypoolEventHandler 'user-agent-set'."
+      - "'keypoollive' doit rester dans l'union ProviderFamily de builtin-types.ts ET dans BUILT_IN_PROVIDER (ids.ts) — les deux registres sont indépendants (incident du 2026-07-26, voir backport-agent/evolutions.md : les trois fournisseurs du fork avaient disparu de builtin-types.ts et 'cohere' de ids.ts après le backport du refactor #12204, cassant bun run build:sdk sans qu'aucun invariant existant ne le détecte)."
     tests:
       - "bun run test:invariants"
       - "bun run test:mine"

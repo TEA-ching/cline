@@ -18,10 +18,13 @@ export type ProviderFamily =
 	| "vertex"
 	| "bedrock"
 	| "mistral"
+	| "cohere"
+	| "poolside"
 	| "claude-code"
 	| "openai-codex"
 	| "opencode"
 	| "dify"
+	| "keypoollive"
 	| "ollama"
 	| "sap-ai-core";
 

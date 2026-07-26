@@ -76,6 +76,19 @@ check_grep "poolside default URL in builtins"       "inference.poolside.ai" sdk/
 check_grep "poolside/ model-id prefix in builtins"  "poolside/laguna"       sdk/packages/llms/src/providers/builtins.ts
 check_grep "poolside vendor re-adds poolside/ prefix" "startsWith"          sdk/packages/llms/src/providers/vendors/poolside.ts
 
+# ProviderFamily (builtin-types.ts) and BUILT_IN_PROVIDER (ids.ts) are two
+# separate places a provider must be registered; upstream's "auto generate
+# built-in provider list" refactor (#12204) silently dropped all three fork
+# providers from one and "cohere" from the other during a backport, breaking
+# `bun run build:sdk` with zero invariant failures (none of these checks
+# existed yet) — see backport-agent/evolutions.md 2026-07-26 for the incident.
+check_grep "cohere in ProviderFamily union"      '"cohere"'      sdk/packages/llms/src/providers/builtin-types.ts
+check_grep "poolside in ProviderFamily union"    '"poolside"'    sdk/packages/llms/src/providers/builtin-types.ts
+check_grep "keypoollive in ProviderFamily union" '"keypoollive"' sdk/packages/llms/src/providers/builtin-types.ts
+check_grep "COHERE in BUILT_IN_PROVIDER enum"      'COHERE = "cohere"'           sdk/packages/llms/src/providers/ids.ts
+check_grep "POOLSIDE in BUILT_IN_PROVIDER enum"    'POOLSIDE = "poolside"'       sdk/packages/llms/src/providers/ids.ts
+check_grep "KEYPOOLLIVE in BUILT_IN_PROVIDER enum" 'KEYPOOLLIVE = "keypoollive"' sdk/packages/llms/src/providers/ids.ts
+
 check_grep "MAX_KEY_ATTEMPTS is dynamic (vault size)" "_poolKeys.length" sdk/packages/llms/src/providers/vendors/keypoollive.ts
 check_absent "MAX_KEY_ATTEMPTS not hardcoded const"   "const MAX_KEY_ATTEMPTS = 5" sdk/packages/llms/src/providers/vendors/keypoollive.ts
 check_grep "vendor normalizes supportsImages from inputModalities" "inputModalities" sdk/packages/llms/src/providers/vendors/keypoollive.ts

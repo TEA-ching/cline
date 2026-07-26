@@ -135,9 +135,12 @@ describe("built-in provider metadata", () => {
 	});
 
 	it("uses generated specs directly when no runtime override is required", () => {
+		// Poolside is intentionally excluded here: the fork overrides its
+		// defaultModelId/model catalog by hand in builtins.ts (see
+		// customizations.yaml id "poolside-provider"), so its BUILTIN_SPECS
+		// entry is expected to differ from the generated one.
 		const generatedOnlyProviderIds = [
 			"fireworks",
-			"poolside",
 			"nebius",
 			"baseten",
 			"requesty",
