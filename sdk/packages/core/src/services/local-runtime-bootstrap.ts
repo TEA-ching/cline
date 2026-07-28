@@ -37,6 +37,7 @@ import type { RuntimeCapabilities } from "../runtime/capabilities";
 import { normalizeRuntimeCapabilities } from "../runtime/capabilities";
 import type {
     LocalRuntimeStartOptions,
+    ResolvedStartSessionInput,
     StartSessionInput,
 } from "../runtime/host/runtime-host";
 import type { RuntimeBuilderInput } from "../runtime/orchestration/session-runtime";
@@ -250,7 +251,7 @@ export function buildProviderConfig(
 }
 
 export interface PrepareLocalRuntimeBootstrapOptions {
-	input: StartSessionInput;
+	input: ResolvedStartSessionInput;
 	localRuntime?: LocalRuntimeStartOptions;
 	sessionId: string;
 	providerSettingsManager: ProviderSettingsManager;
@@ -285,7 +286,7 @@ export interface PrepareLocalRuntimeBootstrapOptions {
 }
 
 export interface LocalRuntimeBootstrap {
-	effectiveInput: StartSessionInput;
+	effectiveInput: ResolvedStartSessionInput;
 	config: CoreSessionConfig;
 	providerConfig: ProviderConfig;
 	workspaceMetadata: string;
