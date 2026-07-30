@@ -146,6 +146,65 @@ if (shouldBuildHubWebview()) {
 
 const binaries: Record<string, string> = {};
 
+/**
+ * Specifiers under the "react" package whose resolution must be pinned to a
+ * single canonical file across the whole compiled bundle.
+ */
+const REACT_DEDUPE_SPECIFIERS = [
+	"react",
+	"react/jsx-runtime",
+	"react/jsx-dev-runtime",
+	"react/compiler-runtime",
+];
+
+/**
+ * Resolves each entry in `REACT_DEDUPE_SPECIFIERS` to its one real file, as
+ * seen from `cliDir`. Missing optional subpaths are skipped.
+ */
+function resolveReactCanonicalPaths(): Map<string, string> {
+	const paths = new Map<string, string>();
+	for (const specifier of REACT_DEDUPE_SPECIFIERS) {
+		try {
+			paths.set(specifier, Bun.resolveSync(specifier, cliDir));
+		} catch {
+			// Optional subpath not present in this react version — skip it.
+		}
+	}
+	return paths;
+}
+
+/**
+ * Bun.build plugin that forces every resolution of a "react" specifier to
+ * the same canonical path, regardless of which package's own nested
+ * node_modules symlink chain reached it.
+ *
+ * Under Bun's (default) isolated linker, `react-reconciler` resolves "react"
+ * through its own nested `node_modules/react` symlink, which points to the
+ * exact same file as the app's own `node_modules/react` symlink — both
+ * `realpath` identically. Bun's bundler correctly dedupes this in a normal
+ * (non-production) bundle, but under `--production` — which `compile` always
+ * implies — it fails to recognize the two resolution paths as the same
+ * module, bundling React twice. `react-reconciler` renders through one copy
+ * (setting its dispatcher), while every component calls hooks through the
+ * other copy, whose dispatcher is never set, crashing interactive
+ * (OpenTUI) mode with "null is not an object (evaluating '...useState')".
+ * Pinning resolution to one literal path side-steps the bug without
+ * changing the project's install layout.
+ */
+function createReactDedupePlugin(canonicalPaths: Map<string, string>): Bun.BunPlugin {
+	return {
+		name: "dedupe-react",
+		setup(build) {
+			for (const [specifier, path] of canonicalPaths) {
+				const filter = new RegExp(`^${specifier.replace(/\//g, "\\/")}$`);
+				build.onResolve({ filter }, () => ({ path }));
+			}
+		},
+	};
+}
+
+const reactCanonicalPaths = resolveReactCanonicalPaths();
+
 function getBunTarget(
 	item: (typeof allTargets)[number],
 ): Bun.Build.CompileTarget {
