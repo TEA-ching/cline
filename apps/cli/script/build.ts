@@ -228,13 +228,17 @@ async function buildCompiledBinary(input: {
 	mkdirSync(tmpDir, { recursive: true });
 
 	process.chdir("/tmp");
-	// Single entrypoint: the tree-sitter parser worker is no longer a second
-	// `compile` entrypoint (which required `splitting: true`). Splitting a
-	// multi-entrypoint compile bundled a duplicate copy of React/the OpenTUI
-	// reconciler across chunks, crashing interactive mode with "null is not
-	// an object (evaluating '...useState')". The worker file is embedded
-	// instead via a `with { type: "file" }` import in src/index.ts, which
-	// sets OTUI_TREE_SITTER_WORKER_PATH at runtime — see that import site.
+	// Single entrypoint: the tree-sitter parser worker is embedded via a
+	// `with { type: "file" }` import in src/index.ts instead of a second
+	// `compile` entrypoint, which set OTUI_TREE_SITTER_WORKER_PATH at
+	// runtime — see that import site.
+	//
+	// `plugins: [createReactDedupePlugin(...)]` pins every "react" specifier
+	// resolution to one canonical path — see that function's docstring for
+	// why: without it, react-reconciler's resolution of "react" bundles as a
+	// second, independent copy of React under --production, crashing
+	// interactive (OpenTUI) mode with "null is not an object (evaluating
+	// '...useState')".
 	const result = await Bun.build({
 		entrypoints: [entrypoint],
 		compile: {
@@ -243,6 +247,7 @@ async function buildCompiledBinary(input: {
 		},
 		minify: true,
 		external: ["@anthropic-ai/vertex-sdk"],
+		plugins: [createReactDedupePlugin(reactCanonicalPaths)],
 		define: {
 			// Inline telemetry/OTEL env vars at build time so the compiled
 			// binary ships with production telemetry configuration baked in.
