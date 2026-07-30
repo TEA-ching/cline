@@ -18,13 +18,8 @@ import { writeErr } from "./utils/output";
 initVcr(process.env.CLINE_VCR);
 
 // Tell @opentui/core's TreeSitterClient where to find its parser worker via a
-// real file-asset import instead of a second `Bun.build` entrypoint. The
-// previous approach (parser.worker.js as a second compile entrypoint,
-// requiring `splitting: true`) let the compiled binary bundle a duplicate
-// copy of React/the OpenTUI reconciler across the resulting chunks, crashing
-// interactive mode with "null is not an object (evaluating '...useState')".
-// `with { type: "file" }` embeds the (already self-contained) worker file as
-// a plain asset in the compiled executable without touching the module graph.
+// real file-asset import instead of a second `Bun.build` entrypoint. This
+// keeps the compile step single-entrypoint (no `splitting: true` needed).
 process.env.OTUI_TREE_SITTER_WORKER_PATH ??= parserWorkerPath;
 
 if (!isMainThread) {

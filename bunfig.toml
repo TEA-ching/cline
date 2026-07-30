@@ -1,0 +1,14 @@
+[install]
+# Isolated linking (Bun's default) gives react-reconciler its own nested
+# symlink to the shared "react" install. Under `bun build --compile`
+# (which always implies --production), Bun's bundler fails to dedupe that
+# nested symlink against the app's own "react" resolution, instantiating
+# React twice — react-reconciler renders through one copy while components
+# call hooks through the other, whose dispatcher is never set, crashing
+# apps/cli's interactive (OpenTUI) mode with
+# "null is not an object (evaluating '...useState')". Hoisted linking
+# removes the nested symlink (a single flat node_modules/react), which
+# resolves the duplicate. Verified other react consumers (webview-ui,
+# cline-hub webview, desktop-app webview) still resolve their pinned
+# versions correctly under hoisting.
+linker = "hoisted"
