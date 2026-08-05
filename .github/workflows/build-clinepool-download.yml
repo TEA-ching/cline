@@ -1,0 +1,262 @@
+name: Build and Release Clinepool Download
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_release:
+        description: 'ID ou tag de la release cible (laisser vide pour utiliser la dernière prerelease)'
+        required: false
+        default: ''
+
+permissions:
+  id-token: write
+  contents: write
+  attestations: write
+  packages: write
+
+jobs:
+  setup:
+    name: Compute build metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      datetime: ${{ steps.meta.outputs.datetime }}
+      datetime_safe: ${{ steps.meta.outputs.datetime_safe }}
+      release_tag: ${{ steps.get_release.outputs.release_tag }}
+      release_id: ${{ steps.get_release.outputs.release_id }}
+      docker_tag: ${{ steps.get_release.outputs.docker_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Compute version and datetime
+        id: meta
+        run: |
+          VERSION=$(grep '^version' ./apps/clinepool-download/Cargo.toml | cut -d '"' -f 2)
+          DATETIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          DATETIME_SAFE=$(echo "$DATETIME" | tr ':' '-')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "datetime=$DATETIME" >> "$GITHUB_OUTPUT"
+          echo "datetime_safe=$DATETIME_SAFE" >> "$GITHUB_OUTPUT"
+
+      - name: Get latest prerelease
+        id: get_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${{ github.event.inputs.target_release }}" ]; then
+            # Use specified release tag
+            RELEASE_TAG="${{ github.event.inputs.target_release }}"
+            # Get release ID from tag
+            RELEASE_INFO=$(gh api repos/${{ github.repository }}/releases/tags/$RELEASE_TAG)
+            RELEASE_ID=$(echo "$RELEASE_INFO" | jq -r '.id')
+            if [ "$RELEASE_ID" = "null" ]; then
+              echo "Error: Release with tag $RELEASE_TAG not found"
+              exit 1
+            fi
+          else
+            # Get latest prerelease
+            RELEASE_INFO=$(gh api repos/${{ github.repository }}/releases --jq '.[] | select(.prerelease == true) | .id,.tag_name' | head -2)
+            RELEASE_ID=$(echo "$RELEASE_INFO" | head -1)
+            RELEASE_TAG=$(echo "$RELEASE_INFO" | tail -1)
+            if [ -z "$RELEASE_ID" ]; then
+              echo "Error: No prerelease found"
+              exit 1
+            fi
+          fi
+          DOCKER_TAG=$(echo "$RELEASE_TAG" | tr '/' '-')
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
+          echo "docker_tag=$DOCKER_TAG" >> "$GITHUB_OUTPUT"
+          echo "Found release: $RELEASE_TAG (ID: $RELEASE_ID)"
+
+  build-binaries:
+    needs: setup
+    name: Build binaries
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # Windows
+          - build: windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            arch: amd64
+            family: windows
+            ext: .exe
+
+          # macOS
+          - build: macos-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            arch: arm64
+            family: macos
+            ext: ""
+
+          - build: macos-x86_64
+            os: macos-latest
+            target: x86_64-apple-darwin
+            arch: amd64
+            family: macos
+            ext: ""
+            
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        if: matrix.family != 'linux' || matrix.build == 'linux-amd64'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build native binary (Windows/macOS/Linux-amd64)
+        if: matrix.family != 'linux' || matrix.build == 'linux-amd64'
+        working-directory: ./apps/clinepool-download
+        run: cargo build --verbose --release --target ${{ matrix.target }}
+
+      - name: Prepare binary artifact
+        shell: bash
+        env:
+          VERSION: ${{ needs.setup.outputs.version }}
+        run: |
+          binary_name="clinepool-download"
+          artifact_name="clinepool-download_${{ matrix.family }}_${{ matrix.arch }}_${VERSION}${{ matrix.ext }}"
+          
+          if [ "${{ matrix.family }}" = "windows" ]; then
+            cp "apps/clinepool-download/target/${{ matrix.target }}/release/${binary_name}.exe" "$artifact_name"
+          else
+            cp "apps/clinepool-download/target/${{ matrix.target }}/release/${binary_name}" "$artifact_name"
+          fi
+          
+          echo "artifact_name=$artifact_name" >> $GITHUB_ENV
+          echo "artifact_path=$artifact_name" >> $GITHUB_ENV
+
+      - name: Upload to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ needs.setup.outputs.release_tag }} "${{ env.artifact_path }}" --clobber --repo ${{ github.repository }}
+
+      - name: Attest build (non-Windows)
+        if: matrix.family != 'windows'
+        uses: actions/attest-build-provenance@v1
+        continue-on-error: true
+        with:
+          subject-path: "${{ env.artifact_path }}"
+
+  build-docker:
+    needs: setup
+    name: Build and push multi-arch Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: 'linux/arm64,linux/armhf,linux/amd64'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: sctg/clinepool-download
+          tags: |
+            type=raw,value=${{ needs.setup.outputs.docker_tag }}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: apps/clinepool-download/.
+          file: apps/clinepool-download/Dockerfile
+          platforms: linux/arm64, linux/amd64, linux/armhf
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ needs.setup.outputs.version }}
+            BUILD_DATE=${{ needs.setup.outputs.datetime }}
+
+  summary:
+    permissions:
+      id-token: write
+      contents: write
+      attestations: write
+      packages: write
+    needs: [setup, build-binaries, build-docker]
+    name: Build Summary
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Print summary
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Release target | ${{ needs.setup.outputs.release_tag }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | ${{ needs.setup.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build time | ${{ needs.setup.outputs.datetime }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Binaries | ✅ Built and uploaded |" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.build-docker.result }}" = "success" ]; then
+            echo "| Docker image | ✅ Built and pushed |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.build-docker.result }}" = "skipped" ]; then
+            echo "| Docker image | ⏭️ Skipped (credentials missing) |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Docker image | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Extract and upload binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Define platform to architecture mapping
+          declare -A PLATFORM_TO_ARCH=(
+            ["linux/arm64"]="arm64"
+            ["linux/armhf"]="armhf"
+            ["linux/amd64"]="amd64"
+          )
+
+          for PLATFORM in linux/arm64 linux/armhf linux/amd64; do
+            VERSION=${{ needs.setup.outputs.version }}
+            RELEASE_TAG=${{ needs.setup.outputs.release_tag }}
+            DOCKER_TAG=${{ needs.setup.outputs.docker_tag }}
+            FAMILY=linux
+            EXT=""
+            ARCH=${PLATFORM_TO_ARCH[$PLATFORM]}
+            ARTIFACT_NAME="clinepool-download_${FAMILY}_${ARCH}_${VERSION}${EXT}"
+            PLATFORM_SAFE=$(echo "$PLATFORM" | tr '/' '-')
+            docker pull sctg/clinepool-download:${DOCKER_TAG}
+            CONTAINER_NAME="extract-$PLATFORM_SAFE"
+            docker create --platform $PLATFORM --name $CONTAINER_NAME sctg/clinepool-download:${DOCKER_TAG}
+            mkdir -p /tmp/extracted
+            docker cp $CONTAINER_NAME:/usr/local/bin/clinepool-download /tmp/extracted/${ARTIFACT_NAME}
+            if [ ! -f "/tmp/extracted/${ARTIFACT_NAME}" ]; then
+              echo "Error: Binary not found for $PLATFORM"
+              exit 1
+            fi
+            chmod +x "/tmp/extracted/${ARTIFACT_NAME}"
+            gh release upload $RELEASE_TAG "/tmp/extracted/${ARTIFACT_NAME}" --clobber --repo ${{ github.repository }}
+            echo "Uploaded $PLATFORM binary: $ARTIFACT_NAME"
+            docker rm $CONTAINER_NAME || true
+            rm -f /tmp/extracted/${ARTIFACT_NAME} || true
+          done

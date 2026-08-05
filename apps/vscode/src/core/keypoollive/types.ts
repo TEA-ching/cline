@@ -1,0 +1,178 @@
+// KeypoolLive — TypeScript interfaces
+// © 2026 Ronan LE MEILLAT — MIT License
+
+/**
+ * Represents an API key stored in the transformed AI Vault.
+ */
+export interface VaultKey {
+	/** The actual API key string. */
+	key: string;
+	/** The name or identifier of the key owner (e.g., an email address). */
+	owner: string;
+	/** The billing tier or status of the key. */
+	type: AiKeyTier;
+	/** ISO 8601 — key becomes usable again at/after this instant (quota exhaustion). */
+	quotaResetAt?: string;
+	/** ISO 8601 — when this key was flagged quota-exhausted (audit only). */
+	quotaExhaustedAt?: string;
+}
+
+/**
+ * Metadata for a specific AI model available in the vault.
+ */
+export interface VaultModel {
+	id: string;
+	name?: string;
+	contextWindow?: number;
+	maxOutputTokens?: number;
+	usage?: "chat" | "embedding";
+	supportsImages?: boolean;
+	supportsPromptCache?: boolean;
+	supportsTools?: boolean;
+	inputPrice?: number;
+	outputPrice?: number;
+	defaultDimensions?: number;
+}
+
+/**
+ * Configuration for an AI provider in the vault.
+ */
+export interface VaultProvider {
+	/** Communication protocol used by the provider (e.g., openai, anthropic). */
+	protocol: AiProtocol;
+	/** Optional custom API endpoint URL. */
+	endpoint?: string;
+	/** Optional User-Agent header value required by the provider's API. */
+	userAgent?: string;
+	/** Collection of API keys available for this provider. */
+	keys: VaultKey[];
+	/** List of models supported by this provider. */
+	models: VaultModel[];
+}
+
+/**
+ * The top-level vault configuration structure as used within the extension.
+ */
+export interface AiVaultConfig {
+	version: number;
+	providers: Record<string, VaultProvider>;
+	crawlers?: Record<string, VaultCrawler>;
+}
+
+/**
+ * Fully resolved configuration ready for use by an API provider handler.
+ * Combines provider settings, model metadata, and a selected API key.
+ */
+export interface ResolvedApiConfig {
+	/** Name of the provider (e.g., 'anthropic'). */
+	providerName: string;
+	/** Protocol to use for communication. */
+	protocol: AiProtocol;
+	/** The final endpoint URL. */
+	endpoint?: string;
+	/** The selected API key. */
+	apiKey: string;
+	/** Who owns the selected API key. */
+	keyOwner: string;
+	/** Details of the model to be used. */
+	model: VaultModel;
+	/** Optional User-Agent header value required by the provider's API. */
+	userAgent?: string;
+}
+
+export type AiProtocol =
+	| "openai"
+	| "anthropic"
+	| "gemini"
+	| "cohere"
+	| "mistral"
+	| "poolside"
+	| (string & {});
+export type AiKeyTier = "expired" | "free" | "paid" | "premium" | "unlimited";
+
+// ─── Crawler types ────────────────────────────────────────────────────────────
+
+export type CrawlerProtocol = "firecrawl" | "exa" | "scrapegraphai";
+
+export interface VaultCrawlerKey {
+	key: string;
+	owner?: string;
+	type?: AiKeyTier;
+}
+
+export interface VaultCrawler {
+	protocol: CrawlerProtocol;
+	endpoint: string;
+	keys: VaultCrawlerKey[];
+}
+
+/**
+ * Fully resolved crawler configuration ready for use by crawler adapters.
+ */
+export interface ResolvedCrawlerConfig {
+	crawlerName: string;
+	protocol: CrawlerProtocol;
+	endpoint: string;
+	apiKey: string;
+	keyOwner?: string;
+}
+
+// Internal AiConfig format (mirrors the raw vault JSON)
+export interface AiKey {
+	key: string;
+	owner: string;
+	type?: AiKeyTier;
+	quotaResetAt?: string;
+	quotaExhaustedAt?: string;
+}
+
+export interface AiModel {
+	id: string;
+	name?: string;
+	contextWindow?: number;
+	maxOutputTokens?: number;
+	usage?: "chat" | "embedding";
+	supportsImages?: boolean;
+	supportsPromptCache?: boolean;
+	supportsTools?: boolean;
+	inputPrice?: number;
+	outputPrice?: number;
+	defaultDimensions?: number;
+}
+
+export interface AiProvider {
+	protocol: AiProtocol;
+	endpoint?: string;
+	userAgent?: string;
+	keys: AiKey[];
+	models: AiModel[];
+}
+
+export interface AiConfig {
+	version: number;
+	providers: Record<string, AiProvider>;
+	crawlers?: Record<string, {
+		protocol: CrawlerProtocol;
+		endpoint: string;
+		keys: Array<{ key: string; owner?: string; type?: AiKeyTier }>;
+	}>;
+}
+
+/**
+ * Global configuration settings for the KeypoolLive system,
+ * typically retrieved from the extension's persistent settings.
+ */
+export interface KeypoolLiveConfig {
+	/** URL where the encrypted vault JSON is hosted. */
+	vaultUrl?: string;
+	/** Decryption password for the vault. */
+	secret?: string;
+	/** Whether to route requests through an AI Gateway (e.g., Cloudflare). */
+	useGateway?: boolean;
+	/** Optional secret for gateway authentication. */
+	gatewaySecret?: string;
+	/** Identifier for the gateway instance. */
+	gatewayId?: string;
+	/** If true, instructs the gateway to bypass any caching layers. */
+	gatewayCacheSkip?: boolean;
+}

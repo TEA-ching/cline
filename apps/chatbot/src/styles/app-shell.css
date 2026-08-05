@@ -1,0 +1,11 @@
+/*
+ * Full-viewport height chain for the standalone chatbot app (index.html's #root).
+ * Deliberately NOT imported by the library entry (src/index.ts) — the <Chatbot>
+ * component fills its host container via h-full, and shipping an #root/html/body
+ * rule in the published stylesheet would leak into a consumer app's own layout.
+ */
+html,
+body,
+#root {
+  height: 100%;
+}

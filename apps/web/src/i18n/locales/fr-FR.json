@@ -1,0 +1,86 @@
+{
+  "common": {
+    "siteTitle": "ClinePool - Hub d'Agents IA Intelligents",
+    "siteDescription": "Plateforme d'agents IA avec coffre-fort de clés chiffré, extraction web intelligente et optimisation multi-fournisseurs",
+
+    "header": {
+      "home": "Accueil",
+      "features": "Fonctionnalités",
+      "downloads": "Téléchargements",
+      "documentation": "Documentation",
+      "github": "GitHub"
+    },
+
+    "hero": {
+      "title": "Agents IA avec Pool de Clés Intelligent",
+      "subtitle": "Optimisez les offres gratuites avec coffre-fort chiffré, rotation automatique et extraction web intelligente pour un contenu amélioré",
+      "ctaPrimary": "Commencer",
+      "ctaSecondary": "En savoir plus"
+    },
+
+    "features": {
+      "title": "Fonctionnalités de Pool de Clés",
+      "subtitle": "Optimisez l'utilisation de l'IA avec des coffres-forts chiffrés et des outils web intelligents",
+
+      "voiceCapabilities": {
+        "title": "Support Multi-Fournisseurs",
+        "description": "Passez facilement entre Mistral, Gemini, Cohere et plus avec une interface unifiée et rotation automatique des clés."
+      },
+
+      "knowledgeExtraction": {
+        "title": "Extraction Web Intelligente",
+        "description": "Extraction intelligente de contenu avec intégration Firecrawl, basculement automatique et sortie structurée en markdown."
+      },
+
+      "codeGeneration": {
+        "title": "Coffre-fort de Clés Chiffré",
+        "description": "Stockage chiffré AES-256 avec intégration Cloudflare KV pour un accès sécurisé et partagé aux clés API."
+      },
+
+      "agenticWorkflows": {
+        "title": "Optimisation des Offres Gratuites",
+        "description": "Combinez plusieurs comptes gratuits en pools puissants avec rotation automatique pour maximiser la capacité."
+      }
+    },
+
+    "download": {
+      "title": "Télécharger ClinePool",
+      "subtitle": "Obtenez la dernière version pour votre plateforme",
+      "vsixTitle": "Extension VSCode",
+      "cliTitle": "Interface en Ligne de Commande",
+      "platformDefault": "Par défaut pour votre plateforme",
+      "showAllPlatforms": "Afficher toutes les plateformes",
+      "hidePlatforms": "Masquer les plateformes",
+      "lastUpdated": "Dernière mise à jour : {{date}}",
+      "version": "Version : {{version}}",
+      "showOlderVersions": "Afficher les anciennes versions",
+      "hideOlderVersions": "Masquer les anciennes versions"
+    },
+
+    "footer": {
+      "description": "Plateforme d'agents IA avec coffre-fort de clés chiffré, extraction web intelligente et optimisation multi-fournisseurs",
+      "quickLinks": "Liens Rapides",
+      "features": "Fonctionnalités",
+      "downloads": "Téléchargements",
+      "documentation": "Documentation",
+      "legal": "Juridique",
+      "privacyPolicy": "Politique de Confidentialité",
+      "termsOfService": "Conditions d'Utilisation",
+      "license": "Licence",
+      "copyright": "© {{year}} ClinePool. Tous droits réservés.",
+      "rights": "© {{year}} SCTG Development. Tous droits réservés.",
+      "links": {
+        "privacy": "Politique de Confidentialité",
+        "terms": "Conditions d'Utilisation",
+        "contact": "Nous Contacter"
+      }
+    },
+
+    "language": {
+      "label": "Langue",
+      "english": "Anglais",
+      "french": "Français",
+      "spanish": "Espagnol"
+    }
+  }
+}

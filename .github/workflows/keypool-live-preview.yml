@@ -1,0 +1,885 @@
+name: keypool-live — Preview Release
+
+on:
+  push:
+    branches:
+      - keypool-live
+    paths:
+      - 'apps/vscode/**'
+      - 'sdk/**'
+      - 'apps/cli/**'
+      - 'apps/chatbot/**'
+      - '.github/workflows/keypool-live-preview.yml'
+
+# Cancel any in-flight run for the same ref so only the latest commit gets published.
+concurrency:
+  group: preview-release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  id-token: write  # Required for OIDC
+  attestations: write
+  packages: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 1. Compute shared metadata (version + datetime) once, shared across all jobs.
+  # ─────────────────────────────────────────────────────────────────────────────
+  setup:
+    name: Compute build metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      datetime: ${{ steps.meta.outputs.datetime }}
+      # datetime_safe: colons replaced by '-' — required for Windows filenames
+      # and for git tag names (colons are not allowed in refs).
+      datetime_safe: ${{ steps.meta.outputs.datetime_safe }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compute version and datetime
+        id: meta
+        run: |
+          VERSION=$(node -p "require('./apps/vscode/package.json').version")
+          DATETIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          DATETIME_SAFE=$(echo "$DATETIME" | tr ':' '-')
+          echo "version=$VERSION"             >> "$GITHUB_OUTPUT"
+          echo "datetime=$DATETIME"           >> "$GITHUB_OUTPUT"
+          echo "datetime_safe=$DATETIME_SAFE" >> "$GITHUB_OUTPUT"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 2. Build a platform-specific VSIX for each target.
+  #    vscode:prepublish handles compilation + better-sqlite3 rebuild automatically.
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-vsix:
+    name: VSIX ${{ matrix.platform }}-${{ matrix.arch }}
+    needs: setup
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win32
+            arch: x64
+            native_arch: x64
+          - os: windows-latest
+            platform: win32
+            arch: arm64
+            native_arch: arm64
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            native_arch: x64
+          - os: ubuntu-latest
+            platform: linux
+            arch: arm64
+            native_arch: arm64
+          - os: ubuntu-latest
+            platform: linux
+            arch: armhf
+            # prebuild-install uses 'arm' (not 'armhf') for the ARM v7 prebuilt
+            native_arch: arm
+          - os: ubuntu-latest
+            platform: alpine
+            arch: x64
+            # No musl prebuilt for better-sqlite3; linux-x64 glibc binary is used.
+            # The extension degrades gracefully when the native module fails to load.
+            native_arch: x64
+          - os: macos-26-intel
+            platform: darwin
+            arch: x64
+            native_arch: x64
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+            native_arch: arm64
+
+    runs-on: ${{ matrix.os }}
+
+    defaults:
+      run:
+        working-directory: apps/vscode
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          # Keep aligned with the nightly publish workflow.
+          # Node 24 / npm 11 can cause ELSPROBLEMS with `npm list` during vsce packaging.
+          node-version: "22"
+
+      - name: Patch VSIX package metadata for SCTG
+        run: |
+          jq '.publisher = "sctg-development" |
+              .repository.url = "https://github.com/TEA-ching/cline" |
+              .homepage = "https://github.com/TEA-ching/cline" |
+              .author.name = "Cline Bot Inc. & Ronan Le Meillat - SCTG Development"' package.json > package.json.tmp && mv package.json.tmp package.json
+        shell: bash
+
+      - name: Patch AboutSection.tsx and build-date.ts build date
+        id: patch-about-section
+        env:
+          BUILD_DATETIME: ${{ needs.setup.outputs.datetime }}
+        run: |
+          echo "export const buildDate = new Date(\"${{ needs.setup.outputs.datetime }}\");" > webview-ui/src/config/BuildDate.ts
+          echo "export const buildDate = new Date(\"${{ needs.setup.outputs.datetime }}\");" > src/utils/build-date.ts
+        shell: bash
+
+      - name: Install @vscode/vsce globally
+        run: npm install -g @vscode/vsce
+        shell: bash
+
+      # workflow tested with `rm -rf cline && git clone https://github.com/cline/cline.git && cd cline && bun install && bun run build && bun run build:models && bun run build:sdk && cd apps/vscode && bun install && bun run protos && cd webview-ui && npm install && cd .. && npx vcse package & cd ../..`
+      - name: Install root dependencies
+        working-directory: .
+        run: |
+          bun install
+          # avoid conflicts
+          rm -rf apps/web
+          # rm -rf apps/cline-hub
+          rm -rf apps/clinepool-download
+          rm -rf apps/examples
+        shell: bash
+
+      - name: Build root packages and CLI (to ensure vsce can find the built CLI for packaging)
+        working-directory: .
+        shell: bash
+        run: |
+          bun run build:sdk
+          # bun run build:models
+
+      - name: Build VSCode protos
+        working-directory: .
+        run: |
+          cd apps/vscode
+          bun run protos
+        shell: bash
+
+      - name: Build VSCode extension webview UI
+        working-directory: .
+        run: |
+          cd apps/vscode
+          bun run build:webview
+        shell: bash
+
+      - name: Rebuild native modules (skip on Windows)
+        if: runner.os != 'Windows'
+        env:
+          VSCODE_ELECTRON_VERSION: "42.2.0"
+          TARGET_ARCH: ${{ matrix.native_arch }}
+        run: npx --yes @electron/rebuild -f -v "$VSCODE_ELECTRON_VERSION" -a "$TARGET_ARCH"
+        shell: bash
+
+      - name: Build and Package VSIX
+        working-directory: .
+        run: |
+          cd apps/vscode
+          bunx vsce package \
+            --target ${{ matrix.platform }}-${{ matrix.arch }} \
+            --allow-package-secrets sendgrid \
+            --no-dependencies \
+            --out "clinepool-${{ needs.setup.outputs.version }}-preview-${{ needs.setup.outputs.datetime_safe }}-${{ matrix.platform }}-${{ matrix.arch }}.vsix"
+        shell: bash
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: vsix-${{ matrix.platform }}-${{ matrix.arch }}
+          path: "apps/vscode/clinepool-*.vsix"
+          if-no-files-found: error
+
+      - name: Attest VSIX build
+        uses: actions/attest-build-provenance@v4
+        continue-on-error: true
+        with:
+          subject-path: "apps/vscode/clinepool-*.vsix"
+
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 3.5. Build CLI binaries for all platforms
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-cli-and-sdk:
+    name: Build CLI and SDK
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write  # Required for OIDC when fetching private dependencies with authentication
+    steps:
+      # - name: Install deps
+      #   run: sudo apt-get update && sudo apt-get install -y libglib2.0-dev 
+
+      - uses: actions/checkout@v7
+
+      # Must run before ANY install/build step in this job. apps/cline-hub is an
+      # upstream extra this fork doesn't use, and its webview does not build here.
+      # apps/cli's build entrypoint (apps/cli/bun.mts) invokes the real
+      # `bun -F @cline/cline-hub build:webview` whenever shouldBuildHubWebview()
+      # sees apps/cline-hub/dist/webview/index.html missing or older than
+      # apps/cline-hub/src/webview. That check re-trips even with the dist/webview
+      # stub below in place: the later "Rename SDK package scope" step rewrites
+      # apps/cline-hub/src/webview/package.json (to apply the @sctg/ rename),
+      # which bumps its mtime past the stub's — so the placeholder package here
+      # MUST expose a working `build:webview` script (not just `build`), or the
+      # rebuild attempt fails. Bun's `-F <name> <script>` reports the misleading
+      # "No packages matched the filter" when the name matches but the requested
+      # script doesn't exist on it, which is what caused prior CI failures here
+      # (see run reports 2026-07-09).
+      # - name: Remove cline-hub and create a fake cline-hub empty package.json to avoid workspace errors and unbuildable webview
+      #   run: |
+      #     rm -rf apps/cline-hub
+      #     mkdir -p apps/cline-hub/dist/webview apps/cline-hub/src/webview
+      #     echo "console.log('This is a placeholder package for @cline/cline-hub.');" > apps/cline-hub/index.js
+      #     echo '{ "name": "@cline/cline-hub", "version": "0.0.0-preview", "private": true, "main": "index.js", "scripts": {"build": "echo Building && exit 0", "build:webview": "echo Building webview && exit 0"} }' > apps/cline-hub/package.json
+      #     echo '{ "name": "@cline/cline-hub-webview", "version": "0.0.0-preview", "private": true, "main": "index.js", "scripts": {"build": "echo Building && exit 0", "build:webview": "echo Building webview && exit 0"} }' > apps/cline-hub/src/webview/package.json
+      #     echo '<!doctype html><title>cline-hub webview disabled (unused in this fork)</title>' > apps/cline-hub/dist/webview/index.html
+
+      - name: Create fake gitleaks in /usr/bin to prevent build failures if gitleaks is not installed on the runner.
+        run: |
+          echo -e '#!/bin/bash\nexit 0' | sudo tee /usr/bin/gitleaks > /dev/null
+          sudo chmod +x /usr/bin/gitleaks
+
+      - name: Create fake lint-staged in /usr/bin to prevent build failures if lint-staged is not installed on the runner.
+        run: |
+          echo -e '#!/bin/bash\nexit 0' | sudo tee /usr/bin/lint-staged > /dev/null
+          sudo chmod +x /usr/bin/lint-staged
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24.x"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Verify npm trusted publishing prerequisites
+        run: |
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "GitHub OIDC request environment is unavailable. Ensure this job has id-token: write for npm trusted publishing."
+            exit 1
+          fi
+          NPM_VERSION=$(npm --version)
+          echo "npm ${NPM_VERSION}"
+          IFS=. read -r major minor patch <<EOF
+          ${NPM_VERSION}
+          EOF
+          if [ "$major" -lt 11 ] || { [ "$major" -eq 11 ] && [ "$minor" -lt 5 ]; } || { [ "$major" -eq 11 ] && [ "$minor" -eq 5 ] && [ "$patch" -lt 1 ]; }; then
+            echo "npm 11.5.1 or newer is required for trusted publishing"
+            exit 1
+          fi
+          echo "GitHub OIDC request environment is available for npm trusted publishing."
+
+      - name: Add date to apps/cli/src/utils/common.ts version command
+        run: |
+          # Modify the getCliBuildInfo function to include build datetime in version
+          # Create a Python script to do the replacement
+          python3 << 'EOF'
+          # Read the file
+          with open('apps/cli/src/utils/common.ts', 'r') as f:
+              content = f.read()
+          
+          # Find the position of the version field in the getCliBuildInfo function
+          # We look for the pattern where version is followed by platform
+          import re
+          pattern = r'(version,\s*\n\s*platform:)'
+          new_content = re.sub(pattern, r'version: version + " " + "${{ needs.setup.outputs.datetime_safe }}",\n\t\tplatform:', content)
+          
+          with open('apps/cli/src/utils/common.ts', 'w') as f:
+              f.write(new_content)
+          EOF
+          
+      - name: Rename SDK package scope for SCTG publish
+        run: |
+          bun sdk/scripts/rename-sdk-package-scope.ts
+
+      - name: Pack SDK sources for internal consumption by CLI build (which needs to reference the built SDK packages)
+        working-directory: sdk
+        run: |
+          tar -czf "../sdk-sources.tar.gz" --exclude='node_modules' --exclude='.bun' --exclude='dist' --exclude='**/node_modules' --exclude='**/.bun' --exclude='**/dist' .
+          
+      - name: Upload SDK sources for futur reference
+        uses: actions/upload-artifact@v7
+        with:
+          name: sdk-sources
+          path: "./sdk-sources.tar.gz"
+
+      - name: Install SDK dependencies
+        working-directory: sdk
+        run: rm -rf apps/web && bun install
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build CLI binaries
+        run: |
+          bun install
+          bun run build:sdk
+          bun run build:models
+          bun run build:sdk
+          pushd apps/cline-hub && bun run build:webview && popd
+          cd apps/cli
+          bun run build
+          bun run build:platforms
+
+      - name: Attest CLI binaries
+        uses: actions/attest-build-provenance@v4
+        continue-on-error: true
+        with:
+          subject-path: |
+            apps/cli/dist/cli-windows-arm64/bin/cline.exe
+            apps/cli/dist/cli-windows-x64/bin/cline.exe
+            apps/cli/dist/cli-linux-arm64/bin/cline
+            apps/cli/dist/cli-darwin-arm64/bin/cline
+            apps/cli/dist/cli-linux-x64/bin/cline
+            apps/cli/dist/cli-darwin-x64/bin/cline
+
+      - name: Create LLM files
+        run: |
+          cd sdk
+          bun scripts/export-sdk-code-for-llm.ts
+  
+      - name: Upload LLM files as artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: llm-files
+          path: |
+            ./sdk/llm.md
+            ./sdk/llm.txt
+
+      - name: Upload CLI binaries as artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-binaries
+          path: |
+            apps/cli/dist/cli-windows-arm64/bin/cline.exe
+            apps/cli/dist/cli-windows-x64/bin/cline.exe
+            apps/cli/dist/cli-linux-arm64/bin/cline
+            apps/cli/dist/cli-darwin-arm64/bin/cline
+            apps/cli/dist/cli-linux-x64/bin/cline
+            apps/cli/dist/cli-darwin-x64/bin/cline
+          if-no-files-found: error
+
+      - name: Version SDK packages (preview semver)
+        id: sdk-version
+        working-directory: sdk
+        run: |
+          # Build a semver prerelease suffix in the form: -beta.YYYYMMDDHHMMSS
+          # 2026-05-24T01-55-05Z -> 20260524015505
+          SEMVER_TAG=$(echo "${{ needs.setup.outputs.datetime_safe }}" | tr -cd '0-9')
+          SDK_VERSION="${{ needs.setup.outputs.version }}-beta.${SEMVER_TAG}"
+          echo "SDK preview version: $SDK_VERSION"
+          echo "version=$SDK_VERSION" >> "$GITHUB_OUTPUT"
+          bun scripts/version.ts "$SDK_VERSION"
+
+      - name: Version @sctg/cline-chatbot package (preview semver)
+        env:
+          SDK_VERSION: ${{ steps.sdk-version.outputs.version }}
+          SDK_VERSION_DATETIME: ${{ needs.setup.outputs.version }}-${{ needs.setup.outputs.datetime_safe }}
+          DATETIME: ${{ needs.setup.outputs.datetime }}
+        run: |
+          echo "@sctg/cline-chatbot preview version: $SDK_VERSION"
+          jq --arg v "$SDK_VERSION" '.version = $v' apps/chatbot/package.json > apps/chatbot/package.json.tmp
+          mv apps/chatbot/package.json.tmp apps/chatbot/package.json
+         
+      - name: Refresh Bun workspace lockfile after package renaming
+        working-directory: sdk
+        run: bun install
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pack all SDK packages
+        working-directory: sdk
+        run: |
+          mkdir -p "$RUNNER_TEMP/sdk-packs"
+          for PKG in shared llms agents core sdk; do
+            cd "packages/$PKG"
+            bun pm pack --destination "$RUNNER_TEMP/sdk-packs" --quiet
+            cd ../..
+          done
+
+      - name: Bundle SDK packs into single archive
+        working-directory: sdk
+        run: |
+          BUNDLE="clinepool-${{ needs.setup.outputs.version }}-preview-${{ needs.setup.outputs.datetime_safe }}.tar.gz"
+          tar -czf "$RUNNER_TEMP/$BUNDLE" -C "$RUNNER_TEMP/sdk-packs" .
+          # Copy to workspace root so upload-artifact (which resolves from GITHUB_WORKSPACE) can find it
+          cp "$RUNNER_TEMP/$BUNDLE" "$GITHUB_WORKSPACE/$BUNDLE"
+
+      - name: Upload SDK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          # Path is resolved from GITHUB_WORKSPACE (not the job's working-directory)
+          name: sdk-bundle
+          path: "${{ github.workspace }}/clinepool-*-preview-*.tar.gz"
+          if-no-files-found: error
+
+      - name: Prepare npm publish tarball directory
+        working-directory: sdk
+        run: mkdir -p "$RUNNER_TEMP/sdk-npm-packs"
+
+      # These 5 publish via npm trusted publishing (OIDC) — see "Verify npm trusted
+      # publishing prerequisites" above. No NODE_AUTH_TOKEN/npm token secret needed.
+      - name: Publish @sctg/cline-shared
+        working-directory: sdk
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
+        run: |
+          cd packages/shared
+          TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
+
+      - name: Publish @sctg/cline-llms
+        working-directory: sdk
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
+        run: |
+          cd packages/llms
+          TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
+
+      - name: Publish @sctg/cline-agents
+        working-directory: sdk
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
+        run: |
+          cd packages/agents
+          TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
+
+      - name: Publish @sctg/cline-core
+        working-directory: sdk
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
+        run: |
+          cd packages/core
+          TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
+
+      - name: Publish @sctg/cline-sdk
+        working-directory: sdk
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
+        run: |
+          cd packages/sdk
+          TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/sdk-npm-packs" --quiet)
+          npm publish "$RUNNER_TEMP/sdk-npm-packs/$(basename "$TARBALL")" --tag latest --access public
+
+      - name: Build @sctg/cline-chatbot library
+        env:
+          SDK_VERSION: ${{ steps.sdk-version.outputs.version }}
+          SDK_VERSION_DATETIME: ${{ needs.setup.outputs.version }}-${{ needs.setup.outputs.datetime_safe }}
+          DATETIME: ${{ needs.setup.outputs.datetime }}
+        run: |
+          cd apps/chatbot
+          bun run build:lib
+
+      - name: Publish @sctg/cline-chatbot
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
+        run: |
+          mkdir -p "$RUNNER_TEMP/chatbot-npm-pack"
+          cd apps/chatbot
+          TARBALL=$(bun pm pack --destination "$RUNNER_TEMP/chatbot-npm-pack" --quiet)
+          npm publish "$RUNNER_TEMP/chatbot-npm-pack/$(basename "$TARBALL")" --tag latest --access public
+
+      - name: Clean before
+        run: |
+          find . -type d \( -name "node_modules" -o -name ".bun" -o -name "dist" -o -name "dist-lib" \) -prune -exec rm -rf '{}' + || true
+
+      - name: Deploy the skills to Mintlify
+        run: |
+          #deploy the sdk skills
+          mkdir -p .mintlify/skills
+          mkdir -p docs/.mintlify/skills
+          cp -av .agents/skills/* .mintlify/skills/
+          cp -av .agents/skills/* docs/.mintlify/skills/
+          
+      - name: Push modified docs to Mintlify deploy branch
+        #working-directory: docs
+        run: |
+          git config user.email "ronan+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          # ensure no node_modules or other ignored content is accidentally included in the deploy branch
+          rm -rf node_modules dist .turbo .next 
+          # Snapshot the already-renamed docs/ content
+          DOCS_TMP=$(mktemp -d)
+          rsync -av --exclude='.git' . "$DOCS_TMP/"
+          # Create an orphan branch containing only the docs content at root
+          # so Mintlify can be configured without a monorepo subdirectory.
+          # IMPORTANT: git rm must run from the repo root (not docs/ CWD) to clear the
+          # entire index — otherwise git checkout --orphan leaves all non-docs files
+          # (apps/, .agents/, sdk/, …) staged with their pre-rename content, causing
+          # unreplaced @cline/ references to appear in the deploy branch.
+          REPO_ROOT=$(git rev-parse --show-toplevel)
+          git checkout --orphan keypool-docs-deploy
+          git -C "$REPO_ROOT" rm -rf . --quiet 2>/dev/null || true
+          cp -r "$DOCS_TMP/." "$REPO_ROOT/"
+          git -C "$REPO_ROOT" add .
+          git -C "$REPO_ROOT" commit -m "deploy: preview docs [${{ needs.setup.outputs.datetime }}] ${{ github.sha }}"
+          git push origin keypool-docs-deploy --force
+
+      - name: Upload local repo to Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: modified-repo
+          path: .
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 3.7. Build clinepool-download binaries for all platforms
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-clinepool-download-for-linux-on-docker:
+    name: Build clinepool-download
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        # with:
+        #   submodules: recursive
+
+      - name: Get clinepool-download version
+        id: clinepool-version
+        run: |
+          VERSION=$(grep '^version' ./apps/clinepool-download/Cargo.toml | cut -d '"' -f 2)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: 'linux/arm64,linux/armhf,linux/amd64'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+        continue-on-error: true
+
+      - name: Extract metadata for Docker
+        id: docker-meta
+        uses: docker/metadata-action@v6
+        with:
+          images: sctg/clinepool-download
+          tags: |
+            type=raw,value=preview-${{ needs.setup.outputs.datetime_safe }}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: apps/clinepool-download/.
+          file: apps/clinepool-download/Dockerfile
+          platforms: linux/arm64, linux/amd64, linux/armhf
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          push: ${{ secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}
+          tags: ${{ steps.docker-meta.outputs.tags }}
+          labels: ${{ steps.docker-meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.clinepool-version.outputs.version }}
+            BUILD_DATE=${{ needs.setup.outputs.datetime }}
+
+      - name: Extract binaries from Docker images
+        env:
+          VERSION: ${{ steps.clinepool-version.outputs.version }}
+          DATETIME_SAFE: ${{ needs.setup.outputs.datetime_safe }}
+        run: |
+          # Define platform to architecture mapping
+          declare -A PLATFORM_TO_ARCH=(
+            ["linux/arm64"]="arm64"
+            ["linux/armhf"]="armhf"
+            ["linux/amd64"]="amd64"
+          )
+
+          mkdir -p clinepool-download-binaries
+
+          for PLATFORM in linux/arm64 linux/armhf linux/amd64; do
+            DOCKER_TAG="preview-${DATETIME_SAFE}"
+            # Complete image name with tag
+            if [ "${{ secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}" = "true" ]; then
+              IMAGE_NAME="sctg/clinepool-download:${DOCKER_TAG}"
+              docker pull ${IMAGE_NAME}
+            else
+              exit 1
+            fi
+
+            FAMILY=linux
+            EXT=""
+            ARCH=${PLATFORM_TO_ARCH[$PLATFORM]}
+            ARTIFACT_NAME="clinepool-download_${FAMILY}_${ARCH}_${VERSION}${EXT}"
+            PLATFORM_SAFE=$(echo "$PLATFORM" | tr '/' '-')
+
+            CONTAINER_NAME="extract-$PLATFORM_SAFE"
+            docker create --platform $PLATFORM --name $CONTAINER_NAME ${IMAGE_NAME}
+            mkdir -p /tmp/extracted
+            docker cp $CONTAINER_NAME:/usr/local/bin/clinepool-download /tmp/extracted/${ARTIFACT_NAME}
+            if [ ! -f "/tmp/extracted/${ARTIFACT_NAME}" ]; then
+              echo "Error: Binary not found for $PLATFORM"
+              exit 1
+            fi
+            chmod +x "/tmp/extracted/${ARTIFACT_NAME}"
+            cp "/tmp/extracted/${ARTIFACT_NAME}" "clinepool-download-binaries/"
+            echo "Extracted $PLATFORM binary: $ARTIFACT_NAME"
+            docker rm $CONTAINER_NAME || true
+            rm -f /tmp/extracted/${ARTIFACT_NAME} || true
+          done
+
+      - name: Attest clinepool-download Linux binaries
+        uses: actions/attest-build-provenance@v4
+        continue-on-error: true
+        with:
+          subject-path: |
+            clinepool-download-binaries/clinepool-download_linux_arm64_*
+            clinepool-download-binaries/clinepool-download_linux_armhf_*
+            clinepool-download-binaries/clinepool-download_linux_amd64_*
+
+      - name: Upload clinepool-download binaries as artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: clinepool-download-binaries
+          path: clinepool-download-binaries/*
+          if-no-files-found: error
+
+  build-clinepool-download-for-windows-and-macos:
+    needs: setup
+    name: Build clinepool-download ${{ matrix.family }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows
+          - build: windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            arch: amd64
+            family: windows
+            ext: .exe
+
+          # macOS
+          - build: macos-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            arch: arm64
+            family: macos
+            ext: ""
+
+          - build: macos-x86_64
+            os: macos-latest
+            target: x86_64-apple-darwin
+            arch: amd64
+            family: macos
+            ext: ""
+            
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        # with:
+        #   submodules: recursive
+
+      - name: Get clinepool-download version
+        shell: bash
+        id: clinepool-version
+        run: |
+          VERSION=$(grep '^version' ./apps/clinepool-download/Cargo.toml | cut -d '"' -f 2)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust
+        if: matrix.family != 'linux' || matrix.build == 'linux-amd64'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build native binary (Windows/macOS/Linux-amd64)
+        if: matrix.family != 'linux' || matrix.build == 'linux-amd64'
+        working-directory: ./apps/clinepool-download
+        run: cargo build --verbose --release --target ${{ matrix.target }}
+
+      - name: Prepare binary artifact
+        id: prepare-artifact
+        shell: bash
+        env:
+          VERSION: ${{ steps.clinepool-version.outputs.version }}
+        run: |
+          binary_name="clinepool-download"
+          artifact_name="clinepool-download_${{ matrix.family }}_${{ matrix.arch }}_${VERSION}${{ matrix.ext }}"
+          
+          if [ "${{ matrix.family }}" = "windows" ]; then
+            cp "apps/clinepool-download/target/${{ matrix.target }}/release/${binary_name}.exe" "$artifact_name"
+          else
+            cp "apps/clinepool-download/target/${{ matrix.target }}/release/${binary_name}" "$artifact_name"
+          fi
+          
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "artifact_path=$artifact_name" >> "$GITHUB_OUTPUT"
+
+      - name: Upload clinepool-download binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: clinepool-download-binaries-${{ matrix.family }}-${{ matrix.arch }}
+          path: "${{ steps.prepare-artifact.outputs.artifact_path }}"
+          if-no-files-found: error
+
+      - name: Attest build (non-Windows)
+        if: matrix.family != 'windows'
+        uses: actions/attest-build-provenance@v4
+        continue-on-error: true
+        with:
+          subject-path: "${{ steps.prepare-artifact.outputs.artifact_path }}"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 4. Gather artifacts, generate release notes, and publish a GitHub pre-release.
+  # ─────────────────────────────────────────────────────────────────────────────
+  release:
+    name: Publish GitHub pre-release
+    needs: [setup, build-vsix, build-cli-and-sdk, build-clinepool-download-for-linux-on-docker, build-clinepool-download-for-windows-and-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Generate release notes from recent commits
+        run: |
+          # Commits since the previous preview tag on this branch (or last 30)
+          PREV=$(git tag --sort=-creatordate --list 'preview/*' | head -1 || true)
+          if [ -n "$PREV" ]; then
+            LOG=$(git log --oneline --no-merges --pretty=format:"- %s (%h)" "${PREV}..HEAD")
+          else
+            LOG=$(git log --oneline --no-merges --pretty=format:"- %s (%h)" -30)
+          fi
+          {
+            printf "**Branch:** \`keypool-live\`  **Commit:** \`%s\`\n\n" "${{ github.sha }}"
+            printf "### Changes\n\n"
+            echo "$LOG"
+          } > release-notes.md
+          echo "--- Release notes preview ---"
+          cat release-notes.md
+
+      - name: Download all VSIX artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: vsix-*
+          path: release-assets/
+          merge-multiple: true
+
+      - name: Download SDK artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: sdk-bundle
+          path: sdk-artifact/
+
+      - name: Download LLM files
+        uses: actions/download-artifact@v8
+        with:
+          name: llm-files
+          path: llm-files/
+
+      - name: Move SDK artifact alongside VSIXes
+        run: mv sdk-artifact/clinepool-*.tar.gz release-assets/
+
+      - name: Download CLI binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: cli-binaries
+          path: cli-binaries/
+
+      - name: Download clinepool-download binaries for Linux
+        uses: actions/download-artifact@v8
+        with:
+          name: clinepool-download-binaries
+          path: clinepool-download-binaries/
+
+      - name: Download clinepool-download binaries for Windows
+        uses: actions/download-artifact@v8
+        with:
+          name: clinepool-download-binaries-windows-amd64
+          path: clinepool-download-binaries/
+
+      - name: Download clinepool-download binaries for macOS ARM64
+        uses: actions/download-artifact@v8
+        with:
+          name: clinepool-download-binaries-macos-arm64
+          path: clinepool-download-binaries/
+
+      - name: Download clinepool-download binaries for macOS x64
+        uses: actions/download-artifact@v8
+        with:
+          name: clinepool-download-binaries-macos-amd64
+          path: clinepool-download-binaries/
+
+      - name: Rename CLI binaries with version and datetime
+        env:
+          VERSION: ${{ needs.setup.outputs.version }}
+          DATETIME_SAFE: ${{ needs.setup.outputs.datetime_safe }}
+        run: |
+          mkdir -p release-assets/cli
+          # Rename Windows binaries
+          mv cli-binaries/cli-windows-arm64/bin/cline.exe "release-assets/cli/clinepool-cli-${VERSION}-preview-${DATETIME_SAFE}-windows-arm64.exe"
+          mv cli-binaries/cli-windows-x64/bin/cline.exe "release-assets/cli/clinepool-cli-${VERSION}-preview-${DATETIME_SAFE}-windows-x64.exe"
+
+          # Rename Linux binaries
+          mv cli-binaries/cli-linux-arm64/bin/cline "release-assets/cli/clinepool-cli-${VERSION}-preview-${DATETIME_SAFE}-linux-arm64"
+          mv cli-binaries/cli-linux-x64/bin/cline "release-assets/cli/clinepool-cli-${VERSION}-preview-${DATETIME_SAFE}-linux-x64"
+
+          # Rename macOS binaries
+          mv cli-binaries/cli-darwin-arm64/bin/cline "release-assets/cli/clinepool-cli-${VERSION}-preview-${DATETIME_SAFE}-darwin-arm64"
+          mv cli-binaries/cli-darwin-x64/bin/cline "release-assets/cli/clinepool-cli-${VERSION}-preview-${DATETIME_SAFE}-darwin-x64"
+
+      - name: Move clinepool-download binaries to release assets
+        run: |
+          mkdir -p release-assets/clinepool-download
+          mv clinepool-download-binaries/* release-assets/clinepool-download/
+
+      - name: List release assets
+        run: ls -lh release-assets/
+
+      - name: Create GitHub pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DATETIME: ${{ needs.setup.outputs.datetime }}
+          DATETIME_SAFE: ${{ needs.setup.outputs.datetime_safe }}
+        run: |
+          TAG="preview/${DATETIME_SAFE}"
+          TITLE="ClinePool Preview ${DATETIME}"
+
+          gh release create "$TAG" \
+            --prerelease \
+            --title "$TITLE" \
+            --notes-file release-notes.md \
+            release-assets/*.vsix \
+            release-assets/*.tar.gz \
+            release-assets/cli/* \
+            release-assets/clinepool-download/* \
+            llm-files/*

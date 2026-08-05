@@ -1,0 +1,9 @@
+{
+	"servers": {
+		"sctg/cline-sdk": {
+			"url": "https://docs.ai-ml.pp.ua/mcp",
+			"type": "http"
+		}
+	},
+	"inputs": []
+}

@@ -1,0 +1,282 @@
+/*
+ * MIT License
+ *
+ * Copyright (c) 2024-2026 Ronan Le Meillat - SCTG Development
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+/**
+ * GitHub Device Authorization Grant (RFC 8628) for browser SPAs.
+ * No client_secret required — only a client_id from a registered GitHub OAuth App.
+ * Unauthenticated: 60 req/h  |  Authenticated: 5 000 req/h
+ *
+ * CORS: GitHub's OAuth endpoints block cross-origin browser requests.
+ * In production, requests are routed through the vault CORS proxy
+ * (corsProxyUrl + vaultToken). In development the Vite dev server
+ * proxies /api/github/* to https://github.com/login/* server-side.
+ */
+
+import { useState, useEffect, useRef, useCallback } from 'react'
+
+const LS_KEY = 'chatbot_github_token'
+
+// Absolute GitHub URLs — used when routing through the CORS proxy.
+const GH_DEVICE_CODE_URL = 'https://github.com/login/device/code'
+const GH_TOKEN_URL = 'https://github.com/login/oauth/access_token'
+
+// Relative URLs — used in development via the Vite dev-server proxy.
+// See vite.config.ts: server.proxy['/api/github'] → https://github.com/login
+const GH_DEVICE_CODE_DEV = '/api/github/device/code'
+const GH_TOKEN_DEV = '/api/github/oauth/access_token'
+
+const SCOPE = 'public_repo'
+
+export interface GitHubAuthOptions {
+  /** Vault CORS proxy base URL, e.g. https://vault.example.com/v1/keypool/corsproxy */
+  corsProxyUrl?: string
+  /** Vault bearer token used to authenticate against the CORS proxy */
+  vaultToken?: string
+}
+
+export interface DeviceFlowState {
+  deviceCode: string
+  userCode: string
+  verificationUri: string
+  /** Unix timestamp (ms) when the device code expires */
+  expiresAt: number
+  /** Polling interval in seconds */
+  interval: number
+}
+
+export interface UseGitHubAuthReturn {
+  /** Current access token, null if not authenticated */
+  githubToken: string | null
+  /** Active Device Flow challenge, null when flow is not in progress */
+  deviceFlow: DeviceFlowState | null
+  /** True while polling for authorization */
+  isPolling: boolean
+  /** True once the user authorised (brief window before auto-close) */
+  justAuthorized: boolean
+  /** Human-readable error from the last operation */
+  authError: string | null
+  /** Start the Device Flow. clientId must be a GitHub OAuth App client_id. */
+  startDeviceFlow: (clientId: string) => Promise<void>
+  /** Cancel an in-progress flow and close the modal */
+  cancelDeviceFlow: () => void
+  /** Clear the stored token */
+  logout: () => void
+}
+
+/**
+ * Build a fetch call that routes through the vault CORS proxy when available,
+ * or falls back to a relative URL for the Vite dev-server proxy.
+ */
+function makeProxiedFetch(
+  absoluteUrl: string,
+  devRelativeUrl: string,
+  corsProxyUrl: string | undefined,
+  vaultToken: string | undefined,
+  init: RequestInit,
+): Promise<Response> {
+  if (corsProxyUrl) {
+    const url = `${corsProxyUrl}?url=${encodeURIComponent(absoluteUrl)}`
+    const headers = new Headers(init.headers)
+    if (vaultToken) headers.set('Authorization', `Bearer ${vaultToken}`)
+    return fetch(url, { ...init, headers })
+  }
+  return fetch(devRelativeUrl, init)
+}
+
+export function useGitHubAuth(options?: GitHubAuthOptions): UseGitHubAuthReturn {
+  const { corsProxyUrl, vaultToken } = options ?? {}
+
+  const [githubToken, setGithubToken] = useState<string | null>(
+    () => localStorage.getItem(LS_KEY),
+  )
+  const [deviceFlow, setDeviceFlow] = useState<DeviceFlowState | null>(null)
+  const [isPolling, setIsPolling] = useState(false)
+  const [justAuthorized, setJustAuthorized] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
+
+  // Ref so the polling loop can be cancelled without stale-closure issues
+  const pollAbortRef = useRef<AbortController | null>(null)
+
+  // Sync token if another tab writes to localStorage
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === LS_KEY) setGithubToken(e.newValue)
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
+  const cancelDeviceFlow = useCallback(() => {
+    pollAbortRef.current?.abort()
+    pollAbortRef.current = null
+    setDeviceFlow(null)
+    setIsPolling(false)
+    setJustAuthorized(false)
+  }, [])
+
+  const logout = useCallback(() => {
+    localStorage.removeItem(LS_KEY)
+    setGithubToken(null)
+  }, [])
+
+  const startDeviceFlow = useCallback(async (clientId: string) => {
+    setAuthError(null)
+    setJustAuthorized(false)
+
+    try {
+      // ── Step 1: request device & user codes ─────────────────────────────
+      const codeRes = await makeProxiedFetch(
+        GH_DEVICE_CODE_URL,
+        GH_DEVICE_CODE_DEV,
+        corsProxyUrl,
+        vaultToken,
+        {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({ client_id: clientId, scope: SCOPE }).toString(),
+        },
+      )
+      if (!codeRes.ok) throw new Error(`GitHub ${codeRes.status}: ${codeRes.statusText}`)
+      const codeData: {
+        device_code: string
+        user_code: string
+        verification_uri: string
+        expires_in: number
+        interval: number
+      } = await codeRes.json()
+
+      const flow: DeviceFlowState = {
+        deviceCode: codeData.device_code,
+        userCode: codeData.user_code,
+        verificationUri: codeData.verification_uri,
+        expiresAt: Date.now() + codeData.expires_in * 1000,
+        interval: codeData.interval ?? 5,
+      }
+      setDeviceFlow(flow)
+
+      // ── Step 2: poll for authorization ──────────────────────────────────
+      const abort = new AbortController()
+      pollAbortRef.current = abort
+      setIsPolling(true)
+
+      let intervalSecs = flow.interval
+      while (!abort.signal.aborted) {
+        await sleep(intervalSecs * 1000)
+        if (abort.signal.aborted) break
+
+        if (Date.now() > flow.expiresAt) {
+          setAuthError('Code expired. Please restart the flow.')
+          break
+        }
+
+        let pollData: Record<string, string>
+        try {
+          const pollRes = await makeProxiedFetch(
+            GH_TOKEN_URL,
+            GH_TOKEN_DEV,
+            corsProxyUrl,
+            vaultToken,
+            {
+              method: 'POST',
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              body: new URLSearchParams({
+                client_id: clientId,
+                device_code: flow.deviceCode,
+                grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+              }).toString(),
+              signal: abort.signal,
+            },
+          )
+          pollData = await pollRes.json()
+        } catch {
+          // Network error — retry after interval
+          continue
+        }
+
+        if (pollData.access_token) {
+          localStorage.setItem(LS_KEY, pollData.access_token)
+          setGithubToken(pollData.access_token)
+          setIsPolling(false)
+          setJustAuthorized(true)
+          setDeviceFlow(null)
+          // Auto-clear justAuthorized after 2 s
+          setTimeout(() => setJustAuthorized(false), 2000)
+          break
+        }
+
+        switch (pollData.error) {
+          case 'authorization_pending':
+            // Normal — keep polling
+            break
+          case 'slow_down':
+            // GitHub asks us to poll less frequently
+            intervalSecs += 5
+            break
+          case 'expired_token':
+            setAuthError('Code expired. Please restart the flow.')
+            abort.abort()
+            break
+          case 'access_denied':
+            setAuthError('Authorization denied by GitHub.')
+            abort.abort()
+            break
+          default:
+            setAuthError(pollData.error_description ?? pollData.error ?? 'Unknown error')
+            abort.abort()
+        }
+      }
+
+      setIsPolling(false)
+      if (!abort.signal.aborted || pollAbortRef.current === abort) {
+        setDeviceFlow(null)
+      }
+      if (pollAbortRef.current === abort) pollAbortRef.current = null
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : String(err))
+      setIsPolling(false)
+      setDeviceFlow(null)
+    }
+  }, [corsProxyUrl, vaultToken])
+
+  return {
+    githubToken,
+    deviceFlow,
+    isPolling,
+    justAuthorized,
+    authError,
+    startDeviceFlow,
+    cancelDeviceFlow,
+    logout,
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
