@@ -39,14 +39,16 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-// This module is compiled to dist-lib/vitePlugin/index.js inside the
-// installed package, so dist-lib/assets/ is its sibling directory — NOT
-// reachable through another node_modules/@sctg/cline-chatbot hop (that path
-// only made sense when this logic lived directly in a host's vite.config.ts).
+// This module is compiled to dist-lib/vite-plugin.js inside the installed
+// package (a flat filename, not nested — see the entry key comment in
+// vite.lib.config.ts for why), so dist-lib/assets/ is its sibling directory —
+// NOT reachable through another node_modules/@sctg/cline-chatbot hop (that
+// path only made sense when this logic lived directly in a host's
+// vite.config.ts).
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export function sctgChatbotWorkerAssets(): Plugin {
-  const assetsDir = path.resolve(dirname, '../assets')
+  const assetsDir = path.resolve(dirname, 'assets')
   let outDir = 'dist'
   return {
     name: 'sctg-chatbot-worker-assets',

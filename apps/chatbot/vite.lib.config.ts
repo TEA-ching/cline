@@ -127,7 +127,7 @@ export default defineConfig(() =>   {
       cssCodeSplit: false,
       lib: {
         // Two independent entries: the browser-facing <Chatbot /> component
-        // (index) and the Node-only Vite plugin (vitePlugin/index) that host
+        // (index) and the Node-only Vite plugin (vite-plugin) that host
         // apps need in their own vite.config.ts to copy the agent Web
         // Worker's sibling chunk files into their own build output (see
         // src/vitePlugin/index.ts for why). They share this one rolldown
@@ -135,9 +135,20 @@ export default defineConfig(() =>   {
         // src/index.ts never references src/vitePlugin — so the Node-only
         // plugin code (node:fs/node:path/node:url, externalized below) never
         // reaches the browser output chunk.
+        //
+        // The vite-plugin entry key is deliberately flat (no subdirectory)
+        // rather than 'vitePlugin/index': vite-plugin-dts's rollupTypes
+        // step derives each entry's rolled-up .d.ts output path from
+        // `basename(path)`, which drops any subdirectory — with a nested
+        // entry key that collapses to the same "index.d.ts" basename as
+        // the main entry, so both rollup passes race to write
+        // dist-lib/index.d.ts and whichever finishes last silently
+        // clobbers the other (this is how Chatbot disappeared from
+        // dist-lib/index.d.ts). A flat key keeps the two output filenames
+        // distinct and sidesteps the collision.
         entry: {
           index: resolve(__dirname, 'src/index.ts'),
-          'vitePlugin/index': resolve(__dirname, 'src/vitePlugin/index.ts'),
+          'vite-plugin': resolve(__dirname, 'src/vitePlugin/index.ts'),
         },
         formats: ['es'] as LibraryFormats[],
         fileName: (_format, entryName) => `${entryName}.js`,

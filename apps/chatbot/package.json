@@ -12,8 +12,8 @@
       "import": "./dist-lib/index.js"
     },
     "./vite-plugin": {
-      "types": "./dist-lib/vitePlugin/index.d.ts",
-      "import": "./dist-lib/vitePlugin/index.js"
+      "types": "./dist-lib/vite-plugin.d.ts",
+      "import": "./dist-lib/vite-plugin.js"
     },
     "./style.css": "./dist-lib/style.css",
     "./package.json": "./package.json"
